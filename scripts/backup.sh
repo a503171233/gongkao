@@ -55,7 +55,8 @@ fi
 echo "[backup] 打包完成: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
 
 # ---- 2. 校验和清单（恢复演练比对用） ----
-sha256sum "$BACKUP_FILE" > "$MANIFEST"
+# 清单内用文件名而非绝对路径：跨机/换目录恢复时 sha256sum -c 仍可用（2026-09-25 演练修正）
+sha256sum "$BACKUP_FILE" | sed "s|  $BACKUP_FILE|  $(basename "$BACKUP_FILE")|" > "$MANIFEST"
 echo "[backup] 校验和: $(cat "$MANIFEST")"
 
 # ---- 3. 完整性自检：能列出内容才算有效备份 ----
