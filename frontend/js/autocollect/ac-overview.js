@@ -19,7 +19,26 @@ async function renderAcOverview() {
   try { capInfo = await admin('/admin/capabilities/status') || {}; } catch (e) {}
   const _cap = (capInfo.capabilities || {}).fetch || {};
   const _capProv = ['mcp', 'scrapling', 'builtin'].map(p => `${p}${_cap[p] ? '✓' : '✗'}`).join(' · ');
-  const _capTxt = `${esc(capInfo.fetch_provider_env || 'auto')}（${_capProv}）`;
+  const _capTxt = `${esc(capInfo.fetch_provider_env || 'auto')}（${_capProv}）` +
+    ` <button onclick="acTestFetch()" style="margin-left:6px;padding:2px 8px;border:1px solid #d8dce6;border-radius:5px;background:#fff;cursor:pointer;font-size:11px">⚡ 试抓</button>` +
+    `<span id="acFetchTestOut" style="font-size:11px;color:#888;margin-left:6px"></span>`;
+
+  global.acTestFetch = async function () {
+    var out = document.getElementById('acFetchTestOut');
+    if (out) { out.textContent = '试抓中…'; out.style.color = '#888'; }
+    try {
+      var r = await admin('/admin/capabilities/fetch-test', { method: 'POST' });
+      var parts = (r.results || []).map(function (x) {
+        return x.provider + (x.ok ? '✅' : '❌') + ' ' + x.elapsed_ms + 'ms/' + x.chars + '字';
+      });
+      if (out) {
+        out.textContent = parts.join(' · ');
+        out.style.color = (r.results || []).every(x => x.ok) ? '#16a34a' : '#e5484d';
+      }
+    } catch (e) {
+      if (out) { out.textContent = '试抓失败: ' + (e && e.message ? e.message : e); out.style.color = '#e5484d'; }
+    }
+  };
   const go = (id, label) => `<button class="btn ghost sm" onclick="acSubTab('${id}')">${label}</button>`;
   const line = (k, v) => `<div class="detail-row"><div class="k">${esc(k)}</div><div class="v">${v == null || v === '' ? '<span class="hint">未配置</span>' : v}</div></div>`;
   const listTxt = (arr) => (arr && arr.length) ? arr.map(x => esc(x)).join('、') : '';

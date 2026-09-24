@@ -3005,6 +3005,39 @@ def admin_capabilities_status(authorization: str = Header(default="")):
     }
 
 
+@app.post("/admin/capabilities/fetch-test")
+def admin_capabilities_fetch_test(authorization: str = Header(default="")):
+    """抓取通道一键自检：对固定 https://example.com 逐通道实抓。
+    零用户输入 → 无 SSRF 面；仅管理端可用；单通道超时 10s。"""
+    _admin_user(authorization)
+    from .capabilities import fetch_cap
+    import time as _time
+
+    url = "https://example.com"
+    results = []
+    for prov in ("scrapling", "builtin"):
+        fn = getattr(fetch_cap, f"_{prov}", None)
+        t0 = _time.monotonic()
+        if fn is None:
+            results.append({"provider": prov, "ok": False, "chars": 0,
+                            "elapsed_ms": 0, "error": "未注册（依赖未安装）"})
+            continue
+        try:
+            res, warn = fn(url, timeout=10)
+            results.append({
+                "provider": prov,
+                "ok": res is not None,
+                "chars": len((res or {}).get("text") or ""),
+                "elapsed_ms": int((_time.monotonic() - t0) * 1000),
+                "error": warn or "",
+            })
+        except Exception as e:  # 网络故障也结构化返回，不 500
+            results.append({"provider": prov, "ok": False, "chars": 0,
+                            "elapsed_ms": int((_time.monotonic() - t0) * 1000),
+                            "error": f"{type(e).__name__}: {str(e)[:120]}"})
+    return {"tested_url": url, "results": results}
+
+
 @app.get("/admin/autocollect/status")
 def admin_autocollect_status(authorization: str = Header(default="")):
     """自动采集守候状态：是否启用 / 上次运行时间与结果摘要。"""
