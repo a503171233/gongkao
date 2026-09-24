@@ -260,6 +260,36 @@ def register(req: RegisterReq, request: Request):
     return {"token": token, "user_id": user_id, "username": user["username"], "role": user["role"]}
 
 
+def _notify_member_expire(user: dict) -> None:
+    """#19 会员到期服务端提醒：≤3 天未过期 / 已过期两个节点发站内信。
+    同类型提醒 30 天窗口去重；任何故障不阻断登录。"""
+    try:
+        expire_at = (user or {}).get("member_expire_at") or ""
+        if not expire_at:
+            return
+        from datetime import datetime, timedelta
+        exp = datetime.fromisoformat(str(expire_at).replace("Z", "+00:00").replace(" ", "T"))
+        now = datetime.now(exp.tzinfo) if exp.tzinfo else datetime.now()
+        days_left = (exp - now).total_seconds() / 86400
+        if days_left > 3:
+            return
+        if days_left > 0:
+            title = "⏰ 会员即将到期"
+            content = (f"您的会员将于 {int(days_left) + 1} 天内到期"
+                       f"（{str(expire_at)[:10]}），到期后练习额度切换为免费档，可前往会员页续费。")
+        else:
+            title = "📌 会员已到期"
+            content = (f"您的会员已于 {str(expire_at)[:10]} 到期，当前为免费档。"
+                       "如需恢复会员额度请前往会员页续费。")
+        cut = (now - timedelta(days=30)).isoformat()
+        if message_store.exists_since(user["user_id"], title, cut):
+            return  # 30 天内已提醒过，防重复
+        message_store.create(target="user", target_user_id=user["user_id"],
+                             title=title, content=content)
+    except Exception:
+        pass
+
+
 @app.post("/login")
 def login(req: LoginReq, request: Request):
     """登录，返回 token 和用户信息。C5 加固：IP 限流防暴力破解。"""
@@ -270,6 +300,7 @@ def login(req: LoginReq, request: Request):
         _login_fail_record(_client_ip(request))
         raise HTTPException(status_code=401, detail=str(e))
     user = auth_store.user_from_token(token)
+    _notify_member_expire(user)
     return {"token": token, "user_id": user["user_id"], "username": user["username"],
             "role": user["role"], "quota_left": auth_store.quota_left(user["user_id"], user["role"])}
 
@@ -1040,6 +1071,21 @@ def my_incentive(authorization: str = Header(default="")):
     if user is None:
         raise HTTPException(status_code=401, detail="请先登录")
     return incentive_store.summary(user["user_id"], study_store)
+
+
+@app.get("/me/incentive/board")
+def my_incentive_board(authorization: str = Header(default="")):
+    """#18 公开排行榜：前 20 名（仅 username + 指标，不暴露 user_id）+ 自己的名次。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    top = incentive_store.board(limit=20)
+    names = auth_store.usernames_for([r.get("user_id") for r in top])
+    board_out = [{"username": names.get(r.get("user_id")) or "同学",
+                  "points": r.get("points"), "level": r.get("level"),
+                  "streak_days": r.get("streak_days"),
+                  "total_answers": r.get("total_answers")} for r in top]
+    return {"board": board_out, "my_rank": incentive_store.rank_of(user["user_id"])}
 
 
 @app.get("/me/learning-report")
@@ -3460,10 +3506,23 @@ def forum_reply_create(post_id: str, req: ForumReplyReq,
     if bad:
         raise HTTPException(status_code=400, detail=bad)
     try:
-        return forum_store.add_reply(post_id, user["user_id"],
-                                     user.get("username") or "", content)
+        reply = forum_store.add_reply(post_id, user["user_id"],
+                                      user.get("username") or "", content)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    # #19 论坛回复通知：站内信告知帖子作者（自回复不发；通知失败不阻断回复）
+    try:
+        post = forum_store.get_post(post_id) or {}
+        author_id = post.get("user_id") or ""
+        if author_id and author_id != user["user_id"]:
+            message_store.create(
+                target="user", target_user_id=author_id,
+                title="💬 帖子有新回复",
+                content=f"{user.get('username') or '有人'} 回复了你的帖子"
+                        f"《{post.get('title') or ''}》")
+    except Exception:
+        pass
+    return reply
 
 
 @app.post("/forum/posts/{post_id}/like")

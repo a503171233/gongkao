@@ -165,11 +165,37 @@
           achievHtml +
         '</div>' +
 
+        '<div id="c8Board" style="margin-bottom:12px"><p style="color:#aaa;font-size:11.5px;margin:4px 0 8px">排行榜加载中…</p></div>' +
+
         '<div style="font-size:13px;font-weight:700;color:#333;margin:4px 0 8px">🧾 最近积分流水</div>' +
         (ledgerHtml || '<p style="color:#999">暂无记录，快去答题赚积分吧</p>');
     }).catch(function (e) {
       var body = document.getElementById('c8Body');
       if (body) body.innerHTML = '<p style="color:#e5484d;text-align:center;padding:40px 0">加载失败: ' + escapeHtml(e && e.message ? e.message : e) + '</p>';
+    });
+
+    // 排行榜异步填充（失败静默，不影响主面板）
+    global.GK.api('/me/incentive/board').then(function (b) {
+      var box = document.getElementById('c8Board');
+      if (!box || !b || !b.board) return;
+      var rows = (b.board || []).map(function (r, i) {
+        var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed #eef0f5;font-size:12.5px">' +
+          '<span style="min-width:26px;text-align:center;font-weight:700;color:' + (i < 3 ? '#d97706' : '#999') + '">' + medal + '</span>' +
+          '<span style="flex:1;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(r.username) + '</span>' +
+          '<span style="font-size:11.5px;color:#888">Lv.' + escapeHtml(r.level) + ' · ' + (r.streak_days || 0) + ' 天</span>' +
+          '<span style="min-width:56px;text-align:right;font-weight:800;color:#4a6cf7">' + (r.points || 0) + ' 分</span>' +
+        '</div>';
+      }).join('');
+      box.innerHTML =
+        '<div style="font-size:13px;font-weight:700;color:#333;margin:4px 0 8px">🏆 排行榜' +
+          (b.my_rank ? '<span style="font-weight:400;color:#888;font-size:11.5px">（我第 ' + b.my_rank + ' 名）</span>' : '') + '</div>' +
+        '<div style="background:#fafbfe;border:1px solid #eef0f5;border-radius:10px;padding:8px 10px">' +
+          (rows || '<p style="color:#999">暂无上榜数据，答题即上榜</p>') +
+        '</div>';
+    }).catch(function () {
+      var box = document.getElementById('c8Board');
+      if (box) box.innerHTML = '';
     });
   }
 

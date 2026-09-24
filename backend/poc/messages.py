@@ -91,6 +91,16 @@ class MessageStore:
                 "FROM messages m ORDER BY m.id DESC").fetchall()
         return [dict(r) for r in rows]
 
+    def exists_since(self, target_user_id: str, title: str, since_iso: str) -> bool:
+        """30 天窗口去重：该用户是否已有同标题的定向消息（#19 到期提醒防重复）。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM messages WHERE target='user' AND target_user_id=? "
+                "AND title=? AND created_at >= ? LIMIT 1",
+                ((target_user_id or "").strip(), (title or "").strip(),
+                 (since_iso or "").strip())).fetchone()
+        return row is not None
+
     def _visible_sql(self, user_id: str) -> str:
         """可见性条件（target=all 或定向给该用户），防注入。"""
         uid = (user_id or "").replace("'", "''")

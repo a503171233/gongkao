@@ -448,6 +448,21 @@ class AuthStore:
                 conn2.execute("UPDATE users SET role='free' WHERE user_id=?", (user_id,))
         return u
 
+    def usernames_for(self, user_ids: list) -> dict:
+        """批量取 username 映射（#18 排行榜脱敏展示用）；空入参/查询失败返回空 dict。"""
+        ids = [str(i or "").strip() for i in (user_ids or []) if str(i or "").strip()]
+        if not ids:
+            return {}
+        try:
+            with self._connect() as conn:
+                placeholders = ",".join("?" * len(ids))
+                rows = conn.execute(
+                    f"SELECT user_id, username FROM users WHERE user_id IN ({placeholders})",
+                    ids).fetchall()
+            return {r["user_id"]: (r["username"] or "同学") for r in rows}
+        except sqlite3.Error:
+            return {}
+
     def _is_member_expired(self, conn: sqlite3.Connection, user: dict) -> bool:
         """
         判定会员是否已到期（惰性，不阻塞写操作）。

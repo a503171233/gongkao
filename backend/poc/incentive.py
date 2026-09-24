@@ -408,6 +408,22 @@ class IncentiveStore:
                 "ORDER BY points DESC, updated_at ASC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
+    def rank_of(self, user_id: str) -> int:
+        """#18 用户侧排行榜：按积分降序的竞赛名次（1 起，同分并列）；
+        无积分记录返回 0。"""
+        uid = (user_id or "").strip()
+        if not uid:
+            return 0
+        with self._connect() as conn:
+            mine = conn.execute(
+                "SELECT points FROM user_points WHERE user_id=?", (uid,)).fetchone()
+            if mine is None:
+                return 0
+            row = conn.execute(
+                "SELECT COUNT(*) + 1 AS rk FROM user_points WHERE points > ?",
+                (mine["points"],)).fetchone()
+        return int(row["rk"]) if row else 0
+
     def admin_stats(self) -> dict:
         with self._connect() as conn:
             row = conn.execute(
