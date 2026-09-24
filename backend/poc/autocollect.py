@@ -4125,6 +4125,13 @@ def _daemon_loop() -> None:
                         fs = failed_sources()
                         if fs["count"]:
                             run_once(force=False, retry_failed=True)
+                    # 批次9：粉笔题库采集源守候钩子（enabled+Cookie 才跑，
+                    # 内部全异常静默，不伤主守候；同线程串行避免并发抓取）
+                    try:
+                        from .fenbi import maybe_run_fenbi
+                        maybe_run_fenbi()
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception as e:  # noqa: BLE001  单轮异常不影响线程存活
                 with _lock:
                     _status["last_result"] = {"skipped": False, "added": 0,

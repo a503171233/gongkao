@@ -3038,6 +3038,68 @@ def admin_capabilities_fetch_test(authorization: str = Header(default="")):
     return {"tested_url": url, "results": results}
 
 
+# ---------------- 粉笔题库采集源（批次9） ----------------
+
+class AdminFenbiConfigReq(BaseModel):
+    enabled: bool = False
+    cookie: str = ""   # 非空=覆盖；空串=不变；"__CLEAR__"=清除
+    max_papers_per_run: int = 3
+    max_questions_per_run: int = 200
+    min_interval_secs: int = 2
+    teacher_id: str = "T001"
+
+
+@app.get("/admin/fenbi/config")
+def admin_fenbi_config_get(authorization: str = Header(default="")):
+    """粉笔采集配置只读：Cookie 脱敏（只露末 4 位）+ 最近一轮漏斗 + 运行中标志。"""
+    _admin_user(authorization)
+    from .fenbi import fenbi_config, is_running
+    d = fenbi_config()
+    d["running"] = is_running()
+    return d
+
+
+@app.post("/admin/fenbi/config")
+def admin_fenbi_config_post(
+    req: AdminFenbiConfigReq = Body(default_factory=AdminFenbiConfigReq),
+    authorization: str = Header(default=""),
+):
+    """保存粉笔采集配置。Cookie 不写日志、不回显（响应同 GET 脱敏格式）。"""
+    _admin_user(authorization)
+    _check_teacher(req.teacher_id)
+    from .fenbi import save_fenbi_config
+    try:
+        return save_fenbi_config(req.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/admin/fenbi/test")
+def admin_fenbi_test(authorization: str = Header(default="")):
+    """粉笔试拉：验证 Cookie 有效性 + 返回最近试卷样本（前 2 题映射结果）。
+    注意：统一 400 而非 401——避免前端把粉笔 Cookie 失效误判为平台登录失效。"""
+    _admin_user(authorization)
+    from .fenbi import fenbi_test
+    try:
+        return fenbi_test()
+    except Exception as e:  # noqa: BLE001  FenbiAuthError/ValueError → 400 结构化
+        raise HTTPException(status_code=400,
+                            detail=f"粉笔试拉失败：{str(e)[:160]}")
+
+
+@app.post("/admin/fenbi/collect")
+def admin_fenbi_collect(authorization: str = Header(default="")):
+    """手动触发一轮粉笔采集（后台线程，不阻塞请求）；
+    漏斗统计写 last_run，轮询 GET /admin/fenbi/config 可见。"""
+    _admin_user(authorization)
+    from .fenbi import is_running, start_collect_async
+    if is_running():
+        return {"started": False, "running": True,
+                "msg": "已有粉笔采集在后台运行，请稍候"}
+    start_collect_async()
+    return {"started": True, "running": True}
+
+
 @app.get("/admin/autocollect/status")
 def admin_autocollect_status(authorization: str = Header(default="")):
     """自动采集守候状态：是否启用 / 上次运行时间与结果摘要。"""
