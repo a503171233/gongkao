@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>老师专属答疑 · 公考智能助教</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Serif SC", serif; background: radial-gradient(1200px 500px at 85% -5%, rgba(201,160,90,.12), transparent 60%), radial-gradient(900px 420px at -10% 10%, rgba(139,94,60,.10), transparent 55%), #f6f1e7; color: #3d3a33; min-height: 100vh; display: flex; flex-direction: column; }
+  header { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; padding: 14px 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  header .logo { width: 40px; height: 40px; background: #fffaf0; color: #8b5e3c; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+  header h1 { font-size: 16px; }
+  header .sub { font-size: 12px; opacity: .85; }
+  .brand-link { margin-left: auto; color: #fffaf0; text-decoration: none; font-size: 13px; background: rgba(255,250,240,.18); padding: 6px 14px; border-radius: 8px; }
+  .brand-link:hover { background: rgba(255,250,240,.32); }
+
+  #main { flex: 1; max-width: 780px; width: 100%; margin: 0 auto; padding: 28px 20px; }
+  .hero { text-align: center; margin-bottom: 24px; }
+  .hero .t-name { font-size: 26px; font-weight: 700; color: #3d3a33; }
+  .hero .t-subject { display: inline-block; background: #e6d3ac; color: #6f4a2d; border-radius: 20px; padding: 4px 16px; font-size: 13px; margin-top: 10px; }
+  .hero p { color: #777; font-size: 13.5px; margin-top: 10px; line-height: 1.8; }
+
+  .card { background: #fffaf0; border: 1px solid #e2d9c6; border-radius: 14px; box-shadow: 0 2px 16px rgba(93,72,41,.10); padding: 20px; margin-bottom: 16px; }
+  .qbar { display: flex; gap: 10px; }
+  #query { flex: 1; border: 1px solid #d2c5ab; border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; background: #fffaf0; color: #3d3a33; }
+  #query:focus { border-color: #c9a05a; box-shadow: 0 0 0 3px rgba(201,160,90,.18); }
+  #send { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; border: none; border-radius: 10px; padding: 0 24px; font-size: 15px; cursor: pointer; }
+  #send:disabled { opacity: .5; cursor: not-allowed; }
+  .qlimit { font-size: 12px; color: #999; margin-top: 8px; }
+
+  #chat { max-height: 46vh; overflow-y: auto; margin-top: 4px; }
+  .msg { display: flex; margin-bottom: 16px; }
+  .msg .avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg.user .avatar { background: #e6d3ac; }
+  .msg.bot .avatar { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; }
+  .bubble { background: #fffaf0; border-radius: 12px; padding: 11px 14px; max-width: 82%; box-shadow: 0 1px 3px rgba(93,72,41,.08); line-height: 1.75; font-size: 14.5px; white-space: pre-wrap; word-break: break-word; margin: 0 10px; border: 1px solid #e2d9c6; }
+  .msg.user .bubble { background: #6f4a2d; color: #fffaf0; }
+  .rejected { color: #c05621; background: #fff8f0 !important; }
+  .thinking { color: #98917f; font-size: 13px; }
+  .refs { margin-top: 8px; font-size: 12px; color: #98917f; border-top: 1px dashed #d2c5ab; padding-top: 6px; }
+  .ref { display: inline-block; background: #e6d3ac; border-radius: 6px; padding: 2px 8px; margin: 2px 6px 2px 0; color: #6f4a2d; }
+
+  .fb-bar { margin-top: 10px; display: flex; gap: 8px; }
+  .fb-btn { border: 1px solid #d2c5ab; background: #fffaf0; border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; color: #6b655a; }
+  .notice-tip { margin-top: 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px; line-height: 1.6; }
+  .notice-warn { background: #eef4ff; border: 1px solid #b6c8f2; color: #3b5bdb; }
+  .notice-confirm { background: #fff7ec; border: 1px solid #f0c987; color: #8a5a00; }
+
+  .foot { text-align: center; color: #999; font-size: 12px; padding: 18px 20px 28px; }
+  .foot a { color: #8b5e3c; text-decoration: none; }
+  .err-tip { color: #e5484d; font-size: 13px; margin-top: 8px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">助</div>
+  <div>
+    <h1>多老师专属智能助教</h1>
+    <div class="sub" id="subInfo">答疑基于老师课件与讲义，杜绝凭空编造</div>
+  </div>
+  <a class="brand-link" id="mainLink" href="/chat.html">去主站 · 完整功能</a></header>
+
+<div id="main">
+  <div class="hero">
+    <div class="t-name" id="teacherName">加载中…</div>
+    <div class="t-subject" id="teacherSubject"></div>
+    <p id="teacherIntro">选择老师并提问，助教将基于该老师的教学资料为你解答。</p>
+  </div>
+
+  <div class="card">
+    <div class="qbar">
+      <input id="query" type="text" placeholder="输入你的问题…" autocomplete="off" maxlength="500">
+      <button id="send">提问</button>
+    </div>
+    <div class="qlimit">匿名即可体验 · 上限 500 字 · 答案基于教学资料生成</div>
+    <div class="err-tip hidden" id="errTip"></div>
+    <div id="chat"></div>
+  </div>
+</div>
+
+<div class="foot">
+  由 <a href="/">多老师专属智能助教平台</a> 提供 · 所有回答均基于对应老师课件与讲义生成
+</div>
+
+<script src="js/a4-request.js?v=20260906"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 初始老师 ----------
+  var params = new URLSearchParams(window.location.search);
+  var wantTeacher = params.get('teacher_id') || '';
+
+  var state = { teacherId: '', sessionId: '', streaming: false };
+
+  var chatEl = document.getElementById('chat');
+  var queryEl = document.getElementById('query');
+  var sendBtn = document.getElementById('send');
+  var errTip = document.getElementById('errTip');
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ---------- 加载老师列表，确定默认老师 ----------
+  GK.api('/teachers').then(function (d) {
+    var list = (d && d.teachers) || [];
+    if (!list.length) {
+      document.getElementById('teacherName').textContent = '暂无老师';
+      return;
+    }
+    var t = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].teacher_id === wantTeacher) { t = list[i]; break; }
+    }
+    if (!t) t = list[0];
+    state.teacherId = t.teacher_id;
+    document.getElementById('teacherName').textContent = t.teacher_name || '';
+    document.getElementById('teacherSubject').textContent = t.teacher_subject || '';
+    document.getElementById('subInfo').textContent =
+      '正在答疑：' + (t.teacher_name || '') + ' · 答案基于教学资料生成';
+    var mLink = document.getElementById('mainLink');
+    mLink.href = '/chat.html?teacher_id=' + encodeURIComponent(t.teacher_id);
+  }).catch(function (e) {
+    document.getElementById('teacherName').textContent = '加载失败';
+    document.getElementById('subInfo').textContent = '网络异常，请稍后刷新';
+  });
+
+  // ---------- 提问（SSE） ----------
+  function ask() {
+    var q = queryEl.value.trim();
+    if (!q || state.streaming) return;
+    if (!state.teacherId) { showErr('老师尚未就绪，请稍候'); return; }
+    hideErr();
+    state.streaming = true;
+    sendBtn.disabled = true;
+
+    // 用户气泡
+    appendMsg('user', q);
+
+    // bot 气泡
+    var botMsg = appendMsg('bot', '<span class="thinking">思考中…</span>');
+    var bubble = botMsg.querySelector('.bubble');
+    var buf = '';
+
+    var payload = {
+      query: q,
+      teacher_id: state.teacherId,
+      stream: true,
+      session_id: state.sessionId || ''
+    };
+
+    GK.sse('/ask', payload, {
+      start: function () { /* noop */ },
+      delta: function (d) {
+        var txt = (d && d.text) || '';
+        if (!txt) return;
+        buf += txt;
+        var t = bubble.querySelector('.thinking');
+        if (t) t.parentNode.removeChild(t);
+        bubble.appendChild(document.createTextNode(txt));
+        chatEl.scrollTop = chatEl.scrollHeight;
+      },
+      refs: function (d) {
+        var refs = (d && d.references) || [];
+        if (!refs.length) return;
+        var div = document.createElement('div');
+        div.className = 'refs';
+        div.textContent = '📎 引用来源：';
+        refs.forEach(function (r) {
+          var s = document.createElement('span');
+          s.className = 'ref';
+          s.textContent = '📄 ' + (r.doc_name || '未知') + ' (' + (typeof r.score === 'number' ? r.score.toFixed(3) : '') + ')';
+          div.appendChild(s);
+        });
+        bubble.appendChild(div);
+      },
+      done: function () {
+        finish();
+      },
+      guard_block: function (d) {
+        var reason = (d && d.fails) || [];
+        var names = reason.map(function (r) {
+          return { reference: '引用不符', fact: '数字不符', out_of_scope: '超纲' }[r] || r;
+        }).join('、');
+        bubble.textContent = '';
+        bubble.appendChild(document.createTextNode('⚠️ 回答被幻觉检测拦截：未能通过教学资料校验' + (names ? '（' + names + '）' : '')));
+        bubble.classList.add('rejected');
+        finish();
+      },
+      guard_warn: function (d) {
+        if (bubble.querySelector('.notice-tip')) return;
+        var isConfirm = d && d.level === 'confirm';
+        var tip = document.createElement('div');
+        tip.className = 'notice-tip ' + (isConfirm ? 'notice-confirm' : 'notice-warn');
+        tip.textContent = (d && d.notice) ||
+          (isConfirm ? '⚠️ 本回答与讲义匹配度一般，请以讲义为准。'
+                     : '💡 核心内容已通过资料校验，部分为助教补充讲解。');
+        bubble.appendChild(tip);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      },
+      error: function (e) {
+        var msg = (e && e.message) || '服务异常';
+        bubble.textContent = '';
+        bubble.appendChild(document.createTextNode('⚠️ ' + msg));
+        finish();
+      }
+    });
+
+    function finish() {
+      state.streaming = false;
+      sendBtn.disabled = false;
+      queryEl.value = '';
+      var t = bubble.querySelector('.thinking');
+      if (t) t.parentNode.removeChild(t);
+      if (buf.indexOf('暂未录入资料库') !== -1) bubble.classList.add('rejected');
+      // 答案反馈（匿名可提交）
+      if (buf && buf.indexOf('暂未录入资料库') === -1) {
+        attachFeedback(bubble, q, buf);
+      }
+    }
+  }
+
+  function attachFeedback(bubble, question, answer) {
+    if (bubble.querySelector('.fb-bar')) return;
+    var bar = document.createElement('div');
+    bar.className = 'fb-bar';
+    ['up', 'down'].forEach(function (r) {
+      var b = document.createElement('button');
+      b.className = 'fb-btn';
+      b.textContent = r === 'up' ? '👍 有帮助' : '👎 需改进';
+      b.onclick = function () {
+        if (b.disabled) return;
+        b.disabled = true; b.style.opacity = '.5';
+        GK.api('/feedback', { method: 'POST', body: {
+          rating: r, question: question, answer: answer,
+          session_id: state.sessionId || '', teacher_id: state.teacherId
+        }}).then(function () {
+          b.textContent = (r === 'up' ? '👍' : '👎') + ' ✓';
+        }).catch(function () {
+          b.disabled = false; b.style.opacity = '1';
+        });
+      };
+      bar.appendChild(b);
+    });
+    bubble.appendChild(bar);
+  }
+
+  function appendMsg(role, html) {
+    var m = document.createElement('div');
+    m.className = 'msg ' + role;
+    var avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? '我' : '师';
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = html;  // 内部生成，安全
+    m.appendChild(avatar);
+    m.appendChild(bubble);
+    chatEl.appendChild(m);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return m;
+  }
+
+  function showErr(msg) {
+    errTip.textContent = msg;
+    errTip.classList.remove('hidden');
+  }
+  function hideErr() { errTip.classList.add('hidden'); }
+
+  sendBtn.onclick = ask;
+  queryEl.onkeydown = function (e) { if (e.key === 'Enter') ask(); };
+})();
+</script>
+</body>
+</html>

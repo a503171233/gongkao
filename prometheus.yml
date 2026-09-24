@@ -1,0 +1,25 @@
+# ============================================================
+# Prometheus 抓取配置（C5 P2-4 监控告警）
+# 用途：若后期服务器资源允许（或迁移更大规格机器），接 Prometheus 使用。
+# 当前 2C/3.6G 建议先用 scripts/alert.sh 轻量告警（cron 版），此文件为升级路径。
+#
+# 部署（服务器，资源允许时）：
+#   docker run -d --name prometheus -p 9090:9090 \
+#     -v /home/ubuntu/gongkao/prometheus.yml:/etc/prometheus/prometheus.yml \
+#     -v prometheus-data:/prometheus prom/prometheus
+# 抓取目标：frontend nginx :3000 已把 /api/metrics/prometheus 反代到 backend
+# ============================================================
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert.rules.yml"
+
+scrape_configs:
+  - job_name: "gongkao"
+    metrics_path: /api/metrics/prometheus
+    static_configs:
+      - targets: ["127.0.0.1:3000"]   # 经 nginx 反代（对外路径带 /api）
+        labels:
+          service: gongkao

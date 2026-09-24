@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="书山公考 · 运营数据看板：总览指标、系统健康、老师热度、额度消耗、营收、反馈与题库概览。">
+<title>运营看板 · 书山公考</title>
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  /* ===== 看板专属补充样式（设计令牌取自 app.css 书卷主题） ===== */
+  .dash-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .dash-tools input[type=password] {
+    border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 12px;
+    font-size: 13px; width: 200px; outline: none; background: var(--card); color: var(--ink);
+    transition: border-color .25s var(--spring);
+  }
+  .dash-tools input[type=password]:focus { border-color: var(--gold); }
+  .dash-tools .btn { padding: 8px 16px; font-size: 13.5px; }
+  .dash-tools select {
+    border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 10px;
+    font-size: 13px; background: var(--card); color: var(--ink); outline: none; cursor: pointer;
+  }
+  .dash-tools label.remember { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; user-select: none; }
+  .dash-wrap { max-width: 1200px; margin: 0 auto; padding: 26px 22px 40px; }
+  .dash-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .dash-head h2 { font-size: 24px; font-weight: 800; }
+  .dash-head .sub { font-size: 13px; color: var(--ink-3); }
+  .dash-head .last-sync { margin-left: auto; font-size: 12.5px; color: var(--ink-3); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 16px 18px; box-shadow: var(--shadow-1); transition: transform .3s var(--spring), box-shadow .3s var(--spring); }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+  .card .label { font-size: 12.5px; color: var(--ink-3); margin-bottom: 6px; }
+  .card .value { font-size: 26px; font-weight: 800; color: var(--wood); }
+  .card .sub { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+  .card.rev .value { color: var(--good); }
+  .card.warn .value { color: var(--bad); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-1); }
+  .panel h3 { font-size: 15px; margin-bottom: 12px; color: var(--ink); font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  /* 覆盖 app.css 的居中大空态 .hint（看板内是行内小注释） */
+  .hint { text-align: left; color: var(--ink-3); font-size: 12px; padding: 0; margin: 0 0 8px; background: none; line-height: 1.7; border-radius: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--ink-3); font-weight: 600; font-size: 12px; background: var(--card-2); }
+  tr:hover td { background: var(--gold-soft); background: rgba(230,211,172,.25); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+  .badge.ok { background: rgba(122,158,109,.18); color: var(--good); }
+  .badge.warn { background: rgba(180,90,74,.15); color: var(--bad); }
+  .badge.member { background: var(--gold-soft); color: var(--wood-deep); }
+  .badge.free { background: var(--paper-2); color: var(--ink-2); }
+  .badge.admin { background: rgba(180,90,74,.22); color: var(--bad); }
+  .badge.new { background: var(--gold-soft); color: var(--wood-deep); }
+  .badge.resolved { background: rgba(122,158,109,.18); color: var(--good); }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+  .bar-row .name { width: 110px; text-align: right; color: var(--ink-2); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row .bar { flex: 1; background: var(--paper-2); border-radius: 6px; height: 22px; position: relative; overflow: hidden; }
+  .bar-row .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--wood), var(--gold)); border-radius: 6px; min-width: 2px; }
+  .bar-row .bar i.warn { background: linear-gradient(90deg, var(--bad), #d98a7c); }
+  .bar-row .val { width: 96px; font-weight: 600; color: var(--ink); flex-shrink: 0; font-size: 12.5px; }
+  .error-banner { background: rgba(180,90,74,.10); color: var(--bad); border: 1px solid rgba(180,90,74,.30); border-radius: var(--radius-s); padding: 12px 16px; margin-bottom: 16px; font-size: 13.5px; display: none; }
+  .revenue-off { background: var(--paper-2); border: 1px dashed var(--line-2); border-radius: var(--radius-s); padding: 14px 16px; color: var(--ink-3); font-size: 13px; margin-bottom: 8px; }
+  .revenue-on { color: var(--good); font-size: 13px; margin-bottom: 8px; font-weight: 600; }
+  .foot { text-align: center; color: var(--ink-3); font-size: 12px; padding: 18px 0 28px; }
+  .foot a { color: var(--wood); }
+  svg text { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .loading { color: var(--ink-3); font-size: 13px; padding: 10px 0; }
+  .mini-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .mini-cards .mc { background: var(--card-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; }
+  .mini-cards .mc b { display: block; font-size: 20px; font-weight: 800; color: var(--wood); }
+  .mini-cards .mc.down b { color: var(--bad); }
+  .mini-cards .mc span { font-size: 11.5px; color: var(--ink-3); }
+</style>
+</head>
+<body>
+
+<!-- ===================== 导航（与全站一致的书卷毛玻璃） ===================== -->
+<nav class="glass-nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark">书</span>
+      <span>书山公考 · 运营看板</span>
+    </a>
+    <div class="nav-links">
+      <a href="/">官网首页</a>
+      <a href="/chat.html">学习中心</a>
+      <a href="/knowledge.html">知识体系</a>
+      <a href="/admin.html">管理后台</a>
+    </div>
+  </div>
+</nav>
+
+<div class="dash-wrap">
+  <div class="dash-head">
+    <h2>运营数据看板</h2>
+    <span class="sub">总览 · 健康 · 热度 · 额度 · 营收 · 反馈 · 题库</span>
+    <span class="last-sync" id="lastSync"></span>
+  </div>
+
+  <div class="dash-tools" style="margin-bottom:16px">
+    <input type="password" id="secretInput" placeholder="管理员密钥 / Bearer Token" autocomplete="off">
+    <button class="btn btn-ghost" id="tokenBtn" title="使用管理员账号的 Bearer Token">Token</button>
+    <button class="btn btn-primary" id="loadBtn">刷新数据</button>
+    <select id="autoRefresh" title="自动刷新间隔">
+      <option value="0">自动刷新：关</option>
+      <option value="30">每 30 秒</option>
+      <option value="60">每 60 秒</option>
+    </select>
+    <label class="remember"><input type="checkbox" id="rememberKey"> 记住密钥</label>
+    <button class="btn btn-ghost" id="exportJsonBtn" title="导出当前全部面板数据（JSON）">导出 JSON</button>
+  </div>
+
+  <div class="error-banner" id="errBanner"></div>
+  <div class="cards" id="cards"></div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <h3>🩺 系统健康（LLM 被动可用度窗口，最近 20 次 ask）</h3>
+    <div id="healthBox" class="loading">加载中…</div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>📈 老师维度热度</h3>
+      <div id="teacherBars" class="loading">加载中…</div>
+    </div>
+    <div class="panel">
+      <h3>📊 额度消耗分布（按日）</h3>
+      <div id="quotaBars" class="loading">加载中…</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>💳 营收（C1 付费闭环）</h3>
+      <div id="revenueBox" class="loading">加载中…</div>
+    </div>
+    <div class="panel">
+      <h3>💬 答案反馈（A1 满意度）</h3>
+      <div id="feedbackBox" class="loading">加载中…</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>🛡️ 幻觉拦截统计（进程内累计）</h3>
+      <div id="guardBox" class="loading">加载中…</div>
+    </div>
+    <div class="panel">
+      <h3>📝 题库概览</h3>
+      <div id="questionBox" class="loading">加载中…</div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px">
+    <h3>👤 额度消耗分布（按用户 Top 20）</h3>
+    <div style="overflow-x:auto"><table id="userTable"><thead><tr><th>用户名</th><th>角色</th><th>今日已用</th><th>额度日</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h3>🕐 最近请求事件</h3>
+    <div style="overflow-x:auto"><table id="recentTable"><thead><tr><th>时间</th><th>方法</th><th>路径</th><th>状态</th><th>老师</th><th>耗时ms</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="foot">
+    数据来源：GET /api/admin/stats/*（只读聚合） · 权限：X-Admin-Secret 或 admin Bearer ·
+    <a href="/api/admin/stats/export" id="exportLink">导出 CSV</a> ·
+    快捷键 <b>R</b> 刷新 · 密钥仅保存在本浏览器（localStorage）
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------- 轻量 API 封装（A4 风格，无第三方依赖） ----------
+const API = {
+  base: "/api",
+  token: "",
+  async get(path, isCsv) {
+    const headers = {};
+    if (this.token) {
+      // 双头兼容：stats/* 接受 X-Admin-Secret，feedback/questions 仅接受 Bearer
+      headers["X-Admin-Secret"] = this.token;
+      headers["Authorization"] = "Bearer " + this.token;
+    }
+    const resp = await fetch(this.base + path, { headers });
+    if (resp.status === 401 || resp.status === 403) {
+      throw new Error("无权限访问运营数据（401/403）：请填写正确的管理员密钥或 Token");
+    }
+    if (!resp.ok) throw new Error("请求失败 HTTP " + resp.status);
+    return isCsv ? await resp.text() : await resp.json();
+  }
+};
+
+// ---------- 工具 ----------
+function el(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html.trim();
+  return t.content.firstChild;
+}
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function showErr(msg) {
+  const b = document.getElementById("errBanner");
+  b.textContent = msg;
+  b.style.display = "block";
+}
+function hideErr() {
+  document.getElementById("errBanner").style.display = "none";
+}
+function fmtUptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return (d ? d + "天" : "") + h + "时" + m + "分";
+}
+function nowStr() {
+  return new Date().toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+// ---------- 概览卡片 ----------
+function renderCards(ov) {
+  const memRate = (ov.member_rate * 100).toFixed(1) + "%";
+  const cards = [
+    { label: "总用户", value: ov.total_users, sub: "会员 " + ov.member_users + " · 占比 " + memRate },
+    { label: "今日新增", value: ov.today_new_users, sub: "今日提问 " + ov.today_ask },
+    { label: "会话总数", value: ov.total_sessions, sub: "进程内 ask 累计 " + ov.ask_total },
+    { label: "进程内拦截", value: ov.guard_total, sub: "ask 失败 " + ov.ask_fail, cls: "warn" },
+    { label: "平均耗时", value: ov.avg_latency_ms + "ms", sub: "P95 " + (ov.p95_latency_ms || "-") + "ms" },
+    { label: "运行时长", value: fmtUptime(ov.uptime_seconds), sub: "SLO 违约 " + (ov.slo_breach_total || 0) },
+  ];
+  const box = document.getElementById("cards");
+  box.innerHTML = "";
+  for (const c of cards) {
+    box.appendChild(el(
+      '<div class="card ' + (c.cls || "") + '">' +
+      '<div class="label">' + esc(c.label) + '</div>' +
+      '<div class="value">' + esc(c.value) + '</div>' +
+      '<div class="sub">' + esc(c.sub) + '</div></div>'
+    ));
+  }
+}
+
+// ---------- 老师维度（条形图） ----------
+function renderTeacherBars(ts) {
+  const box = document.getElementById("teacherBars");
+  const teachers = ts.teachers || [];
+  if (!teachers.length) { box.innerHTML = '<div class="hint">暂无老师数据</div>'; return; }
+  const maxReq = Math.max(...teachers.map(t => t.requests), 1);
+  box.innerHTML = "";
+  for (const t of teachers) {
+    const w = Math.round(t.requests / maxReq * 100);
+    const sat = t.satisfaction == null ? "—" : (t.satisfaction * 100).toFixed(1) + "%";
+    box.appendChild(el(
+      '<div class="bar-row">' +
+      '<div class="name" title="' + esc(t.teacher_subject) + '">' + esc(t.teacher_name) + '</div>' +
+      '<div class="bar"><i style="width:' + w + '%" ' + (t.block_rate > 0.3 ? 'class="warn"' : "") + '></i></div>' +
+      '<div class="val">' + t.requests + ' 请求 / 拦 ' + t.blocks + '</div>' +
+      '<div class="val" style="width:70px">满意度 ' + sat + '</div></div>'
+    ));
+  }
+}
+
+// ---------- 额度分布（按日，SVG 柱状） ----------
+function renderQuotaBars(qd) {
+  const box = document.getElementById("quotaBars");
+  const days = qd.by_day || [];
+  if (!days.length) { box.innerHTML = '<div class="hint">暂无额度消耗记录（今日尚无提问）</div>'; return; }
+  const maxV = Math.max(...days.map(d => d.used), 1);
+  const W = 440, H = 160, padB = 24, padT = 10;
+  const bw = W / days.length;
+  let svg = '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:520px">';
+  days.forEach((d, i) => {
+    const h = Math.max(2, d.used / maxV * (H - padB - padT));
+    const x = i * bw + bw * 0.2;
+    svg += '<rect x="' + x.toFixed(1) + '" y="' + (H - padB - h).toFixed(1) + '" width="' + (bw * 0.6).toFixed(1) +
+           '" height="' + h.toFixed(1) + '" rx="3" fill="#8b5e3c">' +
+           '<title>' + esc(d.date) + ' 已用 ' + d.used + '</title></rect>';
+    if (days.length <= 8) {
+      svg += '<text x="' + (x + bw * 0.3).toFixed(1) + '" y="' + (H - 6) + '" font-size="10" fill="#98917f" text-anchor="middle">' +
+             esc(d.date.slice(5)) + '</text>';
+    }
+  });
+  svg += '</svg>';
+  box.innerHTML = svg + '<div class="hint">按日聚合今日额度消耗（quota_date），共 ' + qd.user_count + ' 个活跃用户</div>';
+}
+
+// ---------- 营收 ----------
+function renderRevenue(rev) {
+  const box = document.getElementById("revenueBox");
+  if (!rev.enabled) {
+    box.innerHTML = '<div class="revenue-off">💤 C1 付费闭环尚未启用（pay.db 无订单数据）—— 营收显示 0，优雅降级中。</div>';
+    return;
+  }
+  box.innerHTML =
+    '<div class="revenue-on">✅ 订单系统已启用</div>' +
+    '<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:0">' +
+    '<div class="card rev"><div class="label">累计成交额</div><div class="value">¥' + esc(rev.total_amount_yuan) + '</div></div>' +
+    '<div class="card rev"><div class="label">今日成交</div><div class="value">¥' + esc(rev.today_paid_yuan) + '</div></div>' +
+    '<div class="card"><div class="label">订单总数</div><div class="value">' + rev.order_count + '</div></div>' +
+    '<div class="card"><div class="label">已支付</div><div class="value">' + rev.paid_count + '</div></div>' +
+    '<div class="card warn"><div class="label">待支付</div><div class="value">' + rev.pending_count + '</div></div>' +
+    '</div>';
+}
+
+// ---------- 答案反馈（F1 新增） ----------
+function renderFeedback(fb) {
+  const box = document.getElementById("feedbackBox");
+  if (!fb || !fb.stats) { box.innerHTML = '<div class="hint">反馈数据暂不可用</div>'; return; }
+  const s = fb.stats;
+  const recent = (fb.recent || []).slice(0, 8);
+  let rows = "";
+  for (const r of recent) {
+    rows += '<tr><td>' + esc((r.created_at || "").slice(5, 16)) + '</td>' +
+            '<td>' + esc(r.teacher_id || "—") + '</td>' +
+            '<td><span class="badge ' + (r.rating === "up" ? "ok" : "warn") + '">' + (r.rating === "up" ? "👍 好评" : "👎 差评") + '</span></td>' +
+            '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.question) + '">' + esc(r.question || "") + '</td>' +
+            '<td><span class="badge ' + (r.status === "resolved" ? "resolved" : "new") + '">' + (r.status === "resolved" ? "已处理" : "待处理") + '</span></td></tr>';
+  }
+  box.innerHTML =
+    '<div class="mini-cards">' +
+    '<div class="mc"><b>' + s.total + '</b><span>总反馈</span></div>' +
+    '<div class="mc"><b>' + s.up + '</b><span>好评</span></div>' +
+    '<div class="mc down"><b>' + s.down + '</b><span>差评</span></div>' +
+    '<div class="mc"><b>' + s.up_pct + '%</b><span>好评率</span></div>' +
+    '<div class="mc down"><b>' + s.pending + '</b><span>待处理</span></div>' +
+    '</div>' +
+    (rows ? '<div style="overflow-x:auto"><table><thead><tr><th>时间</th><th>老师</th><th>评分</th><th>问题</th><th>状态</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : '<div class="hint">暂无反馈记录</div>');
+}
+
+// ---------- 题库概览（F2 新增） ----------
+function renderQuestions(qs) {
+  const box = document.getElementById("questionBox");
+  if (!qs || qs.total == null) { box.innerHTML = '<div class="hint">题库数据暂不可用</div>'; return; }
+  const byType = qs.by_type || [];
+  const maxN = Math.max(...byType.map(t => t.n), 1);
+  let typeRows = "";
+  for (const t of byType.slice(0, 6)) {
+    typeRows += '<div class="bar-row"><div class="name">' + esc(t.qtype || "未标注") + '</div>' +
+                '<div class="bar"><i style="width:' + Math.round(t.n / maxN * 100) + '%"></i></div>' +
+                '<div class="val">' + t.n + ' 题</div></div>';
+  }
+  const byDiff = qs.by_difficulty || [];
+  let diffBadges = "";
+  for (const d of byDiff.slice(0, 5)) {
+    diffBadges += '<span class="badge member" style="margin:0 6px 6px 0">' + esc(d.difficulty || "未标注") + ' · ' + d.n + '</span>';
+  }
+  box.innerHTML =
+    '<div class="mini-cards">' +
+    '<div class="mc"><b>' + qs.total + '</b><span>题目总数</span></div>' +
+    (byType.length ? '<div class="mc"><b>' + byType.length + '</b><span>题型种类</span></div>' : "") +
+    '</div>' +
+    (typeRows || '<div class="hint">暂无题型分布数据</div>') +
+    (diffBadges ? '<div style="margin-top:10px"><div class="hint" style="margin-bottom:6px">难度分布</div>' + diffBadges + '</div>' : "");
+}
+
+// ---------- 拦截统计 ----------
+function renderGuard(g) {
+  const box = document.getElementById("guardBox");
+  const reasons = g.by_reason || {};
+  const total = g.total || 0;
+  let rows = "";
+  for (const [k, v] of Object.entries(reasons)) {
+    rows += '<div class="bar-row"><div class="name">' + esc(k) + '</div>' +
+            '<div class="bar"><i class="warn" style="width:' + Math.round(v / Math.max(total, 1) * 100) + '%"></i></div>' +
+            '<div class="val">' + v + '</div></div>';
+  }
+  box.innerHTML = '<div class="hint">共拦截 ' + total + ' 次（进程内累计，重启清零）</div>' +
+                  (rows || '<div class="hint">暂无拦截</div>');
+}
+
+// ---------- 用户表 ----------
+function renderUsers(qd) {
+  const tb = document.querySelector("#userTable tbody");
+  tb.innerHTML = "";
+  const users = (qd.by_user || []).slice(0, 20);
+  if (!users.length) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--ink-3)">暂无用户</td></tr>';
+    return;
+  }
+  for (const u of users) {
+    const cls = u.role === "member" ? "member" : u.role === "admin" ? "admin" : "free";
+    tb.appendChild(el(
+      '<tr><td>' + esc(u.username) + '</td>' +
+      '<td><span class="badge ' + cls + '">' + esc(u.role) + '</span></td>' +
+      '<td>' + u.today_count + '</td><td>' + esc(u.quota_date || "—") + '</td></tr>'
+    ));
+  }
+}
+
+// ---------- 最近事件表 ----------
+function renderRecent(recent) {
+  const tb = document.querySelector("#recentTable tbody");
+  tb.innerHTML = "";
+  const list = recent || [];
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--ink-3)">暂无请求事件</td></tr>';
+    return;
+  }
+  for (const r of list.slice(0, 30)) {
+    const st = String(r.status);
+    const cls = st.startsWith("5") ? "warn" : st.startsWith("4") ? "warn" : "ok";
+    tb.appendChild(el(
+      '<tr><td>' + esc(r.t) + '</td><td>' + esc(r.method) + '</td><td>' + esc(r.path) + '</td>' +
+      '<td><span class="badge ' + cls + '">' + st + '</span></td>' +
+      '<td>' + esc(r.teacher_id || "—") + '</td><td>' + (r.ms || 0) + '</td></tr>'
+    ));
+  }
+}
+
+// ---------- 系统健康 ----------
+function renderHealth(h) {
+  const box = document.getElementById("healthBox");
+  if (!h || !h.llm) { box.innerHTML = '<div class="hint">健康数据暂不可用</div>'; return; }
+  const llm = h.llm;
+  const st = llm.status;
+  const stCn = { ok: "正常", degraded: "降级", down: "异常", unknown: "未知（尚无 ask）" }[st] || st;
+  const color = st === "ok" ? "var(--good)" : st === "degraded" ? "var(--gold-deep)" : st === "down" ? "var(--bad)" : "var(--ink-3)";
+  const lastFail = llm.last_fail_at ? new Date(llm.last_fail_at * 1000).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
+  const lastOk = llm.last_ok_at ? new Date(llm.last_ok_at * 1000).toLocaleTimeString("zh-CN", { hour12: false }) : "—";
+  box.innerHTML =
+    '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">' +
+      '<div><span class="badge" style="background:color-mix(in srgb, ' + color + ' 15%, transparent);color:' + color + ';padding:4px 12px;font-size:13px">LLM ' + stCn + '</span></div>' +
+      '<div><div style="font-size:12px;color:var(--ink-3)">窗口成功率</div><div style="font-size:20px;font-weight:700;color:' + color + '">' + llm.success_rate + '%</div></div>' +
+      '<div><div style="font-size:12px;color:var(--ink-3)">窗口样本</div><div style="font-size:20px;font-weight:700">' + llm.window_total + '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--ink-3)">最近成功</div><div style="font-size:14px">' + lastOk + '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--ink-3)">最近失败</div><div style="font-size:14px">' + lastFail + '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--ink-3)">进程累计</div><div style="font-size:14px">ask ' + llm.ask_total + ' / 失败 ' + llm.ask_fail + '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--ink-3)">运行时长</div><div style="font-size:14px">' + fmtUptime(h.uptime_seconds || 0) + '</div></div>' +
+    '</div>' +
+    (llm.last_error ? '<div class="error-banner" style="display:block;margin-top:10px">最近错误：' + esc(llm.last_error) + '</div>' : '');
+}
+
+// ---------- 主加载（F3 自动刷新 / F5 JSON 导出共用） ----------
+let _snapshot = {};   // JSON 导出快照
+let _loading = false; // 防重入：loading 期间跳过（自动刷新防堆叠）
+
+async function loadAll() {
+  if (_loading) return;
+  hideErr();
+  API.token = document.getElementById("secretInput").value.trim();
+  if (!API.token) { showErr("请先填写管理员密钥（X-Admin-Secret 或管理员 Token）"); return; }
+  const loadBtn = document.getElementById("loadBtn");
+  _loading = true;
+  loadBtn.disabled = true;
+  loadBtn.textContent = "加载中…";
+  try {
+    const [ov, qd, rev, ts] = await Promise.all([
+      API.get("/admin/stats/overview"),
+      API.get("/admin/stats/quota"),
+      API.get("/admin/stats/revenue"),
+      API.get("/admin/stats/teachers"),
+    ]);
+    renderCards(ov);
+    renderTeacherBars(ts);
+    renderQuotaBars(qd);
+    renderRevenue(rev);
+    renderUsers(qd);
+    _snapshot = { overview: ov, quota: qd, revenue: rev, teachers: ts };
+    // 可选面板（失败优雅降级，不拖垮看板）
+    try {
+      const fb = await API.get("/admin/stats/feedback");
+      renderFeedback(fb);
+      _snapshot.feedback = fb;
+    } catch (e) {
+      document.getElementById("feedbackBox").innerHTML =
+        '<div class="hint">⚠ 反馈面板加载失败：' + esc(e.message || e) + '</div>';
+    }
+    try {
+      const qs = await API.get("/admin/questions/stats");
+      renderQuestions(qs);
+      _snapshot.questions = qs;
+    } catch (e) {
+      document.getElementById("questionBox").innerHTML =
+        '<div class="hint">⚠ 题库面板加载失败：' + esc(e.message || e) + '</div>';
+    }
+    try {
+      const metricsAll = await API.get("/metrics");
+      renderGuard(metricsAll.guard || {});
+      renderRecent(metricsAll.recent || []);
+      _snapshot.metrics = metricsAll;
+    } catch (e) {
+      document.getElementById("guardBox").innerHTML = '<div class="hint">⚠ /metrics 暂不可用，拦截/事件图略过</div>';
+      document.querySelector("#recentTable tbody").innerHTML = '<tr><td colspan="6" style="color:var(--ink-3)">/metrics 暂不可用</td></tr>';
+    }
+    document.getElementById("lastSync").textContent = "最后刷新 " + nowStr();
+    // export 链接（浏览器 fetch 不带自定义头 → JS 触发下载）
+    document.getElementById("exportLink").onclick = async (e) => {
+      e.preventDefault();
+      try {
+        const csv = await API.get("/admin/stats/export", true);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "gk-stats.csv";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (err) { showErr("导出失败：" + err.message); }
+    };
+  } catch (err) {
+    showErr(err.message || "加载失败");
+  } finally {
+    _loading = false;
+    loadBtn.disabled = false;
+    loadBtn.textContent = "刷新数据";
+  }
+}
+
+// 健康面板独立加载（公开端点，无需密钥；页面打开即显示）
+async function loadHealth() {
+  try {
+    const hd = await API.get("/health/detail");
+    renderHealth(hd);
+  } catch (e) {
+    document.getElementById("healthBox").innerHTML = '<div class="hint">⚠ 健康数据加载失败：' + esc(e.message || e) + '</div>';
+  }
+}
+
+// ---------- F4 凭据记忆（localStorage，仅存本浏览器） ----------
+const KEY_STORE = "gk_dash_secret";
+function initCredential() {
+  const saved = localStorage.getItem(KEY_STORE);
+  const cb = document.getElementById("rememberKey");
+  if (saved) {
+    document.getElementById("secretInput").value = saved;
+    cb.checked = true;
+  }
+  cb.addEventListener("change", () => {
+    if (cb.checked) {
+      localStorage.setItem(KEY_STORE, document.getElementById("secretInput").value.trim());
+    } else {
+      localStorage.removeItem(KEY_STORE);
+    }
+  });
+  document.getElementById("secretInput").addEventListener("change", () => {
+    if (cb.checked) localStorage.setItem(KEY_STORE, document.getElementById("secretInput").value.trim());
+  });
+}
+
+// ---------- F3 自动刷新（30s/60s，选择持久化） ----------
+const AUTO_STORE = "gk_dash_auto";
+let _autoTimer = null;
+function setAutoRefresh(sec) {
+  localStorage.setItem(AUTO_STORE, String(sec));
+  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
+  if (sec > 0) {
+    _autoTimer = setInterval(() => {
+      if (document.getElementById("secretInput").value.trim()) loadAll();
+    }, sec * 1000);
+  }
+}
+function initAutoRefresh() {
+  const sel = document.getElementById("autoRefresh");
+  const saved = parseInt(localStorage.getItem(AUTO_STORE) || "0", 10);
+  if ([30, 60].includes(saved)) sel.value = String(saved);
+  sel.addEventListener("change", () => setAutoRefresh(parseInt(sel.value, 10)));
+  if ([30, 60].includes(saved)) setAutoRefresh(saved);
+}
+
+// ---------- F5 JSON 快照导出 ----------
+function exportJson() {
+  if (!Object.keys(_snapshot).length) { showErr("尚无数据可导出：请先刷新数据"); return; }
+  const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), data: _snapshot }, null, 2)],
+                        { type: "application/json;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "gk-dashboard-" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ---------- 事件绑定 ----------
+document.getElementById("loadBtn").addEventListener("click", loadAll);
+document.getElementById("secretInput").addEventListener("keydown", e => { if (e.key === "Enter") loadAll(); });
+document.getElementById("tokenBtn").addEventListener("click", () => {
+  const t = prompt("粘贴管理员账号的 Bearer Token（C2 已上线 admin 角色）：");
+  if (t) {
+    document.getElementById("secretInput").value = t;
+    if (document.getElementById("rememberKey").checked) {
+      localStorage.setItem(KEY_STORE, t.trim());
+    }
+    loadAll();
+  }
+});
+document.getElementById("exportJsonBtn").addEventListener("click", exportJson);
+// F6：R 快捷键刷新（输入框聚焦时除外）
+document.addEventListener("keydown", e => {
+  if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+      e.preventDefault();
+      loadAll();
+    }
+  }
+});
+
+// ---------- 启动 ----------
+initCredential();
+initAutoRefresh();
+loadHealth();
+loadAll();
+</script>
+</body>
+</html>

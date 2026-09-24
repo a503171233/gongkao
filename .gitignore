@@ -1,0 +1,82 @@
+# ===== 运行时数据与业务数据（含真实用户信息，绝不入库）=====
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ===== 密钥与本地配置（绝不入库）=====
+.env
+.env.*
+!.env.example
+backend/.env
+*.pem
+*.key
+*.crt
+*.p12
+credentials.json
+secrets.json
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# ===== 依赖与构建产物 =====
+node_modules/
+dist/
+build/
+*.tgz
+*.tar.gz
+*.zip
+
+# ===== 备份与日志 =====
+backups/
+backup/
+*.log
+*.bak
+*.bak2
+*.orig
+*.rej
+
+# ===== 编辑器与操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# ===== 本地运维/诊断脚本（含环境凭据，不随仓库分发）=====
+scripts/_*
+scripts/deploy.py
+scripts/run_remote.py
+scripts/diff_remote.py
+scripts/health_check.py
+scripts/regression.py
+backend/scripts/
+backend/tests/archive/
+backend/tests/_*.py
+backend/tests/probe_*.py
+backend/tests/deploy_*.py
+backend/tests/diag_*.py
+backend/tests/check_*.py
+backend/tests/verify_*.py
+backend/tests/kg_*.py
+backend/tests/run_*.py
+!backend/tests/run_tests.py
+backend/tests/tail_*.py
+backend/tests/start_*.py
+backend/tests/*.out.txt
+backend/tests/*.err.txt

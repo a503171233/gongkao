@@ -1,0 +1,32 @@
+# ============================================================
+# Prometheus 告警规则（C5 P2-4，随 prometheus.yml 一起用）
+# ============================================================
+groups:
+  - name: gongkao-slo
+    rules:
+      # P95 时延超过 30s（SLO 阈值，与 metrics.py SLO_P95_MS 对齐）
+      - alert: GongkaoP95High
+        expr: gk_p95_latency_ms > 30000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "gongkao P95 时延超标 {{ $value }}ms"
+
+      # 可用性低于 99%（非5xx 占比）
+      - alert: GongkaoAvailabilityLow
+        expr: gk_availability_pct < 99
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "gongkao 可用性 {{ $value }}% 低于 99%"
+
+      # ask 失败率（最近 5 分钟）
+      - alert: GongkaoAskFailRateHigh
+        expr: rate(gk_ask_fail_total[5m]) / clamp_min(rate(gk_ask_total[5m]), 1) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "gongkao ask 失败率超 20%"

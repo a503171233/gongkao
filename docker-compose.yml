@@ -1,0 +1,124 @@
+# 多老师专属垂直大模型平台 · 双站点分离架构（Docker Compose）
+# 网站一(frontend) = nginx + 静态对话页  → 3000 端口（对外）
+# 网站二(backend)  = FastAPI RAG 内核     → 9000 端口（内网）
+
+services:
+  backend:
+    build: ./backend
+    container_name: gongkao-backend
+    restart: unless-stopped
+    environment:
+      - API_BASE_URL=${API_BASE_URL}
+      - API_KEY=${API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      - EMBED_PROVIDER=${EMBED_PROVIDER}
+      - EMBED_MODEL=${EMBED_MODEL}
+      - TEACHER_ID=${TEACHER_ID}
+      - TEACHER_NAME=${TEACHER_NAME}
+      - TEACHER_SUBJECT=${TEACHER_SUBJECT}
+      - UPLOAD_SECRET=${UPLOAD_SECRET}
+      # Open API v1 · 开放接口密钥（未配置则 /api/v1/* 返回 503 未启用）
+      - OPENAPI_KEY=${OPENAPI_KEY:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_SECRET=${ADMIN_SECRET}
+      # C5 · LLM 重试降级（B7）：超时/重试次数/备用模型列表
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-180}
+      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-2}
+      - FALLBACK_MODELS=${FALLBACK_MODELS:-}
+      # A 稳定性：历史轮数/登录限流/会话页常量可配
+      - HISTORY_LIMIT=${HISTORY_LIMIT:-10}
+      - LOGIN_LIMIT=${LOGIN_LIMIT:-10}
+      - LOGIN_WINDOW=${LOGIN_WINDOW:-300}
+      - OAUTH_STATE_TTL=${OAUTH_STATE_TTL:-600}
+      # C5 · 性能/SLO：P95 时延阈值(ms)、可用性阈值(%)、违约 webhook
+      - SLO_P95_MS=${SLO_P95_MS:-30000}
+      - SLO_AVAILABILITY=${SLO_AVAILABILITY:-99.0}
+      - SLO_WEBHOOK_URL=${SLO_WEBHOOK_URL:-}
+      # C5 · CSRF 安全加固：信任的跨域 Origin（逗号分隔，空=仅同源）
+      - CSRF_ALLOWED_ORIGINS=${CSRF_ALLOWED_ORIGINS:-}
+      # C5 · 视频转写桩（预留，默认关闭）
+      - WHISPER_ENABLED=${WHISPER_ENABLED:-}
+      - WHISPER_BASE_URL=${WHISPER_BASE_URL:-}
+      - WHISPER_API_KEY=${WHISPER_API_KEY:-}
+      - WHISPER_MODEL=${WHISPER_MODEL:-}
+      # A5 · 内容审核：敏感词词库（逗号分隔，空=关闭预检）
+      - SENSITIVE_WORDS=${SENSITIVE_WORDS:-}
+      # B3 · 定价可配置（单位：分；不配置则用代码默认占位价）
+      - PLAN_MONTH_PRICE=${PLAN_MONTH_PRICE:-}
+      - PLAN_MONTH_NAME=${PLAN_MONTH_NAME:-}
+      - PLAN_MONTH_DAYS=${PLAN_MONTH_DAYS:-}
+      - PLAN_QUARTER_PRICE=${PLAN_QUARTER_PRICE:-}
+      - PLAN_QUARTER_NAME=${PLAN_QUARTER_NAME:-}
+      - PLAN_QUARTER_DAYS=${PLAN_QUARTER_DAYS:-}
+      - PLAN_YEAR_PRICE=${PLAN_YEAR_PRICE:-}
+      - PLAN_YEAR_NAME=${PLAN_YEAR_NAME:-}
+      - PLAN_YEAR_DAYS=${PLAN_YEAR_DAYS:-}
+      # B4 · 匿名限额开关（默认限额 20 次/日；ENABLED=false 则匿名不限）
+      - ANON_DAILY_LIMIT=${ANON_DAILY_LIMIT:-20}
+      - ANON_DAILY_ENABLED=${ANON_DAILY_ENABLED:-true}
+      # #15 · 第三方支付验签适配层（none=不验签；hmac_md5/hmac_sha256/md5_sort 需配 KEY）
+      - PAY_SIGN_MODE=${PAY_SIGN_MODE:-none}
+      - PAY_SIGN_KEY=${PAY_SIGN_KEY:-}
+      # 容器内数据路径显式化（不依赖 config ROOT 推断，/data 为挂载点）
+      - DATA_DIR=/data
+      - DB_PATH=/data/vector
+      - MODEL_CACHE=/data/models
+      - AUTH_DB=/data/auth.db
+      - CHAT_DB=/data/chat.db
+      # Gitee OAuth（可选：未配置则前端不显示 Gitee 登录按钮）
+      - GITEE_CLIENT_ID=${GITEE_CLIENT_ID}
+      - GITEE_CLIENT_SECRET=${GITEE_CLIENT_SECRET}
+      - GITEE_REDIRECT_URI=${GITEE_REDIRECT_URI}
+      # 自动采集（默认关闭；CPU/内存均低于阈值才执行，关闭时不产生 LLM 调用）
+      - AUTOCOLLECT_ENABLED=${AUTOCOLLECT_ENABLED:-0}
+      - AUTOCOLLECT_INTERVAL=${AUTOCOLLECT_INTERVAL:-3600}
+      - AUTOCOLLECT_CPU_MAX=${AUTOCOLLECT_CPU_MAX:-80}
+      - AUTOCOLLECT_MEM_MAX=${AUTOCOLLECT_MEM_MAX:-80}
+      - AUTOCOLLECT_MAX_PER_CYCLE=${AUTOCOLLECT_MAX_PER_CYCLE:-100}
+      - AUTOCOLLECT_TEACHERS=${AUTOCOLLECT_TEACHERS:-}
+      - AUTOCOLLECT_URLS=${AUTOCOLLECT_URLS:-}
+      - AUTOCOLLECT_SEARCH_QUERIES=${AUTOCOLLECT_SEARCH_QUERIES:-}
+      - AUTOCOLLECT_MODEL=${AUTOCOLLECT_MODEL:-}
+      - AUTOCOLLECT_BASE_URL=${AUTOCOLLECT_BASE_URL:-}
+      - AUTOCOLLECT_API_KEY=${AUTOCOLLECT_API_KEY:-}
+      # 运行时 AI 技能层（§九 P0）：提取 prompt 模板化；默认 baseline=迁移前逐字节等价
+      - SKILL_EXTRACT_ENABLED=${SKILL_EXTRACT_ENABLED:-1}
+      - SKILL_EXTRACT_TEMPLATE=${SKILL_EXTRACT_TEMPLATE:-baseline}
+      # MCP 能力层（§五/§六）：不配置网关=全部走内置 provider（零行为变化）
+      - CAP_SEARCH_PROVIDER=${CAP_SEARCH_PROVIDER:-auto}
+      - CAP_FETCH_PROVIDER=${CAP_FETCH_PROVIDER:-auto}
+      - CAP_DOCPARSE_PROVIDER=${CAP_DOCPARSE_PROVIDER:-builtin}
+      - MCP_GATEWAY_URL=${MCP_GATEWAY_URL:-}
+      - MCP_API_KEY=${MCP_API_KEY:-}
+      - MCP_TIMEOUT_SECONDS=${MCP_TIMEOUT_SECONDS:-60}
+      - MCP_MAX_RETRIES=${MCP_MAX_RETRIES:-2}
+      - MCP_TOOL_SEARCH=${MCP_TOOL_SEARCH:-}
+      - MCP_TOOL_FETCH=${MCP_TOOL_FETCH:-}
+      - MCP_TOOL_DOCPARSE=${MCP_TOOL_DOCPARSE:-}
+      - MCP_TOOL_VISION=${MCP_TOOL_VISION:-}
+      - MCP_TOOL_ASR=${MCP_TOOL_ASR:-}
+      - MCP_TOOL_RERANK=${MCP_TOOL_RERANK:-}
+      # 技能在线校验仅限本地（生产禁止开启，§八红线）
+      - SKILLS_ONLINE_CHECK=${SKILLS_ONLINE_CHECK:-}
+      # #36 文档按路径导入：白名单根（容器内路径，冒号分隔；默认 /data/import）
+      - DOC_IMPORT_DIRS=${DOC_IMPORT_DIRS:-}
+      - HF_ENDPOINT=https://hf-mirror.com
+      # 关键：禁用 huggingface 新式 xet CAS 存储（直连官方会 401 且绕开镜像）
+      # 强制走普通 HTTP 下载 → 经 hf-mirror 镜像，拉取 bge-small-zh ONNX 模型
+      - HF_HUB_DISABLE_XET=1
+      - HF_HUB_DISABLE_TELEMETRY=1
+    volumes:
+      - ./data:/data
+    # 9000 仅内网，不映射到宿主机（前端经 nginx 代理访问）
+    # 若需直连调试可放开下一行：
+    # ports: ["9000:9000"]
+
+  frontend:
+    build: ./frontend
+    container_name: gongkao-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
