@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="多老师专属公考智能助教平台 · 基于真实课件与讲义的 RAG 问答 · 言语理解 / 逻辑判断 / 申论">
+<title>书山公考 · 多老师智能助教平台</title>
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  /* 官网专属微调：书卷底纹 */
+  .hero { position: relative; }
+  .hero .seal {
+    position: absolute; right: 6%; top: 30%; width: 92px; height: 92px; opacity: .10;
+    border: 2px solid var(--wood); border-radius: 50%; display: grid; place-items: center;
+    font-size: 14px; font-weight: 800; color: var(--wood); letter-spacing: .2em; transform: rotate(-8deg);
+  }
+  .hero .seal::before { content: '书山有路'; }
+  .stat-strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 14px;
+    max-width: 820px; margin: 42px auto 0;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 10px; box-shadow: var(--shadow-1);
+  }
+  .stat b { display: block; font-size: 26px; color: var(--wood); font-weight: 800; }
+  .stat span { font-size: 12.5px; color: var(--ink-3); }
+  .vol-more { margin-top: 18px; text-align: center; font-size: 13px; color: var(--ink-3); }
+  .mod-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 16px;
+    max-width: 1080px; margin: 0 auto;
+  }
+  .mod-card {
+    display: flex; gap: 14px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 18px 16px; box-shadow: var(--shadow-1);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .mod-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); border-color: var(--gold); }
+  .mod-ico {
+    width: 46px; height: 46px; flex-shrink: 0; border-radius: 13px;
+    background: linear-gradient(135deg, var(--wood), var(--gold));
+    display: grid; place-items: center; font-size: 22px; color: #fffaf0; box-shadow: var(--shadow-1);
+  }
+  .mod-body h3 { margin: 0 0 6px; font-size: 16px; color: var(--ink); }
+  .mod-body p { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); line-height: 1.7; }
+  .mod-go { font-size: 12.5px; font-weight: 700; color: var(--wood-deep); }
+  .mod-card:hover .mod-go { color: var(--gold-deep); }
+</style>
+</head>
+<body>
+
+<!-- ===================== 导航 ===================== -->
+<nav class="glass-nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark">书</span>
+      <span>书山公考</span>
+    </a>
+    <div class="nav-links">
+      <a href="#modules">新功能</a>
+      <a href="#teachers">名师书卷</a>
+      <a href="#features">平台特色</a>
+      <a href="#volumes">教材一览</a>
+      <a href="#howto">使用说明</a>
+      <a class="nav-cta" href="/chat.html">进入学习中心 →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===================== Hero ===================== -->
+<header class="hero">
+  <div class="seal"></div>
+  <span class="hero-badge">📜 每位老师 · 一部专属智慧书卷</span>
+  <h1>让<span>名师书卷</span>开口说话</h1>
+  <p>
+    基于老师真实课件、讲义与历年真题构建的垂直知识库，
+    以 AI 助教形式为你答疑解惑。所有回答均有书卷出处，杜绝凭空编造。
+  </p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="/chat.html">🚀 立即开始学习</a>
+    <a class="btn btn-ghost" href="#teachers">📚 浏览名师书卷</a>
+  </div>
+  <div class="stat-strip">
+    <div class="stat"><b id="statVol">--</b><span>部书卷教材</span></div>
+    <div class="stat"><b id="statChunk">--</b><span>块知识切片</span></div>
+    <div class="stat"><b id="statTeacher">--</b><span>位专属老师</span></div>
+  </div>
+</header>
+
+<!-- ===================== 首页轮播 Banner（#23） ===================== -->
+<section class="banner-zone" id="bannerZone" aria-label="轮播公告" style="display:none">
+  <div class="banner-track" id="bannerTrack"></div>
+  <button class="banner-nav prev" id="bannerPrev" aria-label="上一张">‹</button>
+  <button class="banner-nav next" id="bannerNext" aria-label="下一张">›</button>
+  <div class="banner-dots" id="bannerDots"></div>
+</section>
+
+<!-- ===================== 备考工具箱：四大新模块 ===================== -->
+<section class="section" id="modules">
+  <div class="section-head">
+    <span class="kicker">The Toolkit · 2026 上线</span>
+    <h2>备考工具箱 · 四大新模块</h2>
+    <p>从「会问」到「会练」，再到「会交流、会沉淀」——每个知识点都能练成肌肉记忆。</p>
+  </div>
+  <div class="mod-grid">
+    <a class="mod-card" href="/chat.html?mt=mock" data-track="mock">
+      <div class="mod-ico">📝</div>
+      <div class="mod-body">
+        <h3>智能模考解析</h3>
+        <p>上传整套行测/申论试卷，自动识别科目并按题型匹配最合适的老师逐题作答，一键生成完整解析报告。</p>
+        <span class="mod-go">去模考解析 →</span>
+      </div>
+    </a>
+    <a class="mod-card" href="/knowledge.html" data-track="mind">
+      <div class="mod-ico">🧠</div>
+      <div class="mod-body">
+        <h3>知识体系导图</h3>
+        <p>把每位老师的书卷梳理成交互思维导图，支持缩放浏览，Markdown / FreeMind / PNG 三种格式一键下载。</p>
+        <span class="mod-go">浏览知识导图 →</span>
+      </div>
+    </a>
+    <a class="mod-card" href="/forum.html" data-track="forum">
+      <div class="mod-ico">💬</div>
+      <div class="mod-body">
+        <h3>学员交流论坛</h3>
+        <p>备考心得、上岸经验、互助答疑在这里畅聊，登录即可发帖回帖，优质内容按热度自动排序。</p>
+        <span class="mod-go">进入学员论坛 →</span>
+      </div>
+    </a>
+    <a class="mod-card" href="/articles.html" data-track="articles">
+      <div class="mod-ico">📄</div>
+      <div class="mod-body">
+        <h3>备考文章精读</h3>
+        <p>自动从论坛热帖中精选高分经验，AI 一键提炼干货要点，省去刷帖时间，直取可复用方法。</p>
+        <span class="mod-go">阅读备考文章 →</span>
+      </div>
+    </a>
+  </div>
+</section>
+<script>
+document.addEventListener('click', function (ev) {
+  var el = ev.target.closest ? ev.target.closest('.mod-card') : null;
+  if (!el || !el.dataset || !el.dataset.track) return;
+  try {
+    var payload = JSON.stringify({ target: el.dataset.track, page: 'home' });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/track/promo', new Blob([payload], { type: 'application/json' }));
+    } else {
+      fetch('/api/track/promo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true });
+    }
+  } catch (e) { /* 埋点失败不影响跳转 */ }
+});
+</script>
+
+<!-- ===================== 名师书卷 ===================== -->
+<section class="section" id="teachers">
+  <div class="section-head">
+    <span class="kicker">The Teachers</span>
+    <h2>名师书卷</h2>
+    <p>每位老师一位专属 AI 分身，只回答自己科目领域的问题，基于个人书卷作答。</p>
+  </div>
+  <div class="teacher-grid" id="teacherGrid">
+    <div class="muted" style="text-align:center;grid-column:1/-1;padding:40px">书卷加载中…</div>
+  </div>
+</section>
+
+<!-- ===================== 平台特色 ===================== -->
+<section class="section" id="features">
+  <div class="section-head">
+    <span class="kicker">Why Us</span>
+    <h2>平台特色</h2>
+  </div>
+  <div class="feature-grid">
+    <div class="feat"><div class="ico">🎓</div><h3>专属名师分身</h3><p>言语理解、逻辑判断、申论，三位老师各司其职，对症下药。</p></div>
+    <div class="feat"><div class="ico">📖</div><h3>书卷溯源作答</h3><p>每句回答都可追溯到对应课件原文，学有所据、考有所依。</p></div>
+    <div class="feat"><div class="ico">🛡️</div><h3>幻觉拦截守卫</h3><p>三重校验把关，超出书卷范围的回答一律拦截，拒绝编造。</p></div>
+    <div class="feat"><div class="ico">✏️</div><h3>真题题库练习</h3><p>按科目内置精选题库，客观题自动评分，错题自动收录。</p></div>
+    <div class="feat"><div class="ico">⚡</div><h3>流式极速响应</h3><p>答案边生成边呈现，多轮追问不断流，学习体验流畅自然。</p></div>
+    <div class="feat"><div class="ico">🔒</div><h3>安全可控</h3><p>登录鉴权、频控防刷、内容审核，守护每一位学员。</p></div>
+  </div>
+</section>
+
+<!-- ===================== 教材一览 ===================== -->
+<section class="section" id="volumes">
+  <div class="section-head">
+    <span class="kicker">The Library</span>
+    <h2>平台书卷 · 教材一览</h2>
+    <p>已收录的课件、讲义与真题资料，均作为各位老师回答的知识依据。</p>
+  </div>
+  <div class="vol-wall" id="volWall">
+    <div class="muted" style="text-align:center;grid-column:1/-1;padding:40px">书卷编目中…</div>
+  </div>
+  <p class="vol-more" id="volMore"></p>
+</section>
+
+<!-- ===================== 使用说明 ===================== -->
+<section class="section" id="howto">
+  <div class="section-head">
+    <span class="kicker">How To</span>
+    <h2>三步开启学习</h2>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><h3>选择老师</h3><p>进入学习中心，根据你的科目短板选择对应的专属老师。</p></div>
+    <div class="step"><div class="step-num">2</div><h3>提出疑问</h3><p>围绕该科目任意提问，AI 助教基于老师书卷为你答疑。</p></div>
+    <div class="step"><div class="step-num">3</div><h3>练习巩固</h3><p>题库练习 + 自动评分 + 错题本，闭环巩固所学知识点。</p></div>
+  </div>
+</section>
+
+<!-- ===================== 页脚 ===================== -->
+<footer class="site-foot">
+  <div class="foot-inner">
+    <span>📜 书山公考 · 多老师专属智能助教平台</span>
+    <span>所有回答均基于老师课件与讲义生成 · <a href="/admin.html">管理入口</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  var API = '/api';
+  var TEACHER_META = {
+    T001: { ico: '言', desc: '言语理解 · 选词填空 / 中心理解 / 语句排序，洞悉语言表达规律，快速锁定正确答案。' },
+    T002: { ico: '逻', desc: '逻辑判断 · 翻译推理 / 真假话 / 加强削弱 / 类比推理，构建严密思维链条，告别凭感觉做题。' },
+    T003: { ico: '论', desc: '申论 · 归纳概括 / 对策建议 / 综合分析 / 应用文写作，掌握阅卷人思维，写出规范高分作答。' }
+  };
+  var DEFAULT_DESC = '专属 AI 助教，基于老师书卷与讲义为学员答疑解惑。';
+
+  function el(id) { return document.getElementById(id); }
+  function shortName(n) {
+    var s = String(n || '');
+    return s.replace(/^【[^】]*】/, '').replace(/\[副本\]/g, '').replace(/\.(pdf|md|docx?|pptx?)$/i, '').slice(0, 26);
+  }
+
+  function fetchJSON(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
+  async function load() {
+    var grid = el('teacherGrid'), wall = el('volWall');
+    try {
+      var data = await fetchJSON(API + '/teachers');
+      var teachers = (data && data.teachers) || [];
+      el('statTeacher').textContent = teachers.length || '--';
+      if (teachers.length === 0) {
+        grid.innerHTML = '<div class="muted" style="text-align:center;grid-column:1/-1;padding:40px">暂无老师</div>';
+        return;
+      }
+      // 并行拉每位老师的信息与书卷
+      var cards = await Promise.all(teachers.map(async function (t) {
+        var info = null, docs = [];
+        try { info = await fetchJSON(API + '/info?teacher_id=' + encodeURIComponent(t.teacher_id)); } catch (e) {}
+        try { var d = await fetchJSON(API + '/documents?teacher_id=' + encodeURIComponent(t.teacher_id)); docs = (d && d.documents) || []; } catch (e) {}
+        return { t: t, info: info, docs: docs };
+      }));
+      // 渲染老师卡片
+      grid.innerHTML = '';
+      var allDocs = [];
+      cards.forEach(function (c) {
+        var meta = TEACHER_META[c.t.teacher_id] || {};
+        var chunk = c.info ? c.info.chunk_count : 0;
+        var vols = c.docs.slice(0, 4).map(function (d) {
+          allDocs.push({ t: c.t, d: d });
+          return '<div class="t-vol"><span class="vn">' + shortName(d.doc_name) + '</span><span class="nch">' + d.chunks + ' 块</span></div>';
+        }).join('');
+        var moreTxt = c.docs.length > 4 ? '<div class="t-vol muted" style="font-size:12px">… 等 ' + c.docs.length + ' 部</div>' : '';
+        grid.innerHTML +=
+          '<article class="t-card">' +
+            '<div class="t-card-top">' +
+              '<div class="t-avatar">' + (meta.ico || c.t.teacher_id.slice(-1)) + '</div>' +
+              '<div><div class="t-name">' + c.t.teacher_name + '</div>' +
+              '<span class="t-subject">' + c.t.teacher_subject + '</span></div>' +
+            '</div>' +
+            '<p class="t-desc">' + (meta.desc || DEFAULT_DESC) + '</p>' +
+            '<div class="t-volumes">' +
+              '<div class="t-vol-head"><span>📖 收 录 书 卷</span><span>' + chunk + ' 块切片</span></div>' +
+              (vols || '<div class="t-vol muted">书卷编目中</div>') + moreTxt +
+            '</div>' +
+            '<a class="btn btn-ghost" href="/chat.html?teacher_id=' + encodeURIComponent(c.t.teacher_id) + '">向 ' + c.t.teacher_name + ' 提问 →</a>' +
+          '</article>';
+      });
+      // 全站书卷墙
+      wall.innerHTML = allDocs.map(function (x) {
+        return '<div class="vol-item">' +
+          '<div class="vol-book"></div>' +
+          '<div class="vol-body"><div class="vt">' + shortName(x.d.doc_name) + '</div>' +
+          '<div class="vm">' + x.t.teacher_name + ' · ' + x.d.chunks + ' 块</div></div></div>';
+      }).join('') || '<div class="muted" style="text-align:center;grid-column:1/-1;padding:30px">书卷编目中…</div>';
+      // 统计
+      var totVol = allDocs.length;
+      var totChunk = cards.reduce(function (s, c) { return s + (c.info ? c.info.chunk_count : 0); }, 0);
+      el('statVol').textContent = totVol || '--';
+      el('statChunk').textContent = totChunk || '--';
+      el('volMore').textContent = totVol > 12 ? '以上为部分书卷，全部教材请在对应老师书卷中查看' : '';
+    } catch (e) {
+      grid.innerHTML = '<div class="muted" style="text-align:center;grid-column:1/-1;padding:40px">书卷加载失败，请稍后刷新</div>';
+      wall.innerHTML = '';
+      console.warn('[home] load failed:', e && e.message ? e.message : e);
+    }
+  }
+
+  // #23 首页轮播 Banner
+  var _banIdx = 0, _banCount = 0, _banTimer = null;
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  function goBan(i) {
+    if (i < 0 || i >= _banCount) return;
+    _banIdx = i;
+    var slides = document.querySelectorAll('.banner-slide');
+    var dots = document.querySelectorAll('.ban-dot');
+    slides.forEach(function (s, k) { s.classList.toggle('active', k === i); });
+    dots.forEach(function (d, k) { d.classList.toggle('on', k === i); });
+  }
+
+  function startBanTimer() {
+    if (_banTimer) clearInterval(_banTimer);
+    _banTimer = setInterval(function () { goBan((_banIdx + 1) % _banCount); }, 5000);
+  }
+
+  function loadBanners() {
+    var zone = el('bannerZone'), track = el('bannerTrack');
+    if (!zone || !track) return;
+    fetchJSON(API + '/banners').then(function (data) {
+      var list = (data && data.banners) || [];
+      if (!list.length) { zone.style.display = 'none'; return; }
+      _banCount = list.length;
+      track.innerHTML = list.map(function (b, i) {
+        var bg = b.image
+          ? 'background-image:linear-gradient(rgba(61,38,17,.52),rgba(61,38,17,.52)),url("' + String(b.image).replace(/"/g, '%22') + '");background-size:cover;background-position:center'
+          : '';
+        var slide = '<a class="banner-slide' + (i === 0 ? ' active' : '') + '" href="' + escHtml(b.link || '#') + '"' +
+          (b.link ? ' target="_blank" rel="noopener"' : ' onclick="return false"') + ' style="' + bg + '">' +
+          '<span class="bs-title">' + escHtml(b.title || '') + '</span>' +
+          (b.link ? '<span class="bs-go">了解更多 →</span>' : '') +
+          '</a>';
+        return slide;
+      }).join('');
+      el('bannerDots').innerHTML = list.map(function (_, i) {
+        return '<button class="ban-dot' + (i === 0 ? ' on' : '') + '" onclick="goBan(' + i + ')" aria-label="第 ' + (i + 1) + ' 张"></button>';
+      }).join('');
+      zone.style.display = '';
+      var pv = el('bannerPrev'), nx = el('bannerNext');
+      if (pv) pv.addEventListener('click', function () { goBan((_banIdx - 1 + _banCount) % _banCount); });
+      if (nx) nx.addEventListener('click', function () { goBan((_banIdx + 1) % _banCount); });
+      zone.addEventListener('mouseenter', function () { if (_banTimer) { clearInterval(_banTimer); _banTimer = null; } });
+      zone.addEventListener('mouseleave', startBanTimer);
+      startBanTimer();
+    }).catch(function () { zone.style.display = 'none'; });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { load(); loadBanners(); });
+  } else { load(); loadBanners(); }
+})();
+</script>
+</body>
+</html>

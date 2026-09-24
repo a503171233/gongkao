@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>书山公考 · 知识体系</title>
+<!-- 书卷主题 · 与前台官网/学习中心统一视觉；纯静态，公开只读，无需登录 -->
+<style>
+:root {
+  --paper:      #f6f1e7;
+  --paper-2:    #efe7d6;
+  --card:       #fffaf0;
+  --card-2:     #fbf4e4;
+  --ink:        #3d3a33;
+  --ink-2:      #6b655a;
+  --ink-3:      #98917f;
+  --wood:       #8b5e3c;
+  --wood-deep:  #6f4a2d;
+  --gold:       #c9a05a;
+  --gold-deep:  #a5813f;
+  --gold-soft:  #e6d3ac;
+  --good:       #7a9e6d;
+  --bad:        #b45a4a;
+  --line:       #e2d9c6;
+  --line-2:     #d2c5ab;
+  --shadow-1:   0 1px 3px rgba(93,72,41,.08), 0 1px 2px rgba(93,72,41,.05);
+  --shadow-2:   0 6px 20px rgba(93,72,41,.12), 0 2px 6px rgba(93,72,41,.06);
+  --radius:     14px;
+  --radius-s:   8px;
+  --spring:     cubic-bezier(.32,.72,.28,1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+               "Microsoft YaHei", "Noto Serif SC", serif;
+  background:
+    radial-gradient(1200px 500px at 85% -5%, rgba(201,160,90,.09), transparent 60%),
+    radial-gradient(900px 420px at -10% 10%, rgba(139,94,60,.07), transparent 55%),
+    var(--paper);
+  color: var(--ink); line-height: 1.75; -webkit-font-smoothing: antialiased; min-height: 100vh;
+}
+a { color: var(--wood-deep); text-decoration: none; }
+
+/* 顶栏 */
+.knav {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 18px;
+  padding: 12px 28px; background: rgba(246,241,231,.85); backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--ink); font-size: 16px; }
+.brand .mark {
+  width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--wood), var(--gold));
+  color: #fffaf0; display: grid; place-items: center; font-size: 16px; font-weight: 800; box-shadow: var(--shadow-1);
+}
+.knav .links { display: flex; gap: 6px; margin-left: auto; }
+.knav .links a { padding: 7px 14px; border-radius: 9px; font-size: 13.5px; color: var(--ink-2); font-weight: 600; }
+.knav .links a:hover { background: var(--paper-2); color: var(--wood-deep); }
+.knav .links a.active { background: var(--gold-soft); color: var(--wood-deep); font-weight: 700; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 60px; }
+.page-head { margin-bottom: 18px; }
+.page-head h1 { font-size: 24px; font-weight: 800; color: var(--ink); letter-spacing: -.01em; }
+.page-head p { font-size: 13.5px; color: var(--ink-3); margin-top: 4px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px; box-shadow: var(--shadow-1); position: relative; overflow: hidden;
+}
+.card::before { content:''; position:absolute; top:0; left:0; width:100%; height:3px;
+  background: linear-gradient(90deg, var(--gold), var(--wood)); }
+.card .cl { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.card .cn { font-size: 30px; font-weight: 800; color: var(--wood-deep); font-variant-numeric: tabular-nums; }
+.card .cn.gold { color: var(--gold-deep); }
+.card .cn.green { color: var(--good); }
+.card .cs { font-size: 11.5px; color: var(--ink-3); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-1); margin-top: 16px; overflow: hidden; }
+.panel-head { padding: 12px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar label { font-size: 12.5px; color: var(--ink-3); font-weight: 600; }
+.toolbar select, .toolbar input[type=search] {
+  padding: 7px 12px; border: 1px solid var(--line-2); border-radius: 8px; font-size: 13px;
+  background: var(--card); color: var(--ink); outline: none; font-family: inherit;
+}
+.toolbar select:focus, .toolbar input[type=search]:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(201,160,90,.16); }
+.toolbar .grow { flex: 1; min-width: 180px; }
+
+.btn { padding: 8px 16px; border: 1px solid transparent; border-radius: 9px; cursor: pointer;
+  font-size: 13px; font-weight: 600; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { box-shadow: var(--shadow-2); }
+.btn.primary { background: var(--wood); color: #fffaf0; }
+.btn.primary:hover { background: var(--wood-deep); }
+.btn.ghost { background: var(--card); color: var(--wood-deep); border-color: var(--line-2); }
+.btn.ghost:hover { border-color: var(--gold); background: var(--gold-soft); }
+.btn.sm { padding: 4px 8px; font-size: 12px; border-radius: 7px; }
+
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+.badge.blue { background: rgba(139,94,60,.14); color: var(--wood-deep); }
+
+/* 树 */
+#tree-box { padding: 10px 12px; min-height: 160px; }
+.kn-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border-radius: 8px; transition: background .15s; }
+.kn-row:hover { background: var(--card-2); }
+.kn-row .caret { width: 26px; flex-shrink: 0; background: transparent; border: none; color: var(--gold-deep);
+  font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.kn-row .caret:hover { background: var(--gold-soft); }
+.kn-row .caret.leaf { visibility: hidden; }
+.kn-row .nm { font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.kn-row .nm:hover { color: var(--wood-deep); text-decoration: underline; }
+.kn-row .cnt { font-size: 11px; color: var(--ink-3); flex-shrink: 0; align-self: center; }
+.kn-row .desc { font-size: 12px; color: var(--ink-3); margin-left: 4px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 360px; flex-shrink: 999; min-width: 0; }
+.kn-row .path { font-size: 11px; color: var(--gold-deep); font-weight: 600; flex-shrink: 0; }
+
+.empty, .loading { text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13px; }
+.loading::before { content:''; display:inline-block; width:16px; height:16px; margin-right:8px;
+  border:2px solid var(--line-2); border-top-color: var(--wood); border-radius:50%; vertical-align:-3px;
+  animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.err-tip { color: var(--bad); font-size: 13px; padding: 14px; }
+
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 9px; overflow: hidden; }
+.seg button { border: none; background: var(--card); color: var(--ink-2); padding: 7px 12px;
+  font: 600 12px/1.4 inherit; font-family: inherit; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button:hover { background: var(--paper-2); color: var(--wood-deep); }
+.seg button.on { background: var(--wood); color: #fffaf0; }
+.dl { display: inline-flex; gap: 6px; }
+
+#map-box { position: relative; }
+.mapscroll { overflow: auto; max-height: 76vh; overscroll-behavior: contain; }
+.map-tools { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; background: rgba(251,244,228,.94); border-bottom: 1px solid var(--line);
+  backdrop-filter: saturate(160%) blur(8px); }
+.map-tools .zm { min-width: 46px; text-align: center; font-size: 12px; color: var(--ink-3); font-weight: 700; }
+.map-tools .hint { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+#map-svg-holder svg { display: block; }
+#map-svg-holder .map-empty { text-align: center; padding: 44px 16px; color: var(--ink-3); font-size: 13px; }
+#map-svg-holder { background: var(--paper-2); }
+
+@media (max-width: 820px) {
+  .knav { flex-wrap: wrap; padding: 10px 14px; }
+  .wrap { padding: 18px 12px 50px; }
+  .cards { grid-template-columns: 1fr 1fr; }
+  .kn-row .desc { max-width: 120px; }
+}
+</style>
+</head>
+<body>
+<nav class="knav">
+  <a class="brand" href="/"><span class="mark">书</span>书山公考</a>
+  <div class="links">
+    <a href="/">首页</a>
+    <a href="/chat.html">学习中心</a>
+    <a href="/knowledge.html" class="active">知识体系</a>
+    <a href="/forum.html">论坛</a>
+    <a href="/articles.html">备考文章</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="page-head">
+    <h1>📖 知识体系</h1>
+    <p>题库知识结构总览 · 知识点 / 题型分类层级分明 · 支持检索定位</p>
+  </div>
+
+  <div class="cards" id="stats"></div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="toolbar" style="flex:1">
+        <label for="teacher">老师：</label>
+        <select id="teacher" onchange="loadTree()"></select>
+        <select id="tree-type" onchange="switchType()">
+          <option value="knowledge">🌳 知识体系树</option>
+          <option value="qtype">🗂 题型分类树</option>
+        </select>
+        <input type="search" id="kw" class="grow" placeholder="搜索节点名 / 分类 / 说明…（回车检索）"
+               onkeydown="if(event.key==='Enter')loadTree()" aria-label="搜索知识节点">
+        <button class="btn ghost sm" onclick="loadTree()">搜索</button>
+        <div class="seg" id="viewSeg">
+          <button type="button" data-v="tree" class="on" onclick="setView('tree')">🌲 树状</button>
+          <button type="button" data-v="map" onclick="setView('map')">🧠 导图</button>
+        </div>
+        <div class="dl">
+          <button class="btn ghost sm" onclick="downloadFmt('md')" title="下载 Markdown 大纲（可导入 XMind / 幕布）">⬇ .md</button>
+          <button class="btn ghost sm" onclick="downloadFmt('mm')" title="下载 FreeMind .mm 思维导图">⬇ .mm</button>
+          <button class="btn ghost sm" onclick="downloadPng()" title="按当前导图导出为 PNG 图片">⬇ PNG</button>
+        </div>
+      </div>
+    </div>
+    <div id="tree-box"><div class="loading">加载中…</div></div>
+    <div id="map-box" class="mapscroll" style="display:none">
+      <div class="map-tools">
+        <button class="btn ghost sm" onclick="zoomMap(-1)" aria-label="缩小">−</button>
+        <span class="zm" id="map-zoom-lbl">100%</span>
+        <button class="btn ghost sm" onclick="zoomMap(1)" aria-label="放大">＋</button>
+        <span class="hint">⌘/Ctrl + 滚轮不可用时可点按钮缩放；滚动查看全图</span>
+      </div>
+      <div id="map-svg-holder"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+function esc(s){ if(s==null)return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+let treeType = 'knowledge';
+let collapse = new Set();   // 手动折叠的 node_id
+let paths = {};             // 命中节点的完整路径缓存（点击时展示）
+let viewMode = 'tree';
+let lastNodes = [];
+let mapZoom = 1, mapW = 0, mapH = 0;
+
+function api(path){ return fetch('/api' + path, { headers:{'Accept':'application/json'} }).then(r=>r.json()); }
+function tid(){ return ($('#teacher') && $('#teacher').value) || 'T001'; }
+
+async function initTeacher() {
+  try {
+    const r = await api('/teachers');
+    const list = (r.teachers || []).filter(t => t.teacher_id !== '__sys__');
+    const sel = $('#teacher');
+    sel.innerHTML = list.map(t => `<option value="${esc(t.teacher_id)}">${esc(t.teacher_name)}（${esc(t.teacher_id)}）</option>`).join('');
+    if (!list.length) sel.innerHTML = '<option value="T001">默认老师（T001）</option>';
+  } catch (e) { $('#teacher').innerHTML = '<option value="T001">默认老师（T001）</option>'; }
+}
+
+async function loadStats() {
+  const box = $('#stats');
+  try {
+    const s = await api('/public/knowledge/stats?teacher_id=' + encodeURIComponent(tid()) + '&tree_type=' + treeType);
+    const cats = (s.categories || []).slice(0, 5).map(c => `${esc(c.category)} ${c.count}`).join(' · ');
+    const isQ = treeType === 'qtype';
+    box.innerHTML = `
+      <div class="card"><div class="cl">${isQ ? '题型节点' : '知识节点'}</div><div class="cn">${s.total || 0}</div><div class="cs">${isQ ? '多级细分 · 如 行测/判断推理/图形推理' : cats || '暂无分类标签'}</div></div>
+      <div class="card"><div class="cl">分类 ${isQ ? '体系' : '标签'}</div><div class="cn gold">${(s.categories || []).length}</div><div class="cs">${cats || '—'}</div></div>
+      <div class="card"><div class="cl">检索模式</div><div class="cn green">${(s.total || 0) > 0 ? '可检索' : '建设中'}</div><div class="cs">单击节点显示完整路径</div></div>`;
+  } catch (e) { box.innerHTML = ''; }
+}
+
+async function loadTree() {
+  const kw = (($('#kw') && $('#kw').value) || '').trim();
+  const box = $('#tree-box');
+  box.innerHTML = '<div class="loading">加载中…</div>';
+  try {
+    const r = await api('/public/knowledge/tree?teacher_id=' + encodeURIComponent(tid())
+      + '&tree_type=' + treeType + '&keyword=' + encodeURIComponent(kw));
+    lastNodes = r.nodes || [];
+    paths = {};
+    buildPaths(lastNodes, []);
+    if (!kw) collapse.clear();
+    if (viewMode === 'map') { renderMap(); } else { render(lastNodes); }
+    loadStats();
+  } catch (e) {
+    box.innerHTML = `<p class="err-tip">加载失败：${esc(e.message)}</p>`;
+  }
+}
+
+// 记录每个节点的完整路径文字
+function buildPaths(nodes, anc) {
+  (nodes || []).forEach(n => {
+    const p = anc.concat(n.name);
+    paths[n.node_id] = p.join(' / ');
+    buildPaths(n.children, p);
+  });
+}
+
+function render(nodes, depth) {
+  depth = depth || 0;
+  const box = $('#tree-box');
+  if (!nodes || !nodes.length) {
+    box.innerHTML = '<div class="empty">' + (treeType === 'qtype' ? '题型分类为空，分类体系建设中' : '知识体系暂无内容') + '</div>';
+    return;
+  }
+  const html = nodes.map(n => {
+    const kids = (n.children || []).length;
+    const collapsed = collapse.has(n.node_id);
+    return `
+      <div style="padding-left:${depth * 22}px">
+      <div class="kn-row" data-id="${esc(n.node_id)}">
+        ${kids ? `<button class="caret" onclick="toggle('${esc(n.node_id)}')" aria-label="展开折叠">${collapsed ? '▸' : '▾'}</button>`
+               : '<button class="caret leaf">·</button>'}
+        <span class="nm" onclick="showPath('${esc(n.node_id)}')" title="点击查看完整路径">${esc(n.name)}</span>
+        ${n.category ? `<span class="badge blue">${esc(n.category)}</span>` : ''}
+        ${kids ? `<span class="cnt">${n.children.length}</span>` : ''}
+        ${n.description ? `<span class="desc" title="${esc(n.description)}">${esc(n.description)}</span>` : ''}
+        <span style="flex:1"></span>
+      </div>
+      ${(!collapsed && kids) ? render(n.children, depth + 1) : ''}
+      </div>`;
+  }).join('');
+  box.innerHTML = html;
+}
+
+function toggle(id){ collapse.has(id) ? collapse.delete(id) : collapse.add(id); loadRaw(); }
+// 重新渲染（不重拉服务器，避免折叠丢失；搜索词仍在框内）
+function loadRaw(){ const kw=($('#kw')&&$('#kw').value||'').trim();
+  api('/public/knowledge/tree?teacher_id='+encodeURIComponent(tid())+'&tree_type='+treeType+'&keyword='+encodeURIComponent(kw))
+    .then(r=>{ lastNodes=r.nodes||[]; paths={}; buildPaths(lastNodes,[]);
+      if(viewMode==='map'){ renderMap(); } else { render(lastNodes); } }); }
+
+function showPath(id) {
+  const p = paths[id];
+  if (!p) return;
+  const box = $('#tree-box');
+  const el = box.querySelector(`.kn-row[data-id="${CSS.escape(id)}"] .path`);
+  if (el) el.remove();
+  const row = box.querySelector(`.kn-row[data-id="${CSS.escape(id)}"]`);
+  if (row) { const s=document.createElement('span'); s.className='path'; s.textContent='📍 '+p; row.appendChild(s); }
+}
+
+function switchType() {
+  treeType = $('#tree-type').value;
+  collapse.clear();
+  loadTree();
+}
+
+function setView(mode) {
+  viewMode = mode;
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  $('#tree-box').style.display = mode === 'tree' ? '' : 'none';
+  $('#map-box').style.display = mode === 'map' ? '' : 'none';
+  if (mode === 'map') renderMap();
+}
+
+function rootLabel() {
+  const sel = $('#teacher');
+  const o = sel && sel.options[sel.selectedIndex];
+  let n = o ? o.text.replace(/\s*（[^）]*）\s*$/, '').trim() : '';
+  return (n || '书山公考') + ' · ' + (treeType === 'qtype' ? '题型体系' : '知识体系');
+}
+
+function wrapLines(s, maxC) {
+  s = (s || '').trim();
+  if (!s) return ['·'];
+  const a = Array.from(s);
+  if (a.length <= maxC) return [s];
+  const lines = [a.slice(0, maxC).join('')];
+  if (a.length > maxC * 2) lines.push(a.slice(maxC, maxC * 2 - 1).join('') + '…');
+  else lines.push(a.slice(maxC).join(''));
+  return lines;
+}
+
+function mapStyle(d) {
+  if (d === 0) return ['#6f4a2d', '#fffaf0', 'none'];
+  if (d === 1) return ['#8b5e3c', '#fffaf0', 'none'];
+  if (d === 2) return ['#c9a05a', '#3d3a33', 'none'];
+  if (d === 3) return ['#f2e4c6', '#3d3a33', '#d2b57f'];
+  return ['#fffaf0', '#3d3a33', '#e2d9c6'];
+}
+
+function buildMapSVG(rootName, nodes) {
+  const COLW = 240, PW0 = 210, PWN = 178, MARG = 28, VGAP = 10;
+  const root = { node_id: '', name: rootName, children: nodes };
+  let cursorY = 32;
+  const edgeParts = [];
+  const pillParts = [];
+  let w = 0;
+
+  function lay(n, depth) {
+    n._d = depth;
+    const font = depth === 0 ? 15 : depth === 1 ? 13.5 : 12.5;
+    const maxC = Math.max(4, Math.floor((depth === 0 ? PW0 : PWN) - 26) / font);
+    const ls = wrapLines(n.name, maxC);
+    const lh = font + 5;
+    n._font = font; n._lh = lh; n._ls = ls;
+    n._h = Math.max(depth === 0 ? 30 : 26, Math.round((ls.length - 1) * lh + font + 9));
+    n._x = MARG + depth * COLW;
+    n._pw = depth === 0 ? PW0 : PWN;
+    if (!n.children || !n.children.length) {
+      n._y = cursorY + n._h / 2;
+      cursorY += n._h + VGAP;
+      return [n._y];
+    }
+    const ys = [];
+    n.children.forEach(c => { lay(c, depth + 1).forEach(y => ys.push(y)); });
+    n._y = (ys[0] + ys[ys.length - 1]) / 2;
+    return ys;
+  }
+  lay(root, 0);
+
+  function walk(n, par) {
+    const rEdge = n._x + n._pw + 40;
+    if (rEdge > w) w = rEdge;
+    if (par) {
+      const x1 = par._x + par._pw, y1 = par._y, x2 = n._x, y2 = n._y;
+      const c = (x2 - x1) * 0.5;
+      edgeParts.push(`<path d="M${x1.toFixed(1)} ${y1.toFixed(1)}C${(x1 + c).toFixed(1)} ${y1.toFixed(1)},${(x2 - c).toFixed(1)} ${y2.toFixed(1)},${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="rgba(139,94,60,.42)" stroke-width="1.3"/>`);
+    }
+    const st = mapStyle(n._d);
+    const cx = n._x + n._pw / 2;
+    let tip = String(n.name || '');
+    const dd = n.description ? String(n.description).trim() : '';
+    if (dd) tip = tip + '\n' + Array.from(dd).slice(0, 160).join('');
+    let txt = `<title>${esc(tip)}</title>`;
+    n._ls.forEach((ln, k) => {
+      const by = n._y - n._h / 2 + (k + 1) * n._lh - 1;
+      txt += `<text x="${cx.toFixed(1)}" y="${by.toFixed(1)}" text-anchor="middle" font-size="${n._font}"${n._d <= 1 ? ' font-weight="600"' : ''} fill="${st[1]}">${esc(ln)}</text>`;
+    });
+    const rect = `<rect x="${n._x.toFixed(1)}" y="${(n._y - n._h / 2).toFixed(1)}" width="${n._pw}" height="${n._h}" rx="9" fill="${st[0]}"${st[2] !== 'none' ? ` stroke="${st[2]}"` : ''}/>`;
+    pillParts.push(`<g>${rect}${txt}</g>`);
+    (n.children || []).forEach(c => walk(c, n));
+  }
+  walk(root, null);
+
+  const h = cursorY + 12;
+  const body = edgeParts.join('') + pillParts.join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w)}" height="${Math.round(h)}" viewBox="0 0 ${Math.round(w)} ${Math.round(h)}" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif"><rect width="${Math.round(w)}" height="${Math.round(h)}" fill="#efe7d6"/>${body}</svg>`;
+  return { svg: svg, w: w, h: h };
+}
+
+function applyZoom() {
+  const svg = document.querySelector('#map-svg-holder svg');
+  if (!svg) return;
+  svg.setAttribute('width', String(Math.round(mapW * mapZoom)));
+  svg.setAttribute('height', String(Math.round(mapH * mapZoom)));
+  const lbl = $('#map-zoom-lbl');
+  if (lbl) lbl.textContent = Math.round(mapZoom * 100) + '%';
+}
+
+function renderMap() {
+  const holder = $('#map-svg-holder');
+  if (!holder) return;
+  if (!lastNodes.length) {
+    holder.innerHTML = '<div class="map-empty">知识体系暂无内容</div>';
+    return;
+  }
+  const s = buildMapSVG(rootLabel(), lastNodes);
+  mapW = s.w; mapH = s.h;
+  if (mapZoom === 1) {
+    if (mapH > 2600) mapZoom = 0.7;
+    else if (mapH > 1500) mapZoom = 0.9;
+  }
+  holder.innerHTML = s.svg;
+  applyZoom();
+}
+
+function zoomMap(d) {
+  const z = Math.min(2, Math.max(0.25, +(mapZoom + d * 0.1).toFixed(2)));
+  if (z === mapZoom) return;
+  mapZoom = z;
+  applyZoom();
+}
+
+function saveBlob(name, data, type) {
+  const b = data instanceof Blob ? data : new Blob([data], { type: type });
+  const url = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function downloadFmt(fmt) {
+  try {
+    const u = '/api/public/knowledge/export?teacher_id=' + encodeURIComponent(tid())
+      + '&tree_type=' + treeType + '&fmt=' + fmt;
+    const r = await fetch(u, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    saveBlob(j.filename, j.content, fmt === 'md' ? 'text/markdown;charset=utf-8' : 'application/xml;charset=utf-8');
+  } catch (e) { window.alert('导出失败：' + e.message); }
+}
+
+function downloadPng() {
+  if (!lastNodes.length) return;
+  const s = buildMapSVG(rootLabel(), lastNodes);
+  const blob = new Blob([s.svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const sc = 2;
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(s.w * sc));
+      cv.height = Math.max(1, Math.round(s.h * sc));
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#efe7d6';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.scale(sc, sc);
+      ctx.drawImage(img, 0, 0, s.w, s.h);
+      cv.toBlob(png => {
+        URL.revokeObjectURL(url);
+        if (png) saveBlob(rootLabel() + '.png', png, 'image/png');
+      }, 'image/png');
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      window.alert('PNG 导出失败：' + e.message);
+    }
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); window.alert('PNG 渲染失败'); };
+  img.src = url;
+}
+
+initTeacher().then(loadTree);
+</script>
+</body>
+</html>
