@@ -52,6 +52,10 @@ class MessageStore:
                 PRIMARY KEY (message_id, user_id)
             );
             """)
+            # 批次7：到期提醒 exists_since 按用户+标题+时间查询，登录高频路径加索引
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_messages_user_title "
+                "ON messages(target_user_id, title, created_at)")
 
     def create(self, title: str = "", content: str = "",
                target: str = "all", target_user_id: str = "") -> dict:
