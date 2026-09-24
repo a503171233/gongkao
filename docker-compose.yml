@@ -121,6 +121,8 @@ services:
       - ./data:/data
       # 测试目录只读挂载：容器内直接跑回归（python tests/xxx.py），不污染生产数据卷
       - ./backend/tests:/app/tests:ro
+      # pytest 配置只读挂载：容器内 `python -m pytest` 可正确区分脚本/pytest 风格
+      - ./backend/pytest.ini:/app/pytest.ini:ro
     # 9000 仅内网，不映射到宿主机（前端经 nginx 代理访问）
     # 若需直连调试可放开下一行：
     # ports: ["9000:9000"]

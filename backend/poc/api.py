@@ -2947,6 +2947,18 @@ def admin_import_questions(
     return result
 
 
+@app.get("/admin/capabilities/status")
+def admin_capabilities_status(authorization: str = Header(default="")):
+    """能力层只读状态：各能力当前档位 + provider 就绪面（mcp/scrapling/builtin）。
+    供管理端「抓取通道」展示；CAP_FETCH_PROVIDER（env）为唯一配置源，重启生效。"""
+    _admin_user(authorization)
+    from .capabilities import registry
+    return {
+        "capabilities": registry.status(),
+        "fetch_provider_env": _os.environ.get("CAP_FETCH_PROVIDER", "auto").strip() or "auto",
+    }
+
+
 @app.get("/admin/autocollect/status")
 def admin_autocollect_status(authorization: str = Header(default="")):
     """自动采集守候状态：是否启用 / 上次运行时间与结果摘要。"""

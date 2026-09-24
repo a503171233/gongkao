@@ -15,6 +15,11 @@ async function renderAcOverview() {
   try { st = await admin('/admin/autocollect/status') || {}; } catch (e) {}
   let chInfo = [];
   try { const r = await admin('/admin/autocollect/llm/channels'); chInfo = r.channels || []; } catch (e) {}
+  let capInfo = {};
+  try { capInfo = await admin('/admin/capabilities/status') || {}; } catch (e) {}
+  const _cap = (capInfo.capabilities || {}).fetch || {};
+  const _capProv = ['mcp', 'scrapling', 'builtin'].map(p => `${p}${_cap[p] ? '✓' : '✗'}`).join(' · ');
+  const _capTxt = `${esc(capInfo.fetch_provider_env || 'auto')}（${_capProv}）`;
   const go = (id, label) => `<button class="btn ghost sm" onclick="acSubTab('${id}')">${label}</button>`;
   const line = (k, v) => `<div class="detail-row"><div class="k">${esc(k)}</div><div class="v">${v == null || v === '' ? '<span class="hint">未配置</span>' : v}</div></div>`;
   const listTxt = (arr) => (arr && arr.length) ? arr.map(x => esc(x)).join('、') : '';
@@ -35,6 +40,7 @@ async function renderAcOverview() {
     <div class="panel" style="margin:0">
       <div class="panel-head"><h3>🛰️ 多通道</h3>${go('ac-channels', '编辑 ›')}</div>
       <div class="panel-body">
+        ${line('抓取通道', _capTxt)}
         ${line('采集模型通道', chInfo.length ? chInfo.map((c, i) => `${esc(c.model)}${i === 0 ? '(主)' : ''}`).join(' · ') : '回落平台默认模型')}
         ${line('并发线程', cfg.threads + ' 线程' + (cfg.threads > 1 && chInfo.length ? '（并行提取已启用）' : '（串行）'))}
         ${line('备用模型', listTxt(cfg.fallback_models) || '仅主模型')}
