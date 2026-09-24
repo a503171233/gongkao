@@ -94,6 +94,10 @@ check("img→[图]", "[图]" in fenbi._strip_html('<p>x<img src="a.png"></p>'))
 check("p/br→换行", "\n" in fenbi._strip_html("<p>a</p><br>b"))
 check("实体解码", fenbi._strip_html("<p>x&nbsp;&amp;&nbsp;y</p>") == "x & y")
 
+# 图片本地化：默认 mock 掉网络下载（HTML 原样、无 images），不拖慢测试
+_orig_dl = fenbi._download_imgs
+fenbi._download_imgs = lambda html, tid: (html, [])
+
 # solutions 真实结构样本（字段见 poc/fenbi.py 文档头）
 raw = {
     "id": 19526238,
@@ -129,14 +133,88 @@ check("material dict 无垃圾前缀", "{'id'" not in itemd["question"])
 matd2 = dict(raw, material={"id": 1})  # dict 无 content → 不拼前缀
 check("material dict 空 content→无前缀",
       "【材料】" not in fenbi.to_item(matd2, "卷")["question"])
-# 纯图题（图形推理）：去 [图] 后模板句 <40 字 → 跳过（None）
+# 纯图守卫 v2：图下载失败（mock 返回降级占位）且模板句 <40 字 → None
+fenbi._download_imgs = lambda html, tid: (
+    html.replace('<img/>', "[图1]").replace('<img></p>', "[图1]</p>"), [])
 graph_tpl = dict(raw, content="<p>从所给的四个选项中，选择最合适的一个"
                               "填入问号处，使之呈现一定的规律性：</p><p><img/></p>")
-check("纯图题(模板句+图)→None", fenbi.to_item(graph_tpl, "卷") is None)
+check("纯图题(图失败+模板句)→None", fenbi.to_item(graph_tpl, "卷") is None)
 # 含图但有实质文字（>40 字）→ 保留
 rich = dict(raw, content="<p>甲、乙两个工程队单独完成A、B、C三个工程，所需时间如下："
                          "<img/>问两队合作完成这3个工程至少需要多少天？</p>")
-check("含图但有实质文字→保留", fenbi.to_item(rich, "卷") is not None)
+check("含图(失败)但有实质文字→保留", fenbi.to_item(rich, "卷") is not None)
+# 无图短题干（<40 字）→ 保留（守卫只管含图题，误杀回归）
+short = dict(raw, content="<p>中国的首都是哪里？</p>")
+check("无图短题干→保留", fenbi.to_item(short, "卷") is not None)
+# 图片落盘成功 → ![图N](/api/qimg/…) 标记 + images 透传
+fenbi._download_imgs = lambda html, tid: (
+    (html.replace("<img/>", "![图1](/api/qimg/T001/aabbccddeeff.png)"),
+     ["/api/qimg/T001/aabbccddeeff.png"]) if "<img" in html else (html, []))
+itemg = fenbi.to_item(graph_tpl, "卷")
+check("图落盘成功→标记保留", itemg is not None
+      and "![图1](/api/qimg/T001/aabbccddeeff.png)" in itemg["question"])
+check("images 透传合规 URL", itemg["images"] == ["/api/qimg/T001/aabbccddeeff.png"])
+fenbi._download_imgs = _orig_dl  # 恢复真函数
+
+# _download_imgs 单元级：落盘命名/幂等/降级/CDN 互备
+import tempfile  # noqa: E402
+import pathlib  # noqa: E402
+import urllib.error  # noqa: E402
+
+_orig_dir = fenbi.Config.data_dir
+_tmpdir = tempfile.mkdtemp()
+fenbi.Config.data_dir = pathlib.Path(_tmpdir)
+_png = b"\x89PNG\r\n\x1a\n" + b"fakepngdata"
+_orig_urlopen2 = fenbi.urllib.request.urlopen
+try:
+    def _ok(req, timeout=10):
+        class _R:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def read(self, n=-1):
+                return _png
+        return _R()
+    fenbi.urllib.request.urlopen = _ok
+    html = '<p>题</p><img src="https://fb.fbstatic.cn/api/tarzan/images/aaa.png?width=700">'
+    out, imgs = fenbi._download_imgs(html, "T001")
+    check("下载成功→合规标记", "![图1](/api/qimg/T001/" in out
+          and out.split("/api/qimg/T001/")[1][:12].isalnum())
+    check("images 返回本地 URL", len(imgs) == 1 and imgs[0].startswith("/api/qimg/T001/"))
+    fname = out.split("/api/qimg/T001/")[1].split(")")[0]
+    check("文件落盘", (fenbi.Config.data_dir / "qimg" / "T001" / fname).is_file())
+    check("sha1 内容寻址命名", fname == __import__("hashlib").sha1(_png).hexdigest()[:12] + ".png")
+    # 非图内容（magic 不符）→ 降级 [图N]
+    fenbi.urllib.request.urlopen = lambda req, timeout=10: type("R", (), {
+        "__enter__": lambda s: s, "__exit__": lambda s, *a: False,
+        "read": lambda s, n=-1: b"<html>not-an-image</html>"})()
+    out2, imgs2 = fenbi._download_imgs('<p>x<img src="https://fb.fbstatic.cn/a/b.png"></p>', "T001")
+    check("非图内容→降级[图N]", "[图1]" in out2 and imgs2 == [])
+    # 下载异常（主域+备域全挂）→ 降级
+    def _boom(req, timeout=10):
+        raise urllib.error.URLError("down")
+    fenbi.urllib.request.urlopen = _boom
+    out3, imgs3 = fenbi._download_imgs(
+        '<img src="https://fb.fbstatic.cn/api/tarzan/images/x.png">', "T001")
+    check("双域全挂→降级[图N]", "[图1]" in out3 and imgs3 == [])
+    check("CDN 互备换域名", fenbi._alt_cdn(
+        "https://fb.fbstatic.cn/api/tarzan/images/x.png").startswith("https://fb.fenbike.cn/"))
+    check("无 img 的 html→原样", fenbi._download_imgs("<p>纯文字</p>", "T001") == ("<p>纯文字</p>", []))
+    # 自闭合 img 带尾部属性（<img src="…" />）→ 整个标签被替换，无 ' />' 残留
+    fenbi.urllib.request.urlopen = _ok
+    out4, imgs4 = fenbi._download_imgs(
+        '<p>题干</p><p><img src="https://fb.fbstatic.cn/a/b.png" style="width:700px" /></p>',
+        "T001")
+    check("自闭合img整标签替换无残留", "![图1]" in out4 and "/>" not in out4
+          and "<img" not in out4)
+    # 属性在 src 之前的形态
+    out5, imgs5 = fenbi._download_imgs(
+        '<img class="pic" src="https://fb.fbstatic.cn/a/c.png" width="700">', "T001")
+    check("src前属性形态→替换", "![图1]" in out5 and "<img" not in out5)
+finally:
+    fenbi.urllib.request.urlopen = _orig_urlopen2
+    fenbi.Config.data_dir = _orig_dir
 noacc = dict(raw, accessories=[])
 check("无选项组→空 options", fenbi.to_item(noacc, "卷")["options"] == [])
 badans = dict(raw, correctAnswer=None)

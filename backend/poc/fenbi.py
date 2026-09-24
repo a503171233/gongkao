@@ -283,26 +283,118 @@ def _answer_letters(raw: dict) -> str:
     return "".join(letters)
 
 
-def to_item(raw: dict, paper_name: str) -> dict | None:
+# ---------------- 题干图片本地化（图形推理等，批次9.2） ----------------
+# 平台图片链路（#33 R2）已闭环：落盘 data/qimg/{tid}/ + GET /api/qimg/{tid}/{fname}
+# 公开只读 + 前端 ![图N] 标记渲染（练习/模考/智能练习三处）。采集侧只负责
+# 下载落盘并生成合规标记：fname=sha1 前 12 位 hex（与端点 _QIMG_FNAME_RE 一致）。
+
+_IMG_SRC_RE = re.compile(r'<img[^>]*?src="([^"]+)"[^>]*>', re.I)
+
+
+def _img_ext(data: bytes) -> str:
+    """按 magic bytes 判图片扩展名（非图返回空串）。"""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data.startswith(b"GIF8"):
+        return ".gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return ""
+
+
+def _alt_cdn(src: str) -> str:
+    """粉笔双 CDN 互备：fb.fbstatic.cn ↔ fb.fenbike.cn（同路径）。"""
+    if "fb.fbstatic.cn/" in src:
+        return src.replace("fb.fbstatic.cn/", "fb.fenbike.cn/")
+    if "fb.fenbike.cn/" in src:
+        return src.replace("fb.fenbike.cn/", "fb.fbstatic.cn/")
+    return ""
+
+
+def _download_one(src: str, timeout: float = 10.0) -> bytes | None:
+    """下载图片并校验 magic（无防盗链实测 2026-09）；失败返回 None。"""
+    if src.startswith("//"):
+        src = "https:" + src
+    if not src.startswith("http"):
+        return None
+    try:
+        req = urllib.request.Request(src, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = r.read(2 * 1024 * 1024)  # 单图 2MB 上限
+    except Exception:  # noqa: BLE001
+        return None
+    return data if _img_ext(data) else None
+
+
+def _qimg_dir(teacher_id: str) -> tuple[str, "Path"]:
+    from pathlib import Path
+    tid = re.sub(r"[^A-Za-z0-9_-]", "", str(teacher_id or ""))[:64] or "T001"
+    d: Path = Config.data_dir / "qimg" / tid
+    d.mkdir(parents=True, exist_ok=True)
+    return tid, d
+
+
+def _download_imgs(html: str, teacher_id: str) -> tuple[str, list[str]]:
+    """HTML 内 <img> → 下载落盘（sha1 内容寻址幂等）→ 替换为
+    ![图N](/api/qimg/{tid}/{fname}) 合规标记；单张失败降级 [图N] 占位文本。
+    返回 (新html, 本地URL列表)（按出现顺序）。"""
+    if not html or "<img" not in html.lower():
+        return html, []
+    tid, d = _qimg_dir(teacher_id)
+    images: list[str] = []
+    seq = [0]
+
+    def _repl(m: "re.Match[str]") -> str:
+        seq[0] += 1
+        n = seq[0]
+        time.sleep(0.15)  # CDN 轻节流（图小量少，固定间隔即可）
+        src = m.group(1)
+        data = _download_one(src)
+        if data is None:  # 双域名互备重试
+            alt = _alt_cdn(src)
+            if alt:
+                data = _download_one(alt)
+        if data is None:
+            return f"[图{n}]"  # 降级占位（题仍可能因守卫拦截）
+        import hashlib
+        fname = hashlib.sha1(data).hexdigest()[:12] + _img_ext(data)
+        fp = d / fname
+        if not fp.exists():  # 内容寻址幂等
+            fp.write_bytes(data)
+        url = f"/api/qimg/{tid}/{fname}"
+        images.append(url)
+        return f"![图{n}]({url})"
+
+    return _IMG_SRC_RE.sub(_repl, html), images
+
+
+def to_item(raw: dict, paper_name: str, teacher_id: str = "T001") -> dict | None:
     """粉笔 solutions 题目 JSON → 平台 batch item；解析失败返回 None。
 
     - material 实测为 dict（{id, content, ...}），取 content 字段；兼容字符串形态。
-    - 纯图题（图形推理等）：题干去 [图] 占位后几乎无实质文字，纯文本平台无法
-      表达/作答 → 跳过；同时避免模板句题干批内互撞触发同源判重。"""
+    - 题干/材料图片 → 本地落盘 + ![图N](/api/qimg/…) 合规标记（批次9.2），
+      单张失败降级 [图N] 占位。
+    - 纯图守卫（v2）：含图占位但**全部下载失败**（无 ![图 标记）且实质文字
+      <40 字（图形推理模板句形态）→ 废题不入库；图片落盘成功即保留。"""
     try:
-        content = _strip_html(str(raw.get("content") or ""))
+        raw_content = str(raw.get("content") or "")
+        m = raw.get("material")
+        raw_material = (str(m.get("content") or "") if isinstance(m, dict)
+                        else str(m or ""))
+        raw_content, imgs = _download_imgs(raw_content, teacher_id)
+        raw_material, imgs_m = _download_imgs(raw_material, teacher_id)
+        imgs = imgs + imgs_m
+        content = _strip_html(raw_content)
         if not content:
             return None
-        # 纯图题守卫：模板句（"从所给的四个选项中…"）约 33 字，阈值 40 拦截
-        if content.count("[图]"):
+        # 纯图守卫 v2：只对"含图但图全失败"的题应用 <40 字拦截（无图题不受限）
+        if "![图" not in content and "[图" in content:
             core = re.sub(r"\s", "", content.replace("[图]", ""))
             if len(core) < 40:
                 return None
-        m = raw.get("material")
-        if isinstance(m, dict):
-            material = _strip_html(str(m.get("content") or ""))
-        else:
-            material = _strip_html(str(m or ""))
+        material = _strip_html(raw_material)
         if material:
             content = f"【材料】{material}\n{content}"
         opts = _options_of(raw)
@@ -327,6 +419,7 @@ def to_item(raw: dict, paper_name: str) -> dict | None:
             "difficulty": max(1, min(5, diff)) or 2,
             "knowledge_point": cat[:40],
             "category": cat,  # 平台 8 枚举外自动兜底「综合」
+            "images": imgs,  # /api/qimg/ 本地图 URL（白名单校验在 add_question）
             "source_type": "公开题库",
             "source": str(paper_name or "")[:80],
             "source_url": _SPA_BASE + str(raw.get("paperId") or ""),
@@ -386,7 +479,7 @@ def fenbi_collect(teacher_id: str | None = None,
             funnel["papers_error"].append(f"{p['name']}: {e}")
             continue
         funnel["papers_pulled"] += 1
-        items = [x for x in (to_item(r, p["name"]) for r in raws) if x]
+        items = [x for x in (to_item(r, p["name"], tid) for r in raws) if x]
         invalid_here = len(raws) - len(items)
         funnel["invalid"] += invalid_here
         if items:
