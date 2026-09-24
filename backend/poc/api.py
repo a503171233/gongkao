@@ -14,11 +14,12 @@ import threading
 import time as _time
 import uuid
 from collections import deque
+from html.parser import HTMLParser
 from pathlib import Path as _Path
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Request, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse, JSONResponse, FileResponse, Response
 from pydantic import BaseModel, Field
 
 from .auth import AuthStore
@@ -1395,6 +1396,170 @@ def _smartexam_owner(paper_id: int, user_id: str) -> dict:
     if p is None:
         raise HTTPException(status_code=404, detail="试卷不存在")
     return p
+
+
+# ---------------- #21 DOCX 导出（错题本/收藏/学习报告，2026-09-25） ----------------
+# python-docx 已在 requirements；HTML 解析用标准库 html.parser（容器无 bs4，零新依赖）。
+# 前端把与「🖨 导出 PDF」同源的渲染 HTML POST 过来，后端结构化转 DOCX 流式返回。
+
+
+class _ExportDocxReq(BaseModel):
+    title: str = "导出文档"
+    html: str
+
+
+class _HTMLBlocks(HTMLParser):
+    """html.parser 轻量结构提取：块级标签 → [(kind, payload)]。
+
+    kind: h1/h2/h3 → 标题；li → 列表项；table → 行数组；其余文本 → 段落。
+    只认自家导出模板的结构（.item 卡片/p/div/table/ul/li），深度容错：未知
+    嵌套一律文本展开。convert_charrefs 自动解码 &nbsp; 等实体。"""
+
+    _HEADINGS = {"h1": 1, "h2": 2, "h3": 3}
+    _SKIP = {"script", "style"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.blocks: list = []
+        self._buf: list = []
+        self._kind = "p"
+        self._table = None
+        self._row = None
+        self._cell = None
+        self._skip = 0
+
+    def _flush(self):
+        text = "".join(self._buf).replace("\xa0", " ").strip()
+        self._buf = []
+        if not text:
+            return
+        if self._kind in self._HEADINGS:
+            self.blocks.append(("h", self._HEADINGS[self._kind], text))
+        elif self._kind == "li":
+            self.blocks.append(("li", text))
+        else:
+            self.blocks.append(("p", text))
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._SKIP:
+            self._skip += 1
+        elif tag in self._HEADINGS:
+            self._flush()
+            self._kind = tag
+        elif tag in ("p", "div", "section", "blockquote"):
+            self._flush()
+            self._kind = "p"
+        elif tag == "li":
+            self._flush()
+            self._kind = "li"
+        elif tag == "br":
+            self._buf.append(" ")
+        elif tag == "table":
+            self._flush()
+            self._table = []
+        elif tag == "tr" and self._table is not None:
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = []
+
+    def handle_endtag(self, tag):
+        if tag in self._SKIP:
+            self._skip = max(0, self._skip - 1)
+        elif tag in self._HEADINGS or tag in ("p", "div", "section",
+                                              "blockquote", "li"):
+            self._flush()
+            self._kind = "p"
+        elif tag in ("td", "th") and self._cell is not None:
+            self._row.append("".join(self._cell).strip())
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            self._table.append(self._row)
+            self._row = None
+        elif tag == "table" and self._table is not None:
+            if self._table:
+                self.blocks.append(("table", self._table))
+            self._table = None
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        if self._cell is not None:
+            self._cell.append(data)
+        else:
+            self._buf.append(data)
+
+    def close(self):
+        super().close()
+        self._flush()
+        if self._table:  # 未闭合 table 容错
+            self.blocks.append(("table", self._table))
+
+
+def _html_to_blocks(html: str) -> list:
+    p = _HTMLBlocks()
+    try:
+        p.feed(str(html or ""))
+        p.close()
+    except Exception:  # noqa: BLE001 — 解析失败退化为纯文本单段
+        import re as _re
+        text = _re.sub(r"<[^>]+>", " ", str(html or ""))
+        return [("p", _re.sub(r"\s+", " ", text).strip())]
+    return p.blocks
+
+
+@app.post("/me/export/docx")
+def me_export_docx(req: _ExportDocxReq, authorization: str = Header(default="")):
+    """#21 DOCX 导出：接收前端渲染 HTML（与「🖨 导出 PDF」同源）→ python-docx
+    生成真实 OOXML 文档流。登录用户本人可用；HTML 来自自家面板（可信源），
+    解析全程文本化不注入任何 HTML 语义。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    title = (req.title or "导出文档").strip()[:80]
+    blocks = _html_to_blocks(req.html)
+    if not blocks:
+        raise HTTPException(status_code=400, detail="导出内容为空")
+
+    import io
+    import time as _time
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+    meta = doc.add_paragraph(f"书山公考 · 导出于 {_time.strftime('%Y-%m-%d %H:%M')}")
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    meta.runs[0].font.size = Pt(9)
+    meta.runs[0].font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    for item in blocks:
+        kind = item[0]
+        if kind == "h":
+            doc.add_heading(item[2], level=min(3, item[1]))
+        elif kind == "li":
+            try:
+                doc.add_paragraph(item[1], style="List Bullet")
+            except KeyError:  # 模板缺 List Bullet 样式容错
+                doc.add_paragraph("• " + item[1])
+        elif kind == "table":
+            rows = item[1]
+            t = doc.add_table(rows=len(rows), cols=max(len(r) for r in rows))
+            t.style = "Table Grid"
+            for i, row in enumerate(rows):
+                for j, cell in enumerate(row):
+                    t.rows[i].cells[j].text = cell
+            doc.add_paragraph()
+        else:
+            doc.add_paragraph(item[1])
+    buf = io.BytesIO()
+    doc.save(buf)
+    from urllib.parse import quote
+    return Response(
+        buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument"
+                   ".wordprocessingml.document",
+        headers={"Content-Disposition":
+                 f"attachment; filename=export.docx; filename*=UTF-8''{quote(title)}.docx"})
 
 
 @app.post("/smartexam/generate")

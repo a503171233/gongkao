@@ -340,6 +340,45 @@
   }
   global.GK.printExport = printExport;
 
+  // -----------------------------------------------------------------
+  // 7. 导出 DOCX（#21）：与 printExport 同源 HTML → POST /me/export/docx
+  //    后端 python-docx 生成真实 OOXML；blob 触发浏览器下载。
+  // -----------------------------------------------------------------
+  function docxExport(title, html) {
+    var t = String(title || '导出文档');
+    var body = String(html || '');
+    if (!body.trim()) {
+      if (global.GK.toast) global.GK.toast('暂无可导出的内容', 'error');
+      return;
+    }
+    var headers = {'Content-Type': 'application/json'};
+    if (global.GK.store && global.GK.store.token) {
+      headers['Authorization'] = 'Bearer ' + global.GK.store.token;
+      headers['X-Auth-Token'] = global.GK.store.token;
+    }
+    fetch('/api/me/export/docx', {
+      method: 'POST', headers: headers,
+      body: JSON.stringify({title: t, html: body})
+    }).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; })
+        .then(function (j) { throw new Error(j.detail || ('HTTP ' + r.status)); });
+      return r.blob();
+    }).then(function (blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = t.replace(/[\\/:*?"<>|]/g, '_') + '.docx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+      if (global.GK.toast) global.GK.toast('DOCX 已生成，开始下载', 'success');
+    }).catch(function (e) {
+      if (global.GK.toast) global.GK.toast('导出失败: ' + e.message, 'error');
+      else alert('导出失败: ' + e.message);
+    });
+  }
+  global.GK.docxExport = docxExport;
+
   // 标记模块已加载（供 A1/A2/A3/A5 / 排障用）
   global.GK.a4Ready = true;
 })(typeof window !== 'undefined' ? window : globalThis);

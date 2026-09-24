@@ -135,6 +135,7 @@
         '<select onchange="C4.filterFavGroup(this.value)" style="padding:5px 8px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;max-width:130px"></select>' +
         '<button onclick="C4.printFavorites()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
         '<button onclick="C4.exportFavorites()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">⬇ 导出 CSV</button>' +
+        '<button onclick="C4.docxFavorites()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
       '</div>' +
       '<div id="favList" style="margin-top:8px"></div>' +
       '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button>';
@@ -205,6 +206,15 @@
     global.GK.printExport('我的收藏' + (_favGroup && _favGroup !== '__none__' ? ' · ' + _favGroup : ''), el.innerHTML);
   }
 
+  function docxFavorites() {
+    var el = document.getElementById('favList');
+    if (!el || !el.innerHTML.trim()) {
+      showToast('暂无可导出的收藏', 'error');
+      return;
+    }
+    global.GK.docxExport('我的收藏' + (_favGroup && _favGroup !== '__none__' ? ' · ' + _favGroup : ''), el.innerHTML);
+  }
+
   function deleteFavorite(id) {
     global.GK.api('/favorites/' + id, { method: 'DELETE' }).then(function () {
       showToast('已取消收藏', 'success');
@@ -255,6 +265,7 @@
     container.innerHTML = '<h3>❌ 错题本</h3>' +
       '<div style="margin:8px 0;display:flex;gap:6px">' +
         '<button onclick="C4.printMistakes()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
+        '<button onclick="C4.docxMistakes()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
         '<button onclick="C4.exportMistakes()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">⬇ 导出 CSV</button>' +
       '</div>' +
       '<div id="mistakeList" style="margin-top:8px"></div>' +
@@ -300,6 +311,15 @@
       return;
     }
     global.GK.printExport('错题本', el.innerHTML);
+  }
+
+  function docxMistakes() {
+    var el = document.getElementById('mistakeList');
+    if (!el || !el.innerHTML.trim()) {
+      showToast('暂无可导出的错题', 'error');
+      return;
+    }
+    global.GK.docxExport('错题本', el.innerHTML);
   }
 
   function recordMistake(question, userAnswer, correctNote, refs, sessionId, questionId) {
@@ -727,7 +747,9 @@
     filterFavGroup: filterFavGroup,
     setFavGroup: setFavGroup,
     printFavorites: printFavorites,
+    docxFavorites: docxFavorites,
     printMistakes: printMistakes,
+    docxMistakes: docxMistakes,
     exportFavorites: function () { exportCsv('/favorites/export', '我的收藏.csv'); },
     exportMistakes: function () { exportCsv('/mistakes/export', '错题本.csv'); },
     showPracticeStats: showPracticeStats,

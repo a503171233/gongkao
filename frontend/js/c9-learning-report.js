@@ -257,6 +257,7 @@
         '<span style="font-size:16px;font-weight:700">📈 学习报告</span>' +
         '<span style="flex:1"></span>' +
         '<button onclick="C9.printReport()" class="no-print" style="padding:5px 10px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
+        '<button onclick="C9.docxReport()" class="no-print" style="padding:5px 10px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
         '<button onclick="C9.close()" style="padding:5px 10px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer;font-size:12px">✕</button>' +
       '</div>' +
       '<div id="c9Body" style="flex:1;overflow-y:auto;padding:14px 16px;color:#333;font-size:13.5px;line-height:1.6">' +
@@ -284,12 +285,22 @@
     global.GK.printExport('学习报告', body.innerHTML);
   }
 
+  function docxReport() {
+    var body = document.getElementById('c9Body');
+    if (!body || !body.innerHTML.trim()) {
+      if (global.GK.toast) global.GK.toast('报告未加载完成，暂不能导出', 'error');
+      return;
+    }
+    global.GK.docxExport('学习报告', body.innerHTML);
+  }
+
   // -----------------------------------------------------------------
   // 5. 挂载对外 API
   // -----------------------------------------------------------------
   global.C9 = {
     openReport: openReport,
     printReport: printReport,
+    docxReport: docxReport,
     close: close
   };
   global.GK.c9Ready = true;
