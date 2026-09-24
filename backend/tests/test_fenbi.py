@@ -121,6 +121,22 @@ multi = dict(raw, correctAnswer={"choice": "0,2"})
 check("多选 choice→多字母", fenbi.to_item(multi, "卷")["answer"] == "AC")
 mat = dict(raw, material="<p>阅读材料</p>")
 check("材料题拼【材料】前缀", fenbi.to_item(mat, "卷")["question"].startswith("【材料】"))
+# material 真实形态是 dict（{id, content, ...}）——不能 str(dict) 产生垃圾前缀
+matd = dict(raw, material={"id": 5367969, "content": "<p>某省2025年GDP数据…</p>"})
+itemd = fenbi.to_item(matd, "卷")
+check("material dict→取 content", itemd["question"].startswith("【材料】某省2025年GDP数据"))
+check("material dict 无垃圾前缀", "{'id'" not in itemd["question"])
+matd2 = dict(raw, material={"id": 1})  # dict 无 content → 不拼前缀
+check("material dict 空 content→无前缀",
+      "【材料】" not in fenbi.to_item(matd2, "卷")["question"])
+# 纯图题（图形推理）：去 [图] 后模板句 <40 字 → 跳过（None）
+graph_tpl = dict(raw, content="<p>从所给的四个选项中，选择最合适的一个"
+                              "填入问号处，使之呈现一定的规律性：</p><p><img/></p>")
+check("纯图题(模板句+图)→None", fenbi.to_item(graph_tpl, "卷") is None)
+# 含图但有实质文字（>40 字）→ 保留
+rich = dict(raw, content="<p>甲、乙两个工程队单独完成A、B、C三个工程，所需时间如下："
+                         "<img/>问两队合作完成这3个工程至少需要多少天？</p>")
+check("含图但有实质文字→保留", fenbi.to_item(rich, "卷") is not None)
 noacc = dict(raw, accessories=[])
 check("无选项组→空 options", fenbi.to_item(noacc, "卷")["options"] == [])
 badans = dict(raw, correctAnswer=None)
@@ -203,7 +219,7 @@ class _FakeStudy:
     def add_questions_batch(self, tid, items, sensitive_check=True):
         self.calls.append((tid, len(items)))
         return {"added": len(items) // 2, "skipped": 1, "invalid": 0,
-                "filtered": 0}
+                "filtered": 0, "dupe_source": 2}
 
 
 from poc import study as study_mod  # noqa: E402
@@ -224,7 +240,7 @@ try:
     funnel = fenbi.fenbi_collect("T001")
     check("papers_scanned=3", funnel["papers_scanned"] == 3)
     check("papers_pulled=3", funnel["papers_pulled"] == 3)
-    check("duplicates=3", funnel["duplicates"] == 3)
+    check("duplicates=skipped+dupe_source=9", funnel["duplicates"] == 9)
     check("questions_added=15", funnel["questions_added"] == 15)
     last = fenbi.fenbi_config().get("last_run") or {}
     check("last_run 写回配置", last.get("papers_scanned") == 3 and last.get("at"))

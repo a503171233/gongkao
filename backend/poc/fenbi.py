@@ -284,12 +284,25 @@ def _answer_letters(raw: dict) -> str:
 
 
 def to_item(raw: dict, paper_name: str) -> dict | None:
-    """粉笔 solutions 题目 JSON → 平台 batch item；解析失败返回 None。"""
+    """粉笔 solutions 题目 JSON → 平台 batch item；解析失败返回 None。
+
+    - material 实测为 dict（{id, content, ...}），取 content 字段；兼容字符串形态。
+    - 纯图题（图形推理等）：题干去 [图] 占位后几乎无实质文字，纯文本平台无法
+      表达/作答 → 跳过；同时避免模板句题干批内互撞触发同源判重。"""
     try:
         content = _strip_html(str(raw.get("content") or ""))
         if not content:
             return None
-        material = _strip_html(str(raw.get("material") or ""))
+        # 纯图题守卫：模板句（"从所给的四个选项中…"）约 33 字，阈值 40 拦截
+        if content.count("[图]"):
+            core = re.sub(r"\s", "", content.replace("[图]", ""))
+            if len(core) < 40:
+                return None
+        m = raw.get("material")
+        if isinstance(m, dict):
+            material = _strip_html(str(m.get("content") or ""))
+        else:
+            material = _strip_html(str(m or ""))
         if material:
             content = f"【材料】{material}\n{content}"
         opts = _options_of(raw)
@@ -379,7 +392,9 @@ def fenbi_collect(teacher_id: str | None = None,
         if items:
             r = st.add_questions_batch(tid, items, sensitive_check=True)
             funnel["questions_added"] += int(r.get("added", 0))
-            funnel["duplicates"] += int(r.get("skipped", 0))
+            # skipped=普通重复；dupe_source=同源判重（同卷补采时旧题逐题计入）
+            funnel["duplicates"] += (int(r.get("skipped", 0))
+                                     + int(r.get("dupe_source", 0)))
             funnel["invalid"] += int(r.get("invalid", 0))
             funnel["filtered"] += int(r.get("filtered", 0))
             added_total += int(r.get("added", 0))
