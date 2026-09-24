@@ -283,6 +283,49 @@ def _answer_letters(raw: dict) -> str:
     return "".join(letters)
 
 
+# ---------------- 粉笔知识点 → 平台模块枚举（批次10 数据地基） ----------------
+# 粉笔细分知识点（如"增长量计算"）不含模块词，走 study.normalize_category 会兜底
+# "综合"（90% 题目失效模块维度）。按粉笔行测知识体系保守映射；规则顺序即优先级
+# （图形推理的"数量规律"须先于数量关系判定、"经济建设"不含"经济利润"不误配数量）。
+_KP_CATEGORY_RULES = [
+    ("判断推理", ("数量规律", "位置规律", "样式规律", "属性规律", "特殊规律",
+                 "空间", "黑白块", "拼合", "立体", "截面", "三视图",
+                 "翻译", "真假推理", "组合排列", "归纳", "原因解释",
+                 "论证", "搭桥", "拆桥", "加强", "削弱", "前提", "假设",
+                 "补充论据", "定义", "主客体", "问法", "方式目的",
+                 "语义", "逻辑关系", "对应关系", "关联关系", "类比",
+                 "最大信息")),
+    ("资料分析", ("增长", "现期", "基期", "比重", "平均数", "倍数",
+                 "资料", "统计", "比值", "综合分析")),
+    ("言语理解", ("成语", "实词", "虚词", "词的辨析", "关联词", "拆词",
+                 "中心", "主题词", "分述", "细节", "标题", "接语",
+                 "语句", "横线", "首句", "尾句", "捆绑", "顺序", "篇章",
+                 "病句", "歧义")),
+    ("数量关系", ("方程", "工程", "效率", "行程", "相遇", "追及", "利润",
+                 "排列", "组合", "概率", "几何", "浓度", "容斥", "集合",
+                 "周期", "年龄", "星期", "日期", "牛吃草", "鸡兔",
+                 "统筹", "最值", "和差倍比", "数列", "植树", "方阵")),
+    ("常识判断", ("政治", "经济", "法律", "历史", "地理", "科技", "文化",
+                 "文学", "生物", "物理", "化学", "天文", "生活常识",
+                 "哲学", "唯物", "认识论", "党", "宪法", "刑法", "民法",
+                 "行政法", "会议", "讲话", "文件", "事件", "建设",
+                 "常识", "管理", "公文")),
+]
+
+
+def _category_of(kp: str) -> str:
+    """粉笔细分知识点 → 平台 category 枚举（QUESTION_CATEGORIES）；
+    不确定返回空串（由 add_question 兜底"综合"），宁可漏不可错。"""
+    v = str(kp or "").strip()
+    if not v:
+        return ""
+    for cat, kws in _KP_CATEGORY_RULES:
+        for kw in kws:
+            if kw in v:
+                return cat
+    return ""
+
+
 # ---------------- 题干图片本地化（图形推理等，批次9.2） ----------------
 # 平台图片链路（#33 R2）已闭环：落盘 data/qimg/{tid}/ + GET /api/qimg/{tid}/{fname}
 # 公开只读 + 前端 ![图N] 标记渲染（练习/模考/智能练习三处）。采集侧只负责
@@ -407,9 +450,11 @@ def to_item(raw: dict, paper_name: str, teacher_id: str = "T001") -> dict | None
                 cat = str(kp["name"]).strip()
                 break
         try:
-            diff = int(raw.get("difficulty") or 2)
+            # 粉笔 difficulty 实测 1-10 标尺（3-7 集中），线性折算平台 1-5
+            d10 = int(raw.get("difficulty") or 0)
         except (TypeError, ValueError):
-            diff = 2
+            d10 = 0
+        diff = ((d10 + 1) // 2) if d10 else 2
         return {
             "qtype": "choice",
             "question": content,
@@ -418,7 +463,7 @@ def to_item(raw: dict, paper_name: str, teacher_id: str = "T001") -> dict | None
             "analysis": analysis,
             "difficulty": max(1, min(5, diff)) or 2,
             "knowledge_point": cat[:40],
-            "category": cat,  # 平台 8 枚举外自动兜底「综合」
+            "category": _category_of(cat),  # 知识点→模块枚举；映射不到由入库兜底"综合"
             "images": imgs,  # /api/qimg/ 本地图 URL（白名单校验在 add_question）
             "source_type": "公开题库",
             "source": str(paper_name or "")[:80],

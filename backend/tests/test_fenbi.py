@@ -115,7 +115,12 @@ check("选项 0基→A-E 字母", item["options"][1] == "B. 3" and len(item["opt
 check("choice 0基→字母", item["answer"] == "B")
 check("solution→analysis", item["analysis"] == "1+1=2")
 check("keypoints 首个→knowledge_point", item["knowledge_point"] == "数量关系")
-check("difficulty 透传", item["difficulty"] == 3)
+# 粉笔 difficulty 实测 1-10 标尺 → 平台 1-5 折算 (d+1)//2
+check("difficulty 1-10→1-5 折算", item["difficulty"] == 2)  # 原 d3 → 2
+for _d10, _d5 in ((1, 1), (2, 1), (4, 2), (5, 3), (6, 3), (7, 4), (9, 5), (10, 5)):
+    _it = fenbi.to_item(dict(raw, difficulty=_d10), "卷")
+    check(f"难度折算 d{_d10}→{_d5}", _it["difficulty"] == _d5)
+check("难度缺失→默认2", fenbi.to_item(dict(raw, difficulty=None), "卷")["difficulty"] == 2)
 check("source=卷名", item["source"] == "2026国考行测卷")
 check("source_type=公开题库", item["source_type"] == "公开题库")
 check("source_url 拼 paperId", fenbi.to_item(dict(raw, paperId=777), "卷")
@@ -123,6 +128,19 @@ check("source_url 拼 paperId", fenbi.to_item(dict(raw, paperId=777), "卷")
 
 multi = dict(raw, correctAnswer={"choice": "0,2"})
 check("多选 choice→多字母", fenbi.to_item(multi, "卷")["answer"] == "AC")
+# 知识点→模块枚举映射（批次10 数据地基）
+check("kp映射: 数量规律→判断推理(优先于数量)", fenbi._category_of("数量规律-素") == "判断推理")
+check("kp映射: 增长量计算→资料分析", fenbi._category_of("增长量计算") == "资料分析")
+check("kp映射: 经济建设→常识(不误配数量)", fenbi._category_of("经济建设") == "常识判断")
+check("kp映射: 经济利润问题→数量", fenbi._category_of("经济利润问题") == "数量关系")
+check("kp映射: 成语填空→言语", fenbi._category_of("成语填空") == "言语理解")
+check("kp映射: 平均数的增长量→资料", fenbi._category_of("平均数的增长量") == "资料分析")
+check("kp映射: 民法典→常识", fenbi._category_of("民法典") == "常识判断")
+check("kp映射: 统筹规划问题→数量", fenbi._category_of("统筹规划问题") == "数量关系")
+check("kp映射: 未知→空串", fenbi._category_of("神秘知识点") == "")
+check("kp映射: 空→空串", fenbi._category_of("") == "")
+check("item.category 走映射", fenbi.to_item(
+    dict(raw, keypoints=[{"name": "增长量计算"}]), "卷")["category"] == "资料分析")
 mat = dict(raw, material="<p>阅读材料</p>")
 check("材料题拼【材料】前缀", fenbi.to_item(mat, "卷")["question"].startswith("【材料】"))
 # material 真实形态是 dict（{id, content, ...}）——不能 str(dict) 产生垃圾前缀
