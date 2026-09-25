@@ -74,6 +74,24 @@ class SmartExamStore:
             CREATE INDEX IF NOT EXISTS idx_smartexam_user ON smartexam_papers(user_id, id);
             """)
 
+    # ---------- 批次12b：模块正确率 ----------
+    @staticmethod
+    def _category_stats(questions: list[dict], answers: dict) -> list[dict]:
+        """客观题按课程分类聚合正确率，返回 [{category, total, correct}]（按题量降序）。"""
+        by_cat: dict[str, dict] = {}
+        for q in questions:
+            qtype = q.get("qtype") or ""
+            if qtype not in ("choice", "judge"):
+                continue
+            cat = (q.get("category") or "综合").strip() or "综合"
+            slot = by_cat.setdefault(cat, {"category": cat, "total": 0, "correct": 0})
+            slot["total"] += 1
+            ua = (answers or {}).get(str(q.get("id")), "")
+            if _grade_objective(qtype, q.get("answer") or "", ua,
+                                trusted=(q.get("answer_status") or "").strip() != "pending") == 1.0:
+                slot["correct"] += 1
+        return sorted(by_cat.values(), key=lambda x: -x["total"])
+
     # ---------- 序列化 ----------
     def _row_to_paper(self, row: sqlite3.Row, strip_answer: bool = False) -> dict:
         d = dict(row)
@@ -142,6 +160,19 @@ class SmartExamStore:
         with self._connect() as conn:
             conn.execute("DELETE FROM smartexam_papers WHERE id=?", (paper_id,))
 
+    def mark_overtime(self, paper_id: int) -> None:
+        """批次12b：模考卷超时交卷标记（写进 config JSON，报告页展示「超时交卷」）。"""
+        p = self.get_paper(paper_id)
+        if p is None:
+            return
+        cfg = p.get("config") or {}
+        if not isinstance(cfg, dict) or cfg.get("overtime"):
+            return
+        cfg["overtime"] = True
+        with self._connect() as conn:
+            conn.execute("UPDATE smartexam_papers SET config=?, updated_at=? WHERE id=?",
+                         (json.dumps(cfg, ensure_ascii=False), _now_iso(), paper_id))
+
     def submit_paper(self, paper_id: int, answers: dict) -> dict:
         """提交作答 → 客观题自动评分。返回 {paper, correct, total, score, essay_pending}。
         客观题判分后写回 answers + status=graded；主观题记录待批改（不评）。"""
@@ -170,6 +201,8 @@ class SmartExamStore:
                 if s == 1.0:
                     correct += 1
         score = round(correct / objective, 4) if objective else None
+        # 批次12b：模块正确率（客观题按课程分类聚合；模考报告展示用）
+        by_cat = self._category_stats(questions, answers or {})
         with self._connect() as conn:
             conn.execute(
                 "UPDATE smartexam_papers SET answers=?, status='graded', correct=?, score=?, "
@@ -182,6 +215,7 @@ class SmartExamStore:
             "correct": correct,
             "score": score,
             "essay_pending": essay,
+            "by_category": by_cat,
         }
 
     def score_trend(self, user_id: str, days: int = 30) -> dict:

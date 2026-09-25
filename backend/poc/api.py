@@ -7,6 +7,7 @@
 """
 import json
 import hmac
+import datetime as _dt
 import os as _os
 import re as _re
 import secrets
@@ -1412,6 +1413,15 @@ class SmartExamSubmitReq(BaseModel):
     answers: dict = {}          # {"<question_id>": "答案"}
 
 
+class MockExamCreateReq(BaseModel):
+    """批次12b 在线模考生成请求。source 非空=真题卷模式；否则用 mix 结构组卷。"""
+    title: str = ""
+    teacher_id: str = "T001"
+    source: str = ""            # 真题卷名（''=结构组卷）
+    mix: dict = {}              # {分类: 题量}（source 为空时生效）
+    duration_mins: int = 120    # 考试时长（分钟），到时前端自动交卷
+
+
 def _smartexam_owner(paper_id: int, user_id: str) -> dict:
     p = smartexam_store.get_paper_for_user(paper_id, user_id)
     if p is None:
@@ -1644,21 +1654,81 @@ def smartexam_detail(paper_id: int, authorization: str = Header(default="")):
     p = _smartexam_owner(paper_id, user["user_id"])
     if p["status"] != "graded":
         p["questions"] = [smartexam_store._strip_answer(q) for q in p["questions"]]
+    else:
+        # 批次12b：已评分卷附带模块正确率（模考报告展示用）
+        p["by_category"] = smartexam_store._category_stats(p["questions"], p.get("answers") or {})
     return p
 
 
 @app.post("/smartexam/papers/{paper_id}/submit")
 def smartexam_submit(paper_id: int, req: SmartExamSubmitReq, authorization: str = Header(default="")):
-    """提交作答 → 客观题自动评分。"""
+    """提交作答 → 客观题自动评分。模考卷（exam_mode=mock）超时提交仍评分并标记 overtime。"""
     user = _resolve_user(authorization)
     if user is None:
         raise HTTPException(status_code=401, detail="请先登录")
-    _smartexam_owner(paper_id, user["user_id"])
+    p = _smartexam_owner(paper_id, user["user_id"])
     try:
         result = smartexam_store.submit_paper(paper_id, req.answers or {})
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    cfgd = p.get("config") or {}
+    if cfgd.get("exam_mode") == "mock" and cfgd.get("deadline"):
+        try:
+            dl = _dt.datetime.fromisoformat(str(cfgd["deadline"]))
+            overtime = _dt.datetime.now(_dt.timezone.utc) > dl
+        except ValueError:
+            overtime = False
+        result["overtime"] = overtime
+        if overtime:
+            smartexam_store.mark_overtime(paper_id)
     return result
+
+
+@app.get("/smartexam/mock/options")
+def smartexam_mock_options(teacher_id: str = "T001", authorization: str = Header(default="")):
+    """批次12b 在线模考：可选真题卷列表 + 结构组卷默认配比（按题库实际存量动态生成）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    papers = study_store.mock_source_papers(teacher_id or "T001")
+    # 默认配比模板：真卷五模块结构，按各模块存量封顶
+    mix = {"判断推理": 40, "言语理解": 40, "常识判断": 20, "数量关系": 10, "资料分析": 20}
+    return {"papers": papers, "default_mix": mix}
+
+
+@app.post("/smartexam/mock/generate")
+def smartexam_mock_generate(req: MockExamCreateReq, authorization: str = Header(default="")):
+    """批次12b 在线模考：真题卷整卷 或 按结构配比抽题 → 计时考试卷。
+    config 记录 exam_mode/duration/deadline；超时交卷仍评分但标记 overtime。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    try:
+        cfg.get_teacher(req.teacher_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"老师不存在: {req.teacher_id}")
+    duration_mins = max(5, min(240, int(req.duration_mins or 120)))
+    questions = study_store.sample_mock_paper(req.teacher_id, source=req.source, mix=req.mix)
+    if not questions:
+        raise HTTPException(status_code=400, detail="题库中没有可用题目（真题卷模式请确认该卷客观题存量）")
+    now = _dt.datetime.now(_dt.timezone.utc)
+    deadline = (now + _dt.timedelta(minutes=duration_mins)).isoformat()
+    mode = "真题卷" if req.source else "结构组卷"
+    title = (req.title or "").strip() or f"{mode}模考 · {len(questions)} 题 · {duration_mins} 分钟"
+    config = {
+        "exam_mode": "mock",
+        "mock_source": req.source or "",
+        "mix": req.mix or {},
+        "duration_secs": duration_mins * 60,
+        "deadline": deadline,
+        "teacher_id": req.teacher_id,
+    }
+    pid = smartexam_store.create_paper(user["user_id"], title, req.teacher_id,
+                                       config, questions)
+    paper = smartexam_store.get_paper(pid)
+    paper["questions"] = [smartexam_store._strip_answer(q) for q in paper["questions"]]
+    paper["remaining_secs"] = duration_mins * 60
+    return paper
 
 
 @app.delete("/smartexam/papers/{paper_id}")

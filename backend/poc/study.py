@@ -258,6 +258,11 @@ class StudyStore:
                 conn.execute("ALTER TABLE question_bank ADD COLUMN category TEXT DEFAULT ''")
             except sqlite3.OperationalError:
                 pass
+            # 迁移：批次12a 外部题源 ID（如 "fenbi:123456"）——解析图重采/按源回查的对齐键
+            try:
+                conn.execute("ALTER TABLE question_bank ADD COLUMN ext_id TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
             # 迁移：题目来源（枚举类型 + 可选出处）
             try:
                 conn.execute("ALTER TABLE question_bank ADD COLUMN source_type TEXT DEFAULT ''")
@@ -620,6 +625,7 @@ class StudyStore:
                      category: str = "",
                      source_type: str = "", source: str = "",
                      source_url: str = "",
+                     ext_id: str = "",
                      sensitive_check: bool = False) -> dict:
         """新增题库题目（管理端/CLI 用）。category_id 关联题型树节点（#24 R2）；
         images 为题干配图 URL 列表（#33 R2，白名单外 URL 自动剔除）；
@@ -649,12 +655,13 @@ class StudyStore:
                 """INSERT INTO question_bank
                    (teacher_id, qtype, question, options, answer, analysis, difficulty,
                     knowledge_point, category_id, images, enabled, created_at, category,
-                    source_type, source, source_url)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
+                    source_type, source, source_url, ext_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
                 (teacher_id, qtype, question, opts_json, answer, analysis,
                  max(1, min(5, int(difficulty))), knowledge_point or "",
                  (category_id or "").strip(), _imgs_json(images), now, n_cat,
-                 n_source_type, (source or "").strip(), (source_url or "").strip()),
+                 n_source_type, (source or "").strip(), (source_url or "").strip(),
+                 (ext_id or "").strip()),
             )
             qid = cur.lastrowid
         return {"id": qid, "teacher_id": teacher_id, "qtype": qtype,
@@ -780,6 +787,8 @@ class StudyStore:
                     source=(it.get("source") or "").strip(),
                     # 溯源：采集来源页 URL（套卷链接），支持后续按页回查/修复
                     source_url=(it.get("source_url") or "").strip(),
+                    # 批次12a：外部题源 ID（粉笔题 id 等），解析图重采/按源回查对齐键
+                    ext_id=(it.get("ext_id") or "").strip(),
                     sensitive_check=sensitive_check,
                 )
             except ValueError:
@@ -1088,6 +1097,57 @@ class StudyStore:
         random.shuffle(pool)
         return pool[:n] if n > 0 else []
 
+    # ---------- 批次12b 在线模考 ----------
+
+    def mock_source_papers(self, teacher_id: str) -> list[dict]:
+        """在线模考：可用的真题卷列表（按 source 卷名分组，含题量与模块分布）。
+        仅统计客观题（choice）——在线模考首版只做客观题自动评分。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT source, COUNT(*) AS n, "
+                f"SUM(CASE WHEN category='判断推理' THEN 1 ELSE 0 END) AS judgement, "
+                f"SUM(CASE WHEN category='言语理解' THEN 1 ELSE 0 END) AS verbal, "
+                f"SUM(CASE WHEN category='常识判断' THEN 1 ELSE 0 END) AS common, "
+                f"SUM(CASE WHEN category='数量关系' THEN 1 ELSE 0 END) AS quant, "
+                f"SUM(CASE WHEN category='资料分析' THEN 1 ELSE 0 END) AS data "
+                f"FROM question_bank WHERE {_teacher_scope_sql()} AND enabled=1 "
+                f"AND qtype='choice' AND source<>'' AND source_type='公开题库' "
+                f"GROUP BY source ORDER BY n DESC",
+                (teacher_id,),
+            ).fetchall()
+        return [{
+            "source": r["source"], "count": r["n"],
+            "mix": {k: r[k] for k in ("judgement", "verbal", "common", "quant", "data") if r[k]},
+        } for r in rows]
+
+    def sample_mock_paper(self, teacher_id: str, source: str = "",
+                          mix: dict | None = None) -> list[dict]:
+        """在线模考抽题。source 非空=真题卷模式（该卷全部客观题，按原卷顺序）；
+        source 为空=结构组卷（mix={分类: 题量}，各模块随机抽，不足全给）。"""
+        if source:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"SELECT * FROM question_bank WHERE {_teacher_scope_sql()} AND enabled=1 "
+                    f"AND qtype='choice' AND source=? ORDER BY id",
+                    (teacher_id, source),
+                ).fetchall()
+            return self._parse_qrows(rows)
+        if not mix:
+            return []
+        picked: list[dict] = []
+        seen: set[int] = set()
+        for cat, n in mix.items():
+            n = int(n or 0)
+            if n <= 0:
+                continue
+            pool = self.sample_questions(teacher_id, category=str(cat), qtype="choice",
+                                         count=n, exclude_qids=list(seen))
+            for q in pool:
+                if q.get("id") not in seen:
+                    seen.add(q["id"])
+                    picked.append(q)
+        return picked
+
     @staticmethod
     def _answer_trusted(q: dict) -> bool:
         """该题答案是否可信到可用于判分。
@@ -1136,11 +1196,22 @@ class StudyStore:
         return out
 
     def _practice_payload(self, q: dict) -> dict:
-        """题库行 → 练习响应（#36 附 category 供前端徽标）。"""
+        """题库行 → 练习响应（#36 附 category 供前端徽标）。
+        批次12c：options 兼容解析——list_due_reviews 直传 sqlite 行（options 为
+        JSON 字符串），未走 _parse_qrows；统一在此确保数组形态。"""
+        options = q.get("options") or []
+        if isinstance(options, str):
+            import json as _json
+            try:
+                options = _json.loads(options)
+            except (ValueError, TypeError):
+                options = []
+        if not isinstance(options, list):
+            options = []
         resp = {
             "question": q["question"],
             "type": q["qtype"],
-            "options": q.get("options") or [],
+            "options": options,
             "id": q["id"],
             "hint": self._qtype_label(q["qtype"]),
             "category": q.get("category") or "综合",
@@ -1202,6 +1273,30 @@ class StudyStore:
             if wrong_pool:
                 return self._practice_payload(random.choice(wrong_pool))
 
+        # 1.5) 批次12c 今日练习：到期错题 → 薄弱分类未做题 → 普通抽题
+        if mode == "today":
+            due = self.list_due_reviews(user_id, teacher_id=teacher_id, limit=1)
+            if due["due"]:
+                item = dict(due["due"][0])
+                item["today_kind"] = "due_review"
+                item["today_note"] = "📅 今日巩固 · 到期错题（艾宾浩斯）"
+                return item
+            try:
+                rep = self.practice_report(user_id, teacher_id)
+                # practice_report 的 weak 在顶层；learning_report 才包 weekly 层
+                weak = rep.get("weak") or (rep.get("weekly") or {}).get("weak") or []
+            except Exception:  # noqa: BLE001
+                weak = []
+            if weak:
+                wpool = self._qbank_pool(teacher_id, category=random.choice(weak))
+                if wpool:
+                    q = random.choice(wpool)
+                    resp = self._practice_payload(q)
+                    resp["today_kind"] = "weak"
+                    resp["today_note"] = f"🎯 薄弱专项 · {q.get('category') or ''}"
+                    return resp
+            # 薄弱池无题 → 落到普通抽题（resp 在下方返回点打标）
+
         # 2) 正常抽题（可带分类）
         pool = self._qbank_pool(teacher_id, category=category)
         if pool:
@@ -1222,6 +1317,9 @@ class StudyStore:
             resp = self._practice_payload(q)
             if mode == "wrong":
                 resp["mode_fallback"] = "no_wrong"  # 错题池空，已回落普通抽题
+            if mode == "today":
+                resp["today_kind"] = "fresh"
+                resp["today_note"] = "✨ 智能新题"
             return resp
 
         # 兜底：知识库知识点

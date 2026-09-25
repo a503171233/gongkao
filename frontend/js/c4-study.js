@@ -510,6 +510,7 @@
     container.innerHTML = '<h3>✏️ 真题练习</h3>' +
       '<div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
         '<select id="practiceCat" style="padding:5px 8px;border:1px solid #d0d4de;border-radius:6px;font-size:13px;max-width:160px;background:#fff"><option value="">📚 全部分类</option></select>' +
+        '<button id="todayModeBtn" style="padding:5px 12px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff8f8;cursor:pointer;font-size:12px">🎯 今日练习</button>' +
         '<button id="wrongModeBtn" style="padding:5px 12px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">❌ 只刷错题</button>' +
         '<button onclick="C4.openReview()" style="padding:5px 12px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📅 今日巩固</button>' +
         '<button onclick="C4.openReport()" style="padding:5px 12px;border:1px solid #7c3aed;color:#7c3aed;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📊 学情报告</button>' +
@@ -537,6 +538,22 @@
 
     // 只刷错题开关
     var wbtn = document.getElementById('wrongModeBtn');
+    var tbtn = document.getElementById('todayModeBtn');
+    function syncTodayBtn() {
+      var on = practiceState.mode === 'today';
+      tbtn.textContent = on ? '🔥 今日练习中（退出）' : '🎯 今日练习';
+      tbtn.style.borderColor = on ? '#e5484d' : '#f2b8b8';
+      tbtn.style.background = on ? '#fff0f0' : '#fff8f8';
+    }
+    syncTodayBtn();
+    tbtn.onclick = function () {
+      practiceState.mode = practiceState.mode === 'today' ? '' : 'today';
+      practiceState.category = '';  // 今日练习与分类专项互斥
+      syncTodayBtn();
+      syncWrongBtn();
+      loadQuestion();
+    };
+
     function syncWrongBtn() {
       var on = practiceState.mode === 'wrong';
       wbtn.textContent = on ? '✅ 错题模式中（退出）' : '❌ 只刷错题';
@@ -569,6 +586,10 @@
       var typeLabel = { choice: '选择题', judge: '判断题', essay: '简答题' }[d.type] || '练习题';
       var catBadge = d.category
         ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#eef4ff;color:#4a6cf7;font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.category) + '</span>' : '';
+      // 批次12c：今日练习来源徽标（到期错题/薄弱专项/智能新题）
+      if (d.today_note) {
+        catBadge += '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff0f0;color:#e5484d;font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.today_note) + '</span>';
+      }
       if (d.mode_fallback === 'no_wrong') {
         showToast('暂无未掌握错题，已切换普通抽题', '');
       }

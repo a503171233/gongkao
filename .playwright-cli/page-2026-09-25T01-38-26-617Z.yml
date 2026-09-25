@@ -1,0 +1,36 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]: 书卷加载中…
+    - heading "💬 会话历史" [level=3] [ref=e6]
+    - button "＋ 新会话" [ref=e7] [cursor=pointer]
+    - generic [ref=e8]:
+      - generic "7614a65019d94892" [ref=e9] [cursor=pointer]: T001 · 会话 7614a650 · 1条
+      - generic "a975eaaa33b4407c" [ref=e11] [cursor=pointer]: T001 · 会话 a975eaaa · 2条
+  - generic [ref=e13]:
+    - banner [ref=e14]:
+      - link "⌂ 官网首页" [ref=e15] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e16]: 书
+      - heading "书山公考 · 学习中心" [level=1] [ref=e17]
+      - generic [ref=e18]:
+        - button "星辰老师（言语理解）" [ref=e19] [cursor=pointer]
+        - button "云舟老师（逻辑判断）" [ref=e20] [cursor=pointer]
+      - generic [ref=e21]: 星辰老师（言语理解）· 已收录 35 块知识 · 模型 gpt-5.6-luna
+      - generic [ref=e22]:
+        - button "登录" [ref=e23] [cursor=pointer]
+        - button "免费注册" [ref=e24] [cursor=pointer]
+        - button "开通会员" [ref=e25] [cursor=pointer]
+      - button "📚 练习" [ref=e26] [cursor=pointer]
+      - button "📊 练习统计" [ref=e27] [cursor=pointer]
+      - button "📌 收藏" [ref=e28] [cursor=pointer]
+      - button "❌ 错题本" [ref=e29] [cursor=pointer]
+      - button "📝 模考" [ref=e30] [cursor=pointer]
+      - button "🧩 组卷" [ref=e31]
+      - button "🏆 激励" [ref=e32]
+      - button "📈 报告" [ref=e33]
+      - button "💬 论坛" [ref=e34] [cursor=pointer]
+      - button "🔔 消息" [ref=e35]
+    - generic [ref=e36]: 我是老师的专属智能助教。所有回答均基于对应老师的课件与讲义，杜绝凭空编造。请选择上方老师，然后提问。
+    - generic [ref=e39]:
+      - textbox "输入你的问题…" [ref=e40]
+      - button "发送" [ref=e41] [cursor=pointer]

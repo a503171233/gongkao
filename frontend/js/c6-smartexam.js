@@ -11,7 +11,7 @@
 
   if (!global.GK) global.GK = {};
 
-  var state = { view: 'list', paperId: 0, paper: null, answers: {} };
+  var state = { view: 'list', paperId: 0, paper: null, answers: {}, mockTimer: null };
 
   function escapeHtml(s) {
     return String(s == null ? '' : s)
@@ -82,16 +82,22 @@
   }
 
   function renderList() {
+    stopMockTimer();
     var container = getPanel();
     container.innerHTML =
       '<h3 style="margin:0 0 4px">🧩 智能组卷</h3>' +
       '<div style="font-size:12px;color:#888;margin-bottom:10px">按分类/题型/难度/知识点自助组卷，提交后客观题自动评分</div>' +
-      '<button id="seNewBtn" style="width:100%;padding:9px;border:1px dashed #7c3aed;color:#7c3aed;border-radius:8px;background:#faf8ff;cursor:pointer;font-size:14px">＋ 生成新试卷</button>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="seNewBtn" style="flex:1;padding:9px;border:1px dashed #7c3aed;color:#7c3aed;border-radius:8px;background:#faf8ff;cursor:pointer;font-size:14px">＋ 生成新试卷</button>' +
+        '<button id="seMockBtn" style="flex:1;padding:9px;border:1px solid #e5484d;color:#e5484d;border-radius:8px;background:#fff8f8;cursor:pointer;font-size:14px">⏱ 在线模考</button>' +
+      '</div>' +
       '<div id="seNewBox" style="display:none;margin-top:10px;border:1px solid #e5e7eb;border-radius:8px;padding:10px"></div>' +
+      '<div id="seMockBox" style="display:none;margin-top:10px;border:1px solid #fecaca;border-radius:8px;padding:10px"></div>' +
       '<div id="seListArea" style="margin-top:12px"><p style="color:#999">加载中...</p></div>' +
       closeBtnHtml();
 
     document.getElementById('seNewBtn').onclick = renderNewBox;
+    document.getElementById('seMockBtn').onclick = toggleMockBox;
     loadList();
   }
 
@@ -151,6 +157,92 @@
           showToast('组卷失败: ' + (e && e.message ? e.message : e), 'error');
         });
     };
+  }
+
+  // -----------------------------------------------------------------
+  // 批次12b 在线模考
+  // -----------------------------------------------------------------
+  var MOCK_CATS = [['判断推理', 40], ['言语理解', 40], ['常识判断', 20], ['数量关系', 10], ['资料分析', 20]];
+
+  function toggleMockBox() {
+    var box = document.getElementById('seMockBox');
+    if (!box) return;
+    var show = box.style.display === 'none';
+    box.style.display = show ? 'block' : 'none';
+    if (!show) return;
+    box.innerHTML = '<p style="color:#999;font-size:12px">加载可考卷…</p>';
+    global.GK.api('/smartexam/mock/options').then(function (d) {
+      var opts = (d.papers || []).map(function (x) {
+        return '<option value="' + escapeHtml(x.source) + '">' + escapeHtml(x.source) + '（' + x.count + ' 题）</option>';
+      }).join('');
+      var mixRows = MOCK_CATS.map(function (m, i) {
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:#555">' + m[0] +
+          ' <input id="seMix' + i + '" type="number" min="0" max="99" value="' + ((d.default_mix || {})[m[0]] != null ? (d.default_mix || {})[m[0]] : m[1]) + '" style="width:52px;padding:3px;border:1px solid #d0d4de;border-radius:5px">' + '题</label>';
+      }).join('');
+      box.innerHTML =
+        '<div style="font-size:12.5px;font-weight:700;color:#e5484d;margin-bottom:6px">考试模式（限时一次交卷）</div>' +
+        '<div style="font-size:12px;color:#666;margin-bottom:4px">.mode 真题卷（整卷原序）</div>' +
+        '<select id="seMockPaper" style="width:100%;padding:6px;border:1px solid #d0d4de;border-radius:6px;font-size:13px;margin-bottom:8px">' +
+          '<option value="">— 结构组卷（按下方配比）—</option>' + opts + '</select>' +
+        '<div style="font-size:12px;color:#666;margin:6px 0 3px">结构配比（选「结构组卷」时生效）</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">' + mixRows + '</div>' +
+        '<div style="font-size:12px;color:#666;margin-bottom:4px">考试时长</div>' +
+        '<select id="seMockDur" style="width:100%;padding:6px;border:1px solid #d0d4de;border-radius:6px;font-size:13px;margin-bottom:8px">' +
+          '<option value="90">90 分钟</option><option value="120" selected>120 分钟</option><option value="150">150 分钟</option></select>' +
+        '<button id="seMockStart" style="width:100%;padding:8px;border:none;border-radius:6px;background:#e5484d;color:#fff;cursor:pointer;font-size:13.5px">🎯 开始模考</button>' +
+        '<div style="font-size:11.5px;color:#999;margin-top:5px">到时未交卷将自动提交，未答题按错误计分</div>';
+      document.getElementById('seMockStart').onclick = startMock;
+    }).catch(function (e) {
+      box.innerHTML = '<p style="color:#e5484d;font-size:12.5px">加载失败: ' + escapeHtml(String(e && e.message || e)) + '</p>';
+    });
+  }
+
+  function startMock() {
+    var source = document.getElementById('seMockPaper').value;
+    var mix = {};
+    MOCK_CATS.forEach(function (m, i) {
+      var el = document.getElementById('seMix' + i);
+      var v = el ? parseInt(el.value, 10) || 0 : 0;
+      if (v > 0) mix[m[0]] = v;
+    });
+    var body = { source: source, mix: source ? {} : mix, duration_mins: parseInt(document.getElementById('seMockDur').value, 10) || 120 };
+    if (!source && !Object.keys(mix).length) { showToast('请选择真题卷或填写结构配比', 'error'); return; }
+    global.GK.api('/smartexam/mock/generate', { method: 'POST', body: body, timeout: 30000 }).then(function (p) {
+      showToast('模考开始，计时中 ⏱', 'success');
+      openPaper(p.id, p);
+    }).catch(function (e) {
+      showToast('生成失败: ' + (e && e.message ? e.message : e), 'error');
+    });
+  }
+
+  function isMockPaper(p) {
+    return !!(p && p.config && p.config.exam_mode === 'mock' && p.status !== 'graded');
+  }
+
+  function stopMockTimer() {
+    if (state.mockTimer) { clearInterval(state.mockTimer); state.mockTimer = null; }
+  }
+
+  function startMockCountdown(deadline) {
+    stopMockTimer();
+    var el = function () { return document.getElementById('seCountdown'); };
+    function tick() {
+      var node = el();
+      if (!node) { stopMockTimer(); return; }
+      var left = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
+      var h = String(Math.floor(left / 3600)).padStart(2, '0');
+      var m2 = String(Math.floor((left % 3600) / 60)).padStart(2, '0');
+      var s2 = String(left % 60).padStart(2, '0');
+      node.textContent = '⏱ 剩余 ' + h + ':' + m2 + ':' + s2;
+      node.style.color = left < 300 ? '#e5484d' : '#b45309';
+      if (left <= 0) {
+        stopMockTimer();
+        showToast('考试时间到，自动交卷', 'error');
+        submitAnswers(true);
+      }
+    }
+    tick();
+    state.mockTimer = setInterval(tick, 1000);
   }
 
   function loadList() {
@@ -255,9 +347,14 @@
       '</div>';
     }).join('');
 
+    var mockOn = isMockPaper(p);
+    var countdownHtml = mockOn
+      ? '<div id="seCountdown" style="position:sticky;top:0;z-index:5;margin:0 -20px 10px;padding:8px 20px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:14px;font-weight:700;text-align:center;color:#b45309"></div>'
+      : '';
     container.innerHTML =
+      countdownHtml +
       '<h3 style="margin:0 0 4px">🧩 ' + escapeHtml(p.title || '智能组卷') + '</h3>' +
-      '<div style="font-size:12px;color:#888;margin-bottom:8px">共 ' + qs.length + ' 题 · 提交后客观题自动评分</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:8px">共 ' + qs.length + ' 题 · ' + (mockOn ? '限时作答，到时自动交卷' : '提交后客观题自动评分') + '</div>' +
       body +
       '<div style="display:flex;gap:8px;margin-top:4px">' +
         '<button id="seSubmitBtn" style="flex:1;padding:9px;border:none;border-radius:6px;background:#7c3aed;color:#fff;cursor:pointer;font-size:14px">提交试卷</button>' +
@@ -265,46 +362,74 @@
       '</div>' +
       closeBtnHtml();
 
-    document.getElementById('seSubmitBtn').onclick = function () {
-      var answers = {};
-      var missing = 0;
-      qs.forEach(function (q) {
-        var qid = String(q.id);
-        if (q.qtype === 'choice' || q.qtype === 'judge') {
-          var checked = container.querySelector('input[name="se_opt_' + qid + '"]:checked');
-          if (checked) answers[qid] = checked.value;
-          else missing++;
-        } else {
-          var ta = container.querySelector('textarea[data-essay="' + qid + '"]');
-          answers[qid] = ta ? ta.value.trim() : '';
-        }
-      });
-      var btn = this;
-      // #12 防误触：仍有未作答的客观题时二次确认（未答题按错误计分，整卷判定不可逆）
-      if (missing > 0 && !global.confirm('还有 ' + missing + ' 道题未作答，未答题将按错误计分。确定提交吗？')) {
-        return;
+    document.getElementById('seSubmitBtn').onclick = function () { submitAnswers(false); };
+    // 批次12b：模考卷启动倒计时（从 config.deadline 计算，重开页面也能续算）
+    if (mockOn && p.config && p.config.deadline) {
+      startMockCountdown(p.config.deadline);
+    }
+  }
+
+  function submitAnswers(auto) {
+    var p = state.paper;
+    if (!p) return;
+    var container = getPanel();
+    var qs = p.questions || [];
+    var answers = {};
+    var missing = 0;
+    qs.forEach(function (q) {
+      var qid = String(q.id);
+      if (q.qtype === 'choice' || q.qtype === 'judge') {
+        var checked = container.querySelector('input[name="se_opt_' + qid + '"]:checked');
+        if (checked) answers[qid] = checked.value;
+        else missing++;
+      } else {
+        var ta = container.querySelector('textarea[data-essay="' + qid + '"]');
+        answers[qid] = ta ? ta.value.trim() : '';
       }
-      btn.disabled = true;
-      btn.textContent = '评分中...';
-      global.GK.api('/smartexam/papers/' + state.paperId + '/submit', {
-        method: 'POST', body: { answers: answers }, timeout: 30000
-      }).then(function (r) {
-        showToast('评分完成', 'success');
-        fetchPaper();
-      }).catch(function (e) {
-        btn.disabled = false;
-        btn.textContent = '提交试卷';
-        showToast('提交失败: ' + (e && e.message ? e.message : e), 'error');
-      });
-    };
+    });
+    // #12 防误触：仍有未作答的客观题时二次确认（自动交卷不弹，超时强制收卷）
+    if (!auto && missing > 0 && !global.confirm('还有 ' + missing + ' 道题未作答，未答题将按错误计分。确定提交吗？')) {
+      return;
+    }
+    var btn = document.getElementById('seSubmitBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '评分中...'; }
+    global.GK.api('/smartexam/papers/' + state.paperId + '/submit', {
+      method: 'POST', body: { answers: answers }, timeout: 30000
+    }).then(function (r) {
+      showToast(auto ? '已到时自动交卷' : '评分完成', 'success');
+      fetchPaper();
+    }).catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '提交试卷'; }
+      showToast('提交失败: ' + (e && e.message ? e.message : e), 'error');
+    });
   }
 
   function renderResult() {
+    stopMockTimer();
     var p = state.paper;
     var container = getPanel();
     var qs = p.questions || [];
     var answers = p.answers || {};
     var typeLabel = { choice: '选择', judge: '判断', essay: '简答' };
+
+    var mockCfg = (p.config && p.config.exam_mode === 'mock') ? p.config : null;
+    var catHtml = '';
+    if (mockCfg && (p.by_category || []).length) {
+      var catRows = p.by_category.map(function (c) {
+        var pctv = c.total ? Math.round(c.correct / c.total * 100) : 0;
+        var color = pctv >= 80 ? '#30a46c' : (pctv >= 60 ? '#f59e0b' : '#e5484d');
+        return '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:4px">' +
+          '<span style="width:64px;color:#555">' + escapeHtml(c.category) + '</span>' +
+          '<div style="flex:1;height:8px;background:#eef0f5;border-radius:4px;overflow:hidden">' +
+            '<div style="width:' + pctv + '%;height:100%;background:' + color + '"></div></div>' +
+          '<span style="width:74px;text-align:right;color:' + color + '">' + c.correct + '/' + c.total + ' · ' + pctv + '%</span></div>';
+      }).join('');
+      catHtml = '<div style="margin:0 0 10px;padding:10px;background:#fafbff;border:1px solid #e8ecf7;border-radius:8px">' +
+        '<div style="font-size:12.5px;font-weight:700;color:#333;margin-bottom:6px">📊 模块正确率</div>' + catRows + '</div>';
+    }
+    var overtimeHtml = (mockCfg && mockCfg.overtime)
+      ? '<div style="margin:0 0 10px;padding:8px 10px;background:#fff8f0;border:1px solid #fed7aa;border-radius:8px;color:#b45309;font-size:12.5px">⏰ 超时交卷：超出考试时长，成绩仍计入</div>'
+      : '';
 
     var header =
       '<h3 style="margin:0 0 4px">🧩 ' + escapeHtml(p.title || '智能组卷') + '</h3>' +
@@ -314,7 +439,7 @@
           '<div><div style="font-size:12px;color:#888">答对</div><div style="font-size:22px;font-weight:700;color:#30a46c">' + p.correct + '</div></div>' +
           '<div><div style="font-size:12px;color:#888">客观题</div><div style="font-size:22px;font-weight:700">' + (qs.length - (p.essay_pending || 0)) + '</div></div>' +
         '</div>' +
-      '</div>';
+      '</div>' + overtimeHtml + catHtml;
 
     var body = qs.map(function (q, i) {
       var qid = String(q.id);

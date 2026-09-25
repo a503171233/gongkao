@@ -473,6 +473,8 @@ def to_item(raw: dict, paper_name: str, teacher_id: str = "T001") -> dict | None
             "source_type": "公开题库",
             "source": str(paper_name or "")[:80],
             "source_url": _SPA_BASE + str(raw.get("paperId") or ""),
+            # 批次12a：粉笔题 id（解析图重采/按源回查的对齐键）
+            "ext_id": f"fenbi:{raw.get('id') or ''}".rstrip(":"),
         }
     except Exception:  # noqa: BLE001
         return None
