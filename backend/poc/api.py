@@ -116,6 +116,26 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# ---------- 巡检 1.2 收口：充值码激活尝试频控（防试码爆破） ----------
+_REDEEM_LIMIT = int(_os.environ.get("REDEEM_LIMIT", "5"))       # 每用户每窗口最多尝试次数
+_REDEEM_WINDOW = int(_os.environ.get("REDEEM_WINDOW", "600"))   # 窗口 10 分钟
+_redeem_attempts: dict[str, list[float]] = {}  # user_id -> [timestamps]
+_redeem_lock = threading.Lock()
+
+
+def _redeem_rate_limit(user_id: str):
+    """充值码激活限流：无条件计数（成败都算，激活成功后本接口无需再调）。
+    超限抛 429。"""
+    now = _time.monotonic()
+    with _redeem_lock:
+        ts_list = _redeem_attempts.setdefault(user_id, [])
+        _redeem_attempts[user_id] = [t for t in ts_list if now - t < _REDEEM_WINDOW]
+        if len(_redeem_attempts[user_id]) >= _REDEEM_LIMIT:
+            raise HTTPException(status_code=429,
+                                detail="激活尝试过于频繁，请 10 分钟后再试")
+        _redeem_attempts[user_id].append(now)
+
+
 # ---------- C5 安全加固：CSRF 纵深防御（Origin 校验中间件） ----------
 # 说明：本项目 API 用 Bearer 头鉴权（非 cookie），CSRF 天然低危；
 #       Gitee OAuth 已有 state 防 CSRF。此处做纵深防御：
@@ -781,8 +801,11 @@ async def notify_payment(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
     # 若订单刚变为 paid，开通会员（pay_channel 非 recharge_code 的第三方单同样处理）
+    # 巡检 1.2 收口：TEST- 前缀为无验签测试单，只落 paid 状态供联调，
+    # 不触发真实会员开通（否则伪造测试回调=免费开会员）。
     order = payment_store.get_order(result["order_id"])
-    if order and order.get("status") == "paid":
+    if (order and order.get("status") == "paid"
+            and not str(result["order_id"]).upper().startswith("TEST-")):
         try:
             auth_store.activate_membership(order["user_id"], 30)
         except Exception:  # noqa: BLE001  激活失败不阻断回调确认
@@ -812,6 +835,8 @@ def activate_recharge_code(
     user = _resolve_user(authorization)
     if user is None:
         raise HTTPException(status_code=401, detail="请先登录")
+    # 巡检 1.2 收口：试码频控（每用户 5 次/10 分钟，成败均计数）
+    _redeem_rate_limit(user["user_id"])
 
     code = (req.code or "").strip()
     if not code:

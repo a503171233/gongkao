@@ -16,7 +16,7 @@ import secrets
 import sqlite3
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -170,19 +170,62 @@ class PaymentStore:
         }
 
     def get_order(self, order_id: str) -> dict | None:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM orders WHERE order_id=?", (order_id,)
-            ).fetchone()
-        return dict(row) if row else None
+        order = self._get_order_raw(order_id)
+        if order and order.get("status") == "pending":
+            # 巡检 3.3 收口：pending 单超时惰性置 expired（不可再激活/回调）
+            order = self._expire_if_stale(order)
+        return order
 
     def list_orders(self, user_id: str) -> list[dict]:
+        self._expire_stale_all(user_id)
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC",
                 (user_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def _get_order_raw(self, order_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM orders WHERE order_id=?", (order_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    # 巡检 3.3：pending 订单过期终态（30 分钟未支付自动作废，防永久堆积）
+    ORDER_PENDING_TTL_MINS = 30
+
+    def _expire_if_stale(self, order: dict) -> dict:
+        """pending 且超 TTL → 置 expired 并返回刷新后的订单；否则原样返回。"""
+        created = str(order.get("created_at") or "")
+        try:
+            created_dt = datetime.strptime(
+                created, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return order
+        if datetime.now(timezone.utc) - created_dt < timedelta(
+                minutes=self.ORDER_PENDING_TTL_MINS):
+            return order
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE orders SET status='expired' WHERE order_id=? AND status='pending'",
+                (order["order_id"],),
+            )
+        order["status"] = "expired"
+        return order
+
+    def _expire_stale_all(self, user_id: str) -> int:
+        """批量把该用户超时 pending 单置 expired，返回受影响行数。"""
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(minutes=self.ORDER_PENDING_TTL_MINS)
+                  ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE orders SET status='expired'
+                   WHERE user_id=? AND status='pending' AND created_at < ?""",
+                (user_id, cutoff),
+            )
+            return cur.rowcount
 
     # ========== 充值码 ==========
     def generate_recharge_codes(
@@ -487,6 +530,9 @@ class PaymentStore:
 
         if not existing:
             raise ValueError(f"订单不存在: {order_id}")
+        # 过期终态：pending 超 TTL 已作废的订单拒绝回调落账（需用户重新下单）
+        if existing["status"] == "expired":
+            raise ValueError(f"订单已过期（{self.ORDER_PENDING_TTL_MINS} 分钟未支付），请重新下单")
 
         # 安全加固（#15 阶段一收口）：PAY_SIGN_MODE=none 时验签形同虚设，
         # 任何人可伪造 /orders/notify 把任意 pending 订单置为 paid（资金风险）。
