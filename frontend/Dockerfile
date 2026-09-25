@@ -4,5 +4,6 @@ FROM nginx:1.27-alpine
 COPY index.html chat.html admin.html admin.js dashboard.html share.html knowledge.html forum.html articles.html /usr/share/nginx/html/
 COPY js/ /usr/share/nginx/html/js/
 COPY css/ /usr/share/nginx/html/css/
+COPY img/ /usr/share/nginx/html/img/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 3000
