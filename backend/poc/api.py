@@ -3360,6 +3360,62 @@ def admin_fenbi_collect(authorization: str = Header(default="")):
     return {"started": True, "running": True}
 
 
+# ---------------- 公考真题库采集源（批次13，gwy.gkzhenti.cn） ----------------
+
+class AdminGkztConfigReq(BaseModel):
+    enabled: bool = False
+    max_papers_per_run: int = 3
+    min_interval_secs: int = 2
+    teacher_id: str = "T001"
+    with_images: bool = True
+
+
+@app.get("/admin/gkzt/config")
+def admin_gkzt_config_get(authorization: str = Header(default="")):
+    """公考真题库采集配置只读：最近一轮漏斗 + 运行中标志。"""
+    _admin_user(authorization)
+    from .gkzhenti import gkzt_config, is_running
+    d = gkzt_config()
+    d["running"] = is_running()
+    return d
+
+
+@app.post("/admin/gkzt/config")
+def admin_gkzt_config_post(
+    req: AdminGkztConfigReq = Body(default_factory=AdminGkztConfigReq),
+    authorization: str = Header(default=""),
+):
+    """保存公考真题库采集配置（无凭据，仅频率/预算开关）。"""
+    _admin_user(authorization)
+    _check_teacher(req.teacher_id)
+    from .gkzhenti import save_gkzt_config
+    return save_gkzt_config(req.model_dump())
+
+
+@app.post("/admin/gkzt/test")
+def admin_gkzt_test(authorization: str = Header(default="")):
+    """公考真题库试拉：官方接口拉卷列表 + 解析前 2 卷（不入库）。"""
+    _admin_user(authorization)
+    from .gkzhenti import gkzt_test
+    try:
+        return gkzt_test(paper_limit=2)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400,
+                            detail=f"公考真题库试拉失败：{str(e)[:160]}")
+
+
+@app.post("/admin/gkzt/collect")
+def admin_gkzt_collect(authorization: str = Header(default="")):
+    """手动触发一轮公考真题库采集（后台线程）；漏斗轮询 GET /admin/gkzt/config。"""
+    _admin_user(authorization)
+    from .gkzhenti import is_running, start_collect_async
+    if is_running():
+        return {"started": False, "running": True,
+                "msg": "已有公考真题库采集在后台运行，请稍候"}
+    start_collect_async()
+    return {"started": True, "running": True}
+
+
 @app.get("/admin/autocollect/status")
 def admin_autocollect_status(authorization: str = Header(default="")):
     """自动采集守候状态：是否启用 / 上次运行时间与结果摘要。"""

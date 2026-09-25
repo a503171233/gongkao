@@ -4132,6 +4132,12 @@ def _daemon_loop() -> None:
                         maybe_run_fenbi()
                     except Exception:  # noqa: BLE001
                         pass
+                    # 批次13：公考真题库采集源守候钩子（enabled 才跑，同上）
+                    try:
+                        from .gkzhenti import maybe_run_gkzhenti
+                        maybe_run_gkzhenti()
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception as e:  # noqa: BLE001  单轮异常不影响线程存活
                 with _lock:
                     _status["last_result"] = {"skipped": False, "added": 0,
