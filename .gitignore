@@ -80,3 +80,4 @@ backend/tests/tail_*.py
 backend/tests/start_*.py
 backend/tests/*.out.txt
 backend/tests/*.err.txt
+.walkthrough/

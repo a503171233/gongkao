@@ -1254,6 +1254,7 @@ class StudyStore:
         # 题库题自动判分
         auto_score = None
         qcat = ""
+        q_analysis = ""
         if question_id:
             with self._connect() as conn:
                 qrow = conn.execute(
@@ -1262,6 +1263,7 @@ class StudyStore:
             if qrow:
                 q = dict(qrow)
                 qcat = q.get("category") or ""
+                q_analysis = q.get("analysis") or ""
                 auto_score = self._grade_auto(q, answer)
                 if auto_score is not None and auto_score >= 0:
                     score = auto_score
@@ -1295,6 +1297,8 @@ class StudyStore:
             "score": score,
             "auto_graded": auto_score is not None and auto_score >= 0,
             "feedback": feedback,
+            # #4 学习闭环：判分即返回解析，学员不用跑去错题本才能看「为什么错」
+            "analysis": q_analysis,
             "question_id": question_id,
             "category": qcat or "综合",
             "created_at": now,

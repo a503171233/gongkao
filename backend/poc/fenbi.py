@@ -417,7 +417,8 @@ def to_item(raw: dict, paper_name: str, teacher_id: str = "T001") -> dict | None
     """粉笔 solutions 题目 JSON → 平台 batch item；解析失败返回 None。
 
     - material 实测为 dict（{id, content, ...}），取 content 字段；兼容字符串形态。
-    - 题干/材料图片 → 本地落盘 + ![图N](/api/qimg/…) 合规标记（批次9.2），
+    - 题干/材料/解析图片 → 本地落盘 + ![图N](/api/qimg/…) 合规标记（批次9.2 题干；
+      批次11b 补解析：此前 solution 直接 strip 导致解析配图丢失、只剩「[图]」占位），
       单张失败降级 [图N] 占位。
     - 纯图守卫（v2）：含图占位但**全部下载失败**（无 ![图 标记）且实质文字
       <40 字（图形推理模板句形态）→ 废题不入库；图片落盘成功即保留。"""
@@ -443,7 +444,11 @@ def to_item(raw: dict, paper_name: str, teacher_id: str = "T001") -> dict | None
         opts = _options_of(raw)
         opt_texts = [f"{chr(ord('A') + i)}. {o}" for i, o in enumerate(opts)]
         answer = _answer_letters(raw)
-        analysis = _strip_html(str(raw.get("solution") or ""))
+        # #5 解析图采集：solution 与题干同路（下载→![图N]标记→strip），解析配图不再丢失
+        raw_solution = str(raw.get("solution") or "")
+        raw_solution, imgs_a = _download_imgs(raw_solution, teacher_id)
+        imgs = imgs + imgs_a
+        analysis = _strip_html(raw_solution)
         cat = ""
         for kp in raw.get("keypoints") or []:
             if isinstance(kp, dict) and kp.get("name"):

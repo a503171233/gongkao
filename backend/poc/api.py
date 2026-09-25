@@ -17,7 +17,7 @@ from collections import deque
 from html.parser import HTMLParser
 from pathlib import Path as _Path
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Request, Body, Query
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Request, Body, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse, JSONResponse, FileResponse, Response
 from pydantic import BaseModel, Field
@@ -39,6 +39,7 @@ from .models import (
 )
 from .payment import get_payment_store, PLANS
 from .sensitive import check_sensitive, SENSITIVE_ENABLED
+from . import study as study_mod
 from .study import get_study_store
 from .incentive import get_incentive_store as _get_incentive
 from .mockexam import get_mockexam_store as _get_mockexam
@@ -557,7 +558,15 @@ def ask(req: AskReq, authorization: str = Header(default="")):
                          history=history, resume=resume)
     except Exception as e:
         metrics.ask_failed(str(e))
-        raise HTTPException(status_code=500, detail=f"问答失败: {e}")
+        msg = str(e)
+        # #2 脱敏：运维细节（key/.env/内部路径/凭据特征）不下发给学员，统一业务话术；
+        # 完整错误仍在服务端日志（metrics.ask_failed + 容器日志）可查。
+        _sensitive = ("api_key", "api key", ".env", "secret", "password", "token",
+                      "traceback", "/data", "/app", "connection refused")
+        if any(k in msg.lower() for k in _sensitive):
+            raise HTTPException(status_code=503,
+                                detail="老师服务暂时不可用，请稍后再试；若持续失败请联系管理员")
+        raise HTTPException(status_code=500, detail=f"问答失败: {msg}")
 
     if user is not None:
         auth_store.consume(user["user_id"])
@@ -660,14 +669,26 @@ def session_messages(session_id: str, authorization: str = Header(default="")):
             "messages": chat_store.get_messages(session_id)}
 
 
+def _metrics_guard(authorization: str = Header(default=""),
+                   x_admin_secret: str = Header(default="")) -> None:
+    """#21 安全修复：监控端点鉴权。允许 admin 登录 token 或 X-Admin-Secret 头
+    （供 deploy.sh/外部探针使用，与 UPLOAD_SECRET 同模式）。其余一律 403。"""
+    if x_admin_secret and x_admin_secret == _os.environ.get("ADMIN_SECRET", "").strip():
+        return
+    user = _resolve_user(authorization)
+    if user is not None and user.get("role") == "admin":
+        return
+    raise HTTPException(status_code=403, detail="监控端点仅管理员可访问")
+
+
 @app.get("/guard/stats")
-def guard_stats():
+def guard_stats(_g: None = Depends(_metrics_guard)):
     """幻觉检测拦截统计（运行中进程实时计数，供监控）。"""
     return guard_counter.stats()
 
 
 @app.get("/metrics")
-def metrics_json():
+def metrics_json(_g: None = Depends(_metrics_guard)):
     """监控看板数据源（JSON）：uptime/请求计数/状态分布/ask统计/平均耗时/guard拦截。"""
     d = metrics.snapshot()
     d["guard"] = guard_counter.stats()
@@ -675,7 +696,7 @@ def metrics_json():
 
 
 @app.get("/metrics/prometheus")
-def metrics_prometheus():
+def metrics_prometheus(_g: None = Depends(_metrics_guard)):
     """Prometheus 文本格式（供外部抓取，如 node_exporter/prometheus）。"""
     return PlainTextResponse(metrics.prometheus_text())
 
@@ -1675,10 +1696,14 @@ def export_mistakes(authorization: str = Header(default="")):
 
 @app.delete("/sessions/{session_id}")
 def delete_session(session_id: str, authorization: str = Header(default="")):
-    """删除会话及其消息。越权防护：归属校验（防他人会话被匿名删除）。"""
+    """删除会话及其消息。越权防护：归属校验（防他人会话被匿名删除）。
+    #28 收口：匿名会话不允许任何人经 API 删除（匿名身份无凭据，公开可删=可被
+    任意访客清空他人浏览痕迹/污染会话池）；前端「新会话」走 create 覆盖即可。"""
     sess = chat_store.get_session(session_id)
     if sess is None:
         return {"deleted": session_id, "success": False}
+    if (sess.get("user_id") or "anonymous") == "anonymous":
+        raise HTTPException(status_code=403, detail="匿名会话不支持删除")
     _session_owner_guard(sess, _resolve_user(authorization))
     chat_store.delete_session(session_id)
     return {"deleted": session_id, "success": True}
@@ -3860,6 +3885,105 @@ def _forum_require_user(user: dict) -> dict:
     if not user:
         raise HTTPException(status_code=401, detail="请先登录")
     return user
+
+
+# ========== #23 知识导图数据源：题库聚合的题型/知识树（public 只读） ==========
+
+def _kb_tree_rows(teacher_id: str) -> list:
+    """题库 category/knowledge_point 聚合行（含题量），共享题库并入。"""
+    with study_store._connect() as conn:
+        return conn.execute(
+            "SELECT category, knowledge_point, COUNT(*) n FROM question_bank "
+            f"WHERE {study_mod._teacher_scope_sql()} AND enabled=1 "
+            "GROUP BY category, knowledge_point ORDER BY n DESC",
+            (teacher_id,),
+        ).fetchall()
+
+
+def _kb_tree_nodes(rows, keyword: str = "") -> list[dict]:
+    """聚合行 → 三层树：分类 → 知识点组（kp 首段）→ 叶子（kp 细分）。
+    keyword 命中叶子/组/分类名时保留该节点及其祖先链。"""
+    kw = (keyword or "").strip().lower()
+    cats: dict[str, dict] = {}
+
+    def _hit(name: str) -> bool:
+        return bool(kw) and kw in name.lower()
+
+    for r in rows:
+        cat = (r["category"] or "综合").strip() or "综合"
+        kp = (r["knowledge_point"] or "").strip()
+        n = r["n"]
+        c = cats.setdefault(cat, {
+            "node_id": f"c:{cat}", "name": cat, "category": cat,
+            "count": 0, "children": {},
+        })
+        c["count"] += n
+        if not kp:
+            continue
+        parts = kp.split("-", 1)
+        group_name = (parts[0].strip() or kp)
+        leaf_name = (parts[1].strip() if len(parts) > 1 else "") or kp
+        g = c["children"].setdefault(f"g:{cat}:{group_name}", {
+            "node_id": f"g:{cat}:{group_name}", "name": group_name,
+            "count": 0, "children": {},
+        })
+        g["count"] += n
+        if f"k:{cat}:{kp}" not in g["children"]:
+            g["children"][f"k:{cat}:{kp}"] = {
+                "node_id": f"k:{cat}:{kp}", "name": leaf_name,
+                "category": cat, "count": n,
+                "description": f"{kp} · {n} 题",
+            }
+        else:  # 同 kp 多行（理论不会，防御）
+            g["children"][f"k:{cat}:{kp}"]["count"] += n
+            g["children"][f"k:{cat}:{kp}"]["description"] += f"/{n}"
+
+    def _prune(node: dict) -> dict | None:
+        """keyword 过滤：命中自身 → 整棵保留；否则仅保留命中的子孙。"""
+        kids = [ _prune(ch) for ch in node.get("children", {}).values() ]
+        kids = [k for k in kids if k]
+        kept = kids if kids else []
+        if _hit(node["name"]):
+            node["children"] = node.get("children", {})
+            return node
+        if not kw:
+            node["children"] = sorted(kept, key=lambda x: -x.get("count", 0)) if kept else []
+            return node
+        if kept:
+            node["children"] = sorted(kept, key=lambda x: -x.get("count", 0))
+            return node
+        return None
+
+    out = []
+    for c in sorted(cats.values(), key=lambda x: -x.get("count", 0)):
+        pruned = _prune(c)
+        if pruned:
+            out.append(pruned)
+    return out
+
+
+@app.get("/public/knowledge/stats")
+def knowledge_stats(teacher_id: str = "T001", tree_type: str = "knowledge"):
+    """#23 导图页统计卡：节点数（叶子=细分知识点）+ 分类清单。匿名只读。"""
+    rows = _kb_tree_rows(teacher_id)
+    nodes = _kb_tree_nodes(rows)
+    leaves = 0
+    for c in nodes:
+        for g in c.get("children", []):
+            leaves += max(1, len(g.get("children", [])))
+    return {
+        "total": leaves,
+        "categories": [{"category": c["name"], "count": c["count"]} for c in nodes],
+    }
+
+
+@app.get("/public/knowledge/tree")
+def knowledge_tree(teacher_id: str = "T001", tree_type: str = "knowledge",
+                   keyword: str = ""):
+    """#23 题库知识树（knowledge/qtype 两模式同源：均基于题库分类与知识点聚合）。
+    node 契约与 knowledge.html 一致：{node_id, name, category?, description?, children[]}。"""
+    rows = _kb_tree_rows(teacher_id)
+    return {"nodes": _kb_tree_nodes(rows, keyword=keyword)}
 
 
 @app.get("/public/forum/notice")

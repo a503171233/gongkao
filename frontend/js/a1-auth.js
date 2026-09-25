@@ -176,6 +176,11 @@
           closeAuthModal();
           renderAuthArea();
           checkMembershipReminder();
+          // #24 找回密码死路修复：新账号默认无密保，注册后引导设置一次
+          // （跳过也不阻塞——登录后仍可点「密保」补设）
+          global.GK.api('/me/security-question').then(function (sec) {
+            if (sec && sec.has_security === false) openSecuritySetup();
+          }).catch(function () { /* 查询失败不阻塞 */ });
         }, 900);
       } else {
         closeAuthModal();

@@ -294,6 +294,7 @@ function render(nodes, depth) {
       </div>`;
   }).join('');
   box.innerHTML = html;
+  return html;  // #23 嵌套渲染需要返回值（递归调用插值，缺 return 会输出 undefined）
 }
 
 function toggle(id){ collapse.has(id) ? collapse.delete(id) : collapse.add(id); loadRaw(); }

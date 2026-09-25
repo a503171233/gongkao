@@ -21,6 +21,11 @@ from .guard import run_guard, guard_counter
 
 REJECT_TEXT = "该知识点XX老师暂未录入资料库，请勿自行拓展。可以换个具体题型或知识点再问哦。"
 
+
+def reject_text(tcfg) -> str:
+    """#8 文案修复：把占位「XX老师」替换为真实老师名（tcfg 有 teacher_name）。"""
+    return REJECT_TEXT.replace("XX老师", getattr(tcfg, "teacher_name", "") or "老师")
+
 # B8 v2 分级守卫提示文案（warn=轻度提醒 / confirm=二次确认；block 走 REJECT_TEXT）
 GUARD_NOTICES = {
     "warn": "💡 核心内容已通过教学资料校验，部分表述为助教补充讲解，仅供参考。",
@@ -106,7 +111,7 @@ def build_messages(tcfg, hits: list[dict], query: str, history: list[dict] | Non
         teacher_name=tcfg.teacher_name,
         teacher_subject=tcfg.teacher_subject,
         doc_hint=doc_hint,
-        reject=REJECT_TEXT,
+        reject=reject_text(tcfg),
         context=build_context(hits),
     )
     messages = [{"role": "system", "content": system}]
@@ -156,8 +161,8 @@ def _stream_llm(messages, tcfg):
     yield from llm.stream_llm(messages, tcfg)
 
 
-def _gen_reject():
-    yield {"type": "delta", "data": REJECT_TEXT}
+def _gen_reject(tcfg=None):
+    yield {"type": "delta", "data": reject_text(tcfg) if tcfg else REJECT_TEXT}
     yield {"type": "refs", "data": []}
     yield {"type": "done"}
 
@@ -195,8 +200,8 @@ def ask(query: str, teacher_id: str = "T001", stream: bool = False, history: lis
             # 断点续答时检索无命中（如知识库被清空）：不覆盖前端已有内容，静默收尾
             if resume:
                 return _gen_silent_done()
-            return _gen_reject()
-        return {"answer": REJECT_TEXT, "hits": [], "rejected": True}
+            return _gen_reject(tcfg)
+        return {"answer": reject_text(tcfg), "hits": [], "rejected": True}
 
     if store._GLOBAL.embed_provider == "selftest":
         # 离线自测：返回 Top1 片段作为"答案"，验证链路

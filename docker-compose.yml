@@ -17,6 +17,9 @@ services:
       - TEACHER_NAME=${TEACHER_NAME}
       - TEACHER_SUBJECT=${TEACHER_SUBJECT}
       - UPLOAD_SECRET=${UPLOAD_SECRET}
+      # #20 安全修复：token/重置票据签名密钥（强随机，缺省回退历史密钥仅限兼容）
+      - TOKEN_SIGN_KEY=${TOKEN_SIGN_KEY:-}
+      - RESET_TICKET_KEY=${RESET_TICKET_KEY:-}
       # Open API v1 · 开放接口密钥（未配置则 /api/v1/* 返回 503 未启用）
       - OPENAPI_KEY=${OPENAPI_KEY:-}
       - ADMIN_USERNAME=${ADMIN_USERNAME}

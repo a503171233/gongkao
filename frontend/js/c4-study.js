@@ -382,6 +382,29 @@
     openPractice();
   }
 
+  // #22 收藏断头路修复：练习题加入收藏夹（后端 POST /favorites 早已存在，此前前端无任何入口）
+  function addFavorite(questionId) {
+    var d = practiceState.current;
+    if (!d || d.id !== questionId) {
+      showToast('题目已切换，请重新收藏', 'error');
+      return;
+    }
+    var teacherId = GK.store.teacherId || 'T001';
+    global.GK.api('/favorites', {
+      method: 'POST',
+      body: {
+        question: d.question,
+        answer: '',
+        teacher_id: teacherId,
+        refs: [{ question_id: d.id, category: d.category || '' }],
+      }
+    }).then(function () {
+      showToast('⭐ 已加入收藏夹', 'success');
+    }).catch(function (e) {
+      showToast('收藏失败: ' + (e && e.message ? e.message : e), 'error');
+    });
+  }
+
   // -----------------------------------------------------------------
   // #16 错题强化重练：艾宾浩斯「今日巩固」+ 知识点归组
   // -----------------------------------------------------------------
@@ -541,6 +564,7 @@
 
     function renderQuestion(d) {
       var area = document.getElementById('practiceArea');
+      practiceState.current = d;  // #22 供收藏按钮引用当前题
       // 题型标签 + #36 分类徽标
       var typeLabel = { choice: '选择题', judge: '判断题', essay: '简答题' }[d.type] || '练习题';
       var catBadge = d.category
@@ -587,6 +611,7 @@
         '<div style="margin-top:8px;display:flex;gap:8px">' +
         '<button id="submitPractice" style="flex:1;padding:8px;border:none;border-radius:6px;background:#4a6cf7;color:#fff;cursor:pointer">提交</button>' +
         '<button onclick="C4.openPractice()" style="padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">下一题</button>' +
+        (d.id != null ? '<button onclick="C4.addFavorite(' + d.id + ')" title="加入收藏夹" style="padding:8px 12px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">⭐</button>' : '') +
         '</div>' +
         '<div id="practiceResult" style="margin-top:8px"></div>' +
         '</div>' +
@@ -615,9 +640,14 @@
           if (log.score !== null && log.score !== undefined && log.score >= 0) {
             var ok = log.score >= 0.7;
             wrong = !ok;
+            // #4 学习闭环：判分即展示解析（后端随 submit 返回 analysis），无需去错题本翻
+            var analysisHtml = (log.analysis && log.analysis.trim())
+              ? '<div style="margin-top:6px;padding:6px 8px;background:#fff;border:1px solid #e8e8ee;border-radius:6px;font-size:13px;color:#555;white-space:pre-wrap"><b>📖 解析</b><br>' + renderQText(log.analysis) + '</div>'
+              : '';
             result.innerHTML = '<div style="padding:8px;border-radius:6px;background:' + (ok ? '#e6f9f0' : '#fff8f0') + '">' +
               '<strong>' + (ok ? '✓ 回答正确' : '✗ 回答错误') + '</strong>' +
               (log.feedback ? '<br><span style="font-size:13px;color:#666">' + escapeHtml(log.feedback) + '</span>' : '') +
+              analysisHtml +
               '</div>';
           } else if (d.has_answer === false) {
             // 无答案题（仅题干+选项的练习卷）：不判分、不记错题本、不触发 AI 批改
@@ -754,6 +784,7 @@
     exportMistakes: function () { exportCsv('/mistakes/export', '错题本.csv'); },
     showPracticeStats: showPracticeStats,
     regrade: regrade,
+    addFavorite: addFavorite,
     practiceCategory: practiceCategory
   };
   global.GK.c4Ready = true;

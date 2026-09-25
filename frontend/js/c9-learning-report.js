@@ -165,12 +165,17 @@
 
   function renderWeekly(weekly) {
     if (!weekly) return '';
+    var lowSample = (weekly.by_category || []).some(function (c) {
+      return c.total > 0 && c.total < 3 && c.accuracy !== null && c.accuracy < 0.6;
+    });
     var weakHtml = (weekly.weak || []).length
       ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
         weekly.weak.map(function (w) {
           return '<span style="padding:3px 10px;background:#fef2f2;color:#dc2626;border-radius:12px;font-size:12px">' + escapeHtml(w) + '</span>';
         }).join('') + '</div>'
-      : '<p style="color:#999;font-size:12.5px">暂无薄弱分类，继续保持 💪</p>';
+      : (lowSample
+        ? '<p style="color:#999;font-size:12.5px">低正确率的分类题量尚不足 3 题，暂不判定薄弱；多刷几题即可纳入分析 📊</p>'
+        : '<p style="color:#999;font-size:12.5px">暂无薄弱分类，继续保持 💪</p>');
 
     var essay = weekly.essay || {};
     var essayHtml = '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:#666">' +

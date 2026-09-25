@@ -46,6 +46,17 @@ _ITER = 120_000
 ANON_DAILY_LIMIT = int(os.environ.get("ANON_DAILY_LIMIT", "20").strip() or "20")
 ANON_DAILY_ENABLED = os.environ.get("ANON_DAILY_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 
+# 签名密钥（#20 安全修复）：优先环境变量，缺省回退历史密钥仅为兼容存量 token/测试。
+# 生产必须在 .env 配置 TOKEN_SIGN_KEY / RESET_TICKET_KEY（强随机），否则任何人拿到
+# 源码即可伪造登录态。回退时启动会打 WARNING。
+_TOKEN_SIGN_KEY = os.environ.get("TOKEN_SIGN_KEY", "").strip()
+_RESET_TICKET_KEY = os.environ.get("RESET_TICKET_KEY", "").strip()
+
+
+def _reset_key() -> bytes:
+    """重置票据 HMAC 密钥：env 优先，缺省回退历史值。"""
+    return _RESET_TICKET_KEY.encode("utf-8") if _RESET_TICKET_KEY else b"gk-reset"
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -286,7 +297,7 @@ class AuthStore:
             raise ValueError("用户不存在")
         nonce = secrets.token_hex(4)
         payload = f"reset.{row['user_id']}.{int(time.time())}.{nonce}"
-        sig = hmac.new(b"gk-reset", payload.encode(), hashlib.sha256).hexdigest()[:16]
+        sig = hmac.new(_reset_key(), payload.encode(), hashlib.sha256).hexdigest()[:16]
         return f"{payload}.{sig}"
 
     def consume_reset_ticket(self, ticket: str) -> str | None:
@@ -299,7 +310,7 @@ class AuthStore:
             return None
         user_id, ts, nonce, sig = parts[1], parts[2], parts[3], parts[4]
         payload = ".".join(parts[:4])
-        expect = hmac.new(b"gk-reset", payload.encode(), hashlib.sha256).hexdigest()[:16]
+        expect = hmac.new(_reset_key(), payload.encode(), hashlib.sha256).hexdigest()[:16]
         if not hmac.compare_digest(sig, expect):
             return None
         try:
@@ -311,9 +322,11 @@ class AuthStore:
 
     # ---------- token ----------
     def _sign_key(self, ver: int) -> bytes:
-        """签名密钥：ver=0 沿用历史全局密钥 b"gk-auth"（与存量 token 完全兼容）；
-        ver≥1 则掺入版本号，使 logout-all（ver+1）后旧 token 全部失效。"""
-        return b"gk-auth" if ver <= 0 else f"gk-auth:{ver}".encode("utf-8")
+        """签名密钥：优先 TOKEN_SIGN_KEY（env）；ver=0 缺省沿用历史全局密钥 b"gk-auth"
+        （与存量 token 完全兼容）；ver≥1 则掺入版本号，使 logout-all（ver+1）后旧 token
+        全部失效。"""
+        base = _TOKEN_SIGN_KEY.encode("utf-8") if _TOKEN_SIGN_KEY else b"gk-auth"
+        return base if ver <= 0 else f"{base.decode('utf-8')}:{ver}".encode("utf-8")
 
     def _token_ver(self, user_id: str) -> int:
         """读取用户 token 版本号（无记录/缺列时回退 0，平滑兼容旧库）。"""

@@ -79,11 +79,17 @@ check("并发记录 800 次 /x", any(r["path"] == "/x" and r["count"] == 800 for
 import poc.api  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+# #21 监控端点已鉴权：测试进程强制注入 ADMIN_SECRET 供 X-Admin-Secret 通道
+# （容器环境可能已带真实值，故用直接赋值而非 setdefault）
+os.environ["ADMIN_SECRET"] = "test-admin-secret"
+
 client = TestClient(poc.api.app)
 r = client.get("/health")
 check("health 200", r.status_code == 200)
-r2 = client.get("/metrics")
-check("/metrics 200", r2.status_code == 200, str(r2.status_code))
+r_anon = client.get("/metrics")
+check("/metrics 匿名 403（#21 鉴权）", r_anon.status_code == 403, str(r_anon.status_code))
+r2 = client.get("/metrics", headers={"X-Admin-Secret": "test-admin-secret"})
+check("/metrics(secret) 200", r2.status_code == 200, str(r2.status_code))
 d = r2.json()
 check("/metrics JSON 含 uptime/requests/ask", "uptime_seconds" in d and "requests" in d and "ask" in d, str(list(d.keys())))
 check("/metrics 记录到 /health 请求", any(x["path"] == "/health" for x in d["requests"]), str(d["requests"]))
@@ -91,7 +97,7 @@ check("/metrics 含 guard 统计", "guard" in d and "total" in d["guard"], str(l
 # /ask 一次（selftest 离线 mock）
 r3 = client.post("/ask", json={"query": "转折关系怎么做题", "teacher_id": "T001", "stream": False})
 check("带 ask 后 /ask 200", r3.status_code == 200)
-d2 = client.get("/metrics").json()
+d2 = client.get("/metrics", headers={"X-Admin-Secret": "test-admin-secret"}).json()
 check("ask total 递增(selftest 走 ask)", d2["ask"]["total"] >= 1, str(d2["ask"]))
 check("by_teacher 含 T001", d2["by_teacher"].get("T001", 0) >= 1, str(d2["by_teacher"]))
 

@@ -64,8 +64,12 @@ code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)"
 code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/teachers)"
 [ "$code" = "200" ] && ok "前端反代 /api/teachers 200" || bad "前端反代 /api/teachers → $code"
 
-code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/metrics/prometheus)"
-[ "$code" = "200" ] && ok "metrics 200" || bad "metrics → $code"
+# #21 监控端点已加鉴权：携带 X-Admin-Secret（.env）访问；匿名应 403
+adm_secret="$(grep -E '^ADMIN_SECRET=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\"[:space:]')"
+code="$(curl -s -o /dev/null -w '%{http_code}' -H "X-Admin-Secret: $adm_secret" http://localhost:3000/api/metrics/prometheus)"
+[ "$code" = "200" ] && ok "metrics(admin) 200" || bad "metrics(admin) → $code"
+code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/metrics)"
+[ "$code" = "403" ] && ok "metrics 匿名拦截 403" || bad "metrics 匿名 → $code（应为403）"
 
 echo "==== [4/4] 数据抽查 ===="
 qcount="$(docker exec gongkao-backend python -c "

@@ -32,7 +32,7 @@
   <div id="info">加载中…</div>
   <div id="authArea"></div>
   <button id="c4StudyBtn" onclick="C4.openPractice()">📚 练习</button>
-  <button id="c4ReportBtn" onclick="C4.openReport()">📊 报告</button>
+  <button id="c4ReportBtn" onclick="C4.openReport()">📊 练习统计</button>
   <button id="c4FavBtn" onclick="C4.openFavorites()">📌 收藏</button>
   <button id="c4MistBtn" onclick="C4.openMistakes()">❌ 错题本</button>
   <button id="c5MockBtn" onclick="C5.openMockExam()">📝 模考</button>
@@ -62,21 +62,22 @@
 
 <!-- 登录/注册模态框 -->
 <div id="authModal" class="modal-mask hidden">
-  <div class="modal">
+  <!-- #9 form 化：回车可提交，浏览器密码管理器可识别 -->
+  <form class="modal" id="authForm">
     <h2 id="authTitle">登录</h2>
     <div class="err" id="authErr"></div>
     <div class="ok hidden" id="authOk"></div>
-    <input id="authUsername" type="text" placeholder="用户名" autocomplete="off">
-    <input id="authPassword" type="password" placeholder="密码（至少 6 位）">
+    <input id="authUsername" type="text" placeholder="用户名" autocomplete="username">
+    <input id="authPassword" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
     <div class="row">
-      <button class="cancel" onclick="closeAuthModal()">取消</button>
-      <button class="submit" id="authSubmitBtn">登录</button>
+      <button class="cancel" type="button" onclick="closeAuthModal()">取消</button>
+      <button class="submit" id="authSubmitBtn" type="submit">登录</button>
     </div>
     <div class="divider"><span>或</span></div>
-    <button class="gitee-btn" id="giteeLoginBtn" onclick="giteeLogin()">🦊 使用 Gitee 登录</button>
+    <button class="gitee-btn" id="giteeLoginBtn" type="button" onclick="giteeLogin()">🦊 使用 Gitee 登录</button>
     <div class="switch" id="authSwitch">没有账号？去注册</div>
     <div class="switch" style="margin-top:2px;font-size:12px;color:#888;cursor:pointer" onclick="GK.openForgotPassword()">忘记密码？找回</div>
-  </div>
+  </form>
 </div>
 
 <script src="js/a4-request.js?v=20260924a" defer></script>
@@ -155,6 +156,9 @@ const authSwitchEl = document.getElementById('authSwitch');
 const authPwdEl = document.getElementById('authPassword');
 const authModalEl = document.getElementById('authModal');
 if (authSubmitBtn) authSubmitBtn.onclick = authAction;
+// #9 form 化：回车提交（submit 按钮在 form 内默认 type=submit，拦截原生刷新）
+const authFormEl = document.getElementById('authForm');
+if (authFormEl) authFormEl.onsubmit = (e) => { e.preventDefault(); authAction(); };
 if (authSwitchEl) authSwitchEl.onclick = () => openAuthModal(
   (authSwitchEl.textContent || '').indexOf('去注册') !== -1 ? 'register' : 'login');
 if (authPwdEl) authPwdEl.onkeydown = e => { if (e.key === 'Enter') authAction(); };
@@ -169,6 +173,9 @@ document.addEventListener('DOMContentLoaded', function () {
   if (window.C7 && typeof C7.init === 'function') { try { C7.init(); } catch (e) {} }  // #19 消息角标轮询
   try {
     var hasToken = !!(localStorage.getItem('gk_token') || localStorage.getItem('authToken'));
+    // #6 管理员入口不暴露给未登录学员（接口本有权限拦截，仅修 UI 越权展示）
+    var uploadbar = document.getElementById('uploadbar');
+    if (uploadbar) uploadbar.style.display = hasToken ? '' : 'none';
     if (hasToken && new URLSearchParams(location.search).get('mt') === 'mock' &&
         window.C5 && typeof C5.openMockExam === 'function') {
       setTimeout(function () { try { C5.openMockExam(); } catch (e) {} }, 900);

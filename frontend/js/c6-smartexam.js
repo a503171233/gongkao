@@ -280,6 +280,10 @@
         }
       });
       var btn = this;
+      // #12 防误触：仍有未作答的客观题时二次确认（未答题按错误计分，整卷判定不可逆）
+      if (missing > 0 && !global.confirm('还有 ' + missing + ' 道题未作答，未答题将按错误计分。确定提交吗？')) {
+        return;
+      }
       btn.disabled = true;
       btn.textContent = '评分中...';
       global.GK.api('/smartexam/papers/' + state.paperId + '/submit', {

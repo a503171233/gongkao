@@ -65,10 +65,10 @@ d4 = r4.json()
 check("GET /sessions: 200", r4.status_code == 200, str(r4.status_code))
 check("GET /sessions: 会话数>=2", len(d4.get("sessions", [])) >= 2, str(len(d4.get("sessions", []))))
 
-# 6) DELETE /sessions/{sid}
+# 6) DELETE /sessions/{sid} —— #28 收口：匿名会话不允许经 API 删除
 r5 = client.delete(f"/sessions/{sid}")
-check("DELETE /sessions: 200", r5.status_code == 200, str(r5.status_code))
-check("DELETE /sessions: 删除后消息清空", len(store.get_messages(sid)) == 0)
+check("DELETE /sessions: 匿名删匿名会话 403（#28）", r5.status_code == 403, str(r5.status_code))
+check("DELETE /sessions: 拒绝后消息仍在", len(store.get_messages(sid)) > 0)
 
 # 7) 健康检查不受影响
 r6 = client.get("/health")
