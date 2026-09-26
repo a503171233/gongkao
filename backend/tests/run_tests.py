@@ -22,7 +22,7 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 TESTS = BACKEND / "tests"
 
-PYTEST_STYLE = {"test_36_practice.py", "test_mockexam.py"}
+PYTEST_STYLE = {"test_36_practice.py", "test_mockexam.py", "test_payment_hardening.py"}
 ONLINE_TESTS = {"online_smoke.py", "online_kernel_8mods.py"}
 
 

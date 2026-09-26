@@ -31,6 +31,8 @@ from . import store
 from . import admin as admin_biz
 from .answer import ask as rag_ask
 from .chat import ChatStore
+from . import fenbi_bind
+from .fenbi_bind import FenbiBindStore, run_analysis
 from .guard import guard_counter
 from .metrics import metrics
 from .models import (
@@ -5346,3 +5348,230 @@ async def audio_transcriptions(request: Request):
         raise HTTPException(status_code=413, detail="视频文件超过 100MB 上限")
     resp = wc.audio.transcriptions.create(model=model, file=("audio", raw, f.content_type or "audio/mpeg"))
     return {"text": resp.text}
+
+# ---------- #17 粉笔账号绑定 + 错题采集 + AI 提升计划 ----------
+fenbi_bind_store = FenbiBindStore()
+_fenbi_trigger_lock = threading.Lock()
+
+
+def _fenbi_llm_call(messages):
+    """任务书 LLM 通道：注册表默认模型优先（复用批改链路），输出长文 4000。"""
+    tcfg = cfg.get_teacher("T001")
+    return _grade_llm_call(messages, tcfg, max_tokens=4000)
+
+
+def _analysis_view(a: dict | None) -> dict | None:
+    """分析记录 → 前端视图（JSON 字段解析；错误信息透出）。"""
+    if not a:
+        return None
+    out = {k: a.get(k) for k in ("id", "status", "stage", "progress",
+                                 "total_mistakes", "error", "created_at",
+                                 "done_at")}
+    try:
+        out["distribution"] = json.loads(a.get("distribution") or "[]")
+    except ValueError:
+        out["distribution"] = []
+    try:
+        out["report"] = json.loads(a.get("report") or "{}")
+    except ValueError:
+        out["report"] = {}
+    return out
+
+
+@app.get("/me/fenbi/binding")
+def me_fenbi_binding(authorization: str = Header(default="")):
+    """绑定状态 + 最近一次分析（进度/任务书）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    b = fenbi_bind_store.get_binding(user["user_id"])
+    latest = _analysis_view(fenbi_bind_store.latest_analysis(user["user_id"]))
+    if latest and latest["status"] == "done" and latest.get("report"):
+        latest["wrong_count"] = fenbi_bind_store.wrong_count(user["user_id"])
+    return {"binding": b, "latest": latest}
+
+
+class FenbiCookieReq(BaseModel):
+    cookie: str
+
+
+@app.post("/me/fenbi/cookie")
+def me_fenbi_cookie(req: FenbiCookieReq,
+                    authorization: str = Header(default="")):
+    """Cookie 兜底绑定：粘贴 document.cookie → 实测校验通过才落库。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    cookie = str(req.cookie or "").strip()
+    if len(cookie) < 20:
+        raise HTTPException(400, "Cookie 内容无效（请在粉笔网页登录后复制 document.cookie）")
+    try:
+        info = fenbi_bind.check_cookie(cookie)
+    except fenbi_bind.fenbi.FenbiAuthError:
+        raise HTTPException(400, "Cookie 无效或已失效，请重新复制")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"粉笔校验失败，请稍后重试（{str(e)[:60]}）")
+    fenbi_bind_store.upsert_binding(user["user_id"], cookie)
+    return {"ok": True, "total_mistakes": info.get("total_mistakes", 0),
+            "binding": fenbi_bind_store.get_binding(user["user_id"])}
+
+
+@app.post("/me/fenbi/unbind")
+def me_fenbi_unbind(authorization: str = Header(default="")):
+    """解除绑定（清 cookie 置 none；快照与历史报告保留）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    fenbi_bind_store.upsert_binding(user["user_id"], "", status="none",
+                                    check_ok=0)
+    return {"ok": True}
+
+
+@app.post("/me/fenbi/analyze")
+def me_fenbi_analyze(authorization: str = Header(default="")):
+    """触发错题采集+AI 提升计划（后台线程；冷却 6h + 每用户单 running）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    uid = user["user_id"]
+    cookie = fenbi_bind_store.get_cookie(uid)
+    if not cookie or not fenbi_bind_store.get_binding(uid)             or fenbi_bind_store.get_binding(uid).get("status") != "bound":
+        raise HTTPException(400, "请先绑定粉笔账号")
+    with _fenbi_trigger_lock:
+        aid, err = fenbi_bind_store.start_analysis(uid)
+    if err:
+        raise HTTPException(429, err)
+    threading.Thread(target=run_analysis, daemon=True,
+                     args=(fenbi_bind_store, uid, aid, _fenbi_llm_call)).start()
+    return {"ok": True, "analysis_id": aid}
+
+
+@app.get("/me/fenbi/analysis/latest")
+def me_fenbi_analysis_latest(authorization: str = Header(default="")):
+    """分析进度/任务书轮询。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    latest = _analysis_view(fenbi_bind_store.latest_analysis(user["user_id"]))
+    if latest and latest["status"] == "done":
+        latest["wrong_count"] = fenbi_bind_store.wrong_count(user["user_id"])
+    return {"latest": latest}
+
+
+# ---------- #17b 粉笔登录会话（验证码/扫码 playwright） ----------
+from .fenbi_login import LoginSessionManager  # noqa: E402
+
+
+def _fenbi_on_bound(user_id: str, cookie: str, phone: str) -> None:
+    """登录会话成功回调：绑定落库（掩码存 phone）。"""
+    fenbi_bind_store.upsert_binding(user_id, cookie, phone=phone)
+
+
+fenbi_login_manager = LoginSessionManager(fenbi_bind_store,
+                                          on_bound=_fenbi_on_bound)
+
+
+class FenbiLoginSmsReq(BaseModel):
+    phone: str
+
+
+class FenbiLoginSidReq(BaseModel):
+    sid: str
+
+
+class FenbiLoginCodeReq(BaseModel):
+    sid: str
+    code: str
+
+
+class FenbiLoginDragReq(BaseModel):
+    sid: str
+    dist: float
+
+
+@app.post("/me/fenbi/login/sms")
+def me_fenbi_login_sms(req: FenbiLoginSmsReq,
+                       authorization: str = Header(default="")):
+    """发起验证码登录会话（起 chromium → 发短信；触发滑块返回截图待人拖）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.start_sms(user["user_id"], req.phone)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/me/fenbi/login/qrcode")
+def me_fenbi_login_qrcode(authorization: str = Header(default="")):
+    """发起扫码登录会话（返回二维码截图，轮询 status 至 success）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.start_qrcode(user["user_id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/me/fenbi/login/status")
+def me_fenbi_login_status(sid: str = "",
+                          authorization: str = Header(default="")):
+    """会话状态轮询：state/shot(截图)/error/hint/phone(掩码)。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.status(sid, user["user_id"])
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/me/fenbi/login/code")
+def me_fenbi_login_code(req: FenbiLoginCodeReq,
+                        authorization: str = Header(default="")):
+    """提交短信验证码。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.submit_code(req.sid, user["user_id"],
+                                               req.code)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/me/fenbi/login/drag")
+def me_fenbi_login_drag(req: FenbiLoginDragReq,
+                        authorization: str = Header(default="")):
+    """提交滑块拖动距离（人机协作：前端滑条 → 后端真人轨迹拖动）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.submit_drag(req.sid, user["user_id"],
+                                               req.dist)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/me/fenbi/login/cancel")
+def me_fenbi_login_cancel(req: FenbiLoginSidReq,
+                          authorization: str = Header(default="")):
+    """取消登录会话。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.cancel(req.sid, user["user_id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/admin/fenbi/bindings")
+def admin_fenbi_bindings(authorization: str = Header(default="")):
+    """管理端：学员粉笔绑定列表（仅掩码，不含 cookie 全文）。"""
+    admin = _admin_user(authorization)
+    if not admin:
+        raise HTTPException(403, "需要管理员权限")
+    return {"bindings": fenbi_bind_store.list_bindings()}

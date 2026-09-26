@@ -15,3 +15,7 @@ fastembed>=0.3.0
 # 只装 python 包、不执行 scrapling install（浏览器二进制不装——2C 服务器不可承受）；
 # 未安装/导入失败时 fetch 能力自动退化为 builtin（httpx），行为不变。
 scrapling[fetchers]>=0.4.0
+# 批次17 粉笔登录会话（学员绑定）：playwright 驱动 chromium；
+# 浏览器二进制由 Dockerfile `playwright install --with-deps chromium` 安装
+# （登录会话短命按需启动，非常驻；服务器 32C/123GB 资源实测充裕）
+playwright>=1.63.0
