@@ -371,6 +371,13 @@ a { color: var(--wood-deep); text-decoration: none; }
   .modal-mask { padding: 10px; }
   .modal-box { width: 100%; }
 }
+/* 批次24 · 375 极小屏兜底：表格横滑不撑破、触控 40px */
+@media (max-width: 480px) {
+  .tbl-wrap, .table-wrap, table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .btn, button, .nav-item { min-height: 40px; }
+  #content { padding: 12px; }
+  .cards { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

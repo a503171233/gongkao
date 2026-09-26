@@ -38,6 +38,21 @@
   .card.warn .value { color: var(--bad); }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  /* ============ 批次24 · 移动端最高标准 ============ */
+  @media (max-width: 480px) {
+    .dash-wrap { padding: 16px 12px 34px; }
+    .dash-head h2 { font-size: 20px; }
+    .dash-tools { gap: 8px; }
+    .dash-tools input[type=password] { width: 100%; flex: 1 1 100%; min-height: 40px; }
+    .dash-tools .btn, .dash-tools select { min-height: 40px; }
+    .cards { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .card { padding: 13px 12px; }
+    .card .value { font-size: 21px; }
+    .panel { padding: 14px 12px; border-radius: 12px; }
+    .bar-row .name { width: 84px; font-size: 12px; }
+    table { font-size: 12px; }
+    th, td { padding: 6px 7px; }
+  }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-1); }
   .panel h3 { font-size: 15px; margin-bottom: 12px; color: var(--ink); font-weight: 700; display: flex; align-items: center; gap: 8px; }
   /* 覆盖 app.css 的居中大空态 .hint（看板内是行内小注释） */

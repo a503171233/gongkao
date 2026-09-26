@@ -166,6 +166,25 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
   .wrap { padding: 16px 12px 50px; }
   .detail { padding: 16px; }
 }
+
+/* ============ 批次24 · 移动端最高标准 ============ */
+@media (max-width: 480px) {
+  .knav { flex-wrap: nowrap; padding: 9px 12px; gap: 10px; }
+  .brand { flex: 0 0 auto; font-size: 14.5px; gap: 8px; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
+  .knav .links {
+    margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; white-space: nowrap;
+  }
+  .knav .links::-webkit-scrollbar { display: none; }
+  .knav .links a {
+    flex: 0 0 auto; white-space: nowrap; font-size: 13px;
+    padding: 8px 10px; min-height: 38px; display: inline-flex; align-items: center;
+  }
+  .wrap { padding: 14px 12px 46px; }
+  .detail { padding: 13px; border-radius: 12px; }
+  button, .head-btn, .btn { min-height: 40px; }
+}
 </style>
 </head>
 <body>

@@ -191,6 +191,45 @@ a { color: var(--wood-deep); text-decoration: none; }
   .cards { grid-template-columns: 1fr 1fr; }
   .kn-row .desc { max-width: 120px; }
 }
+
+/* ============ 批次24 · 移动端最高标准（375px 零溢出） ============ */
+@media (max-width: 480px) {
+  /* 顶栏：单行 + 链接条横滑不折行（修按钮文字竖排） */
+  .knav { flex-wrap: nowrap; padding: 9px 12px; gap: 10px; }
+  .brand { flex: 0 0 auto; font-size: 14.5px; gap: 8px; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
+  .knav .links {
+    margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; white-space: nowrap;
+  }
+  .knav .links::-webkit-scrollbar { display: none; }
+  .knav .links a {
+    flex: 0 0 auto; white-space: nowrap; font-size: 13px;
+    padding: 8px 10px; min-height: 38px; display: inline-flex; align-items: center;
+  }
+  /* 页头紧凑 */
+  .page-head h1 { font-size: 20px; }
+  .page-head p { font-size: 12px; }
+  /* 统计卡：三列小卡（不再双列挤压） */
+  .cards { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .card { padding: 12px 12px; border-radius: 12px; }
+  .cards .card { padding: 11px 10px; }
+  /* 工具栏：控件全宽、触控 40px */
+  .toolbar { gap: 8px; }
+  .toolbar select, .toolbar input[type=search], .toolbar .head-btn {
+    min-height: 40px; font-size: 14px;   /* 16px 防 iOS 聚焦缩放，14px 由页面 scale */
+  }
+  .toolbar select, .toolbar input[type=search] { flex: 1 1 130px; }
+  .toolbar .grow { min-width: 0; flex: 1 1 100%; }
+  /* 树行：徽标紧凑、desc 字号微升保可读 */
+  .kn-row { gap: 7px; }
+  .kn-row .badge { white-space: nowrap; flex: 0 0 auto; }
+  .kn-desc { font-size: 12.5px; line-height: 1.7; margin-left: 8px; }
+  /* 学习计划：7 天卡单列 */
+  .plan-days { grid-template-columns: 1fr; }
+  /* 掌握度图例换行更紧凑 */
+  .mlegend { font-size: 10.5px; }
+}
 </style>
 </head>
 <body>

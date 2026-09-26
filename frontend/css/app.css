@@ -67,7 +67,7 @@ a:hover { color: var(--wood-deep); }
 .nav-links { display: flex; gap: 6px; margin-left: auto; align-items: center; flex-wrap: wrap; }
 .nav-links a { color: var(--ink-2); font-weight: 500; font-size: 14.5px; padding: 8px 14px; border-radius: 10px; transition: background .25s var(--spring), color .25s var(--spring); }
 .nav-links a:hover { background: rgba(139,94,60,.08); color: var(--wood-deep); }
-.nav-cta { background: var(--wood); color: #fffaf0 !important; box-shadow: var(--shadow-1); }
+.nav-cta { background: var(--wood); color: #fffaf0 !important; box-shadow: var(--shadow-1); padding: 8px 16px; border-radius: 10px; font-weight: 600; font-size: 14px; flex: 0 0 auto; white-space: nowrap; }
 .nav-cta:hover { background: var(--wood-deep); }
 
 .hero { max-width: 1120px; margin: 0 auto; padding: 64px 24px 44px; text-align: center; animation: rise .7s var(--spring) both; }
@@ -280,4 +280,42 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
     transition-duration: .01ms !important;
   }
   .glass-nav, header { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--paper); }
+}
+
+/* ============================================================
+   批次24 · 移动端统一治理（最高标准）
+   目标：375px 零溢出 / 导航不折行 / 触控目标≥40px / 字号可读
+   断点：480px（手机竖屏）
+   ============================================================ */
+@media (max-width: 480px) {
+  /* ---- 通用导航：链接条横滑、不折行 ---- */
+  .nav-links, .knav .links {
+    display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; white-space: nowrap; flex-wrap: nowrap;
+  }
+  .nav-links::-webkit-scrollbar, .knav .links::-webkit-scrollbar { display: none; }
+  .nav-links a, .knav .links a {
+    flex: 0 0 auto; white-space: nowrap; font-size: 13.5px;
+    padding: 9px 12px; min-height: 40px; display: inline-flex; align-items: center;
+  }
+  .nav-cta { flex: 0 0 auto; white-space: nowrap; }
+
+  /* ---- 弹窗小屏自适应 ---- */
+  .modal { width: min(350px, calc(100vw - 32px)); padding: 22px 20px; }
+
+  /* ---- 触控基础：按钮/输入≥40px ---- */
+  button, .head-btn, .btn { min-height: 40px; }
+
+  /* ---- 横向滚动兜底：表格/代码不撑破页面 ---- */
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  pre { overflow-x: auto; }
+
+  /* ---- 全屏面板背景适配（iOS 安全区） ---- */
+  #c4Panel, .c-panel {
+    left: 0 !important; right: 0 !important; width: 100vw !important;
+    max-width: 100vw !important; border-radius: 0 !important;
+    padding-left: max(16px, env(safe-area-inset-left)) !important;
+    padding-right: max(16px, env(safe-area-inset-right)) !important;
+  }
+  body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 }
