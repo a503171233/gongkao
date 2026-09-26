@@ -54,12 +54,13 @@ def main() -> int:
     if "--limit" in sys.argv:
         limit = int(sys.argv[sys.argv.index("--limit") + 1])
 
-    cfg = fenbi.fenbi_config()
-    cookie = cfg.get("cookie") or ""
+    # 注意：fenbi_config() 是管理端脱敏只读（cookie 被弹出），必须走内部 _load_rt
+    _rt = fenbi._load_rt().get(fenbi._CFG_KEY) or {}
+    cookie = str(_rt.get("cookie") or "")
     if not cookie:
         print("✗ 粉笔 Cookie 缺失（管理端「粉笔题库直采」粘贴 document.cookie 后重试）")
         return 1
-    interval = float(cfg.get("min_interval_secs") or 2)
+    interval = float(_rt.get("min_interval_secs") or 2)
 
     st = StudyStore()
     with st._connect() as conn:
@@ -89,12 +90,19 @@ def main() -> int:
             total_gap += len(items)
             continue
         key = paper.get("key") or paper.get("exerciseKey") or paper.get("id")
-        try:
-            raws = fenbi.fetch_paper(cookie, key, interval=interval)
-        except Exception as e:  # noqa: BLE001
-            print(f"⚠ 拉卷失败 {src[:40]}: {type(e).__name__} {str(e)[:60]}")
+        raws = None
+        for att in range(4):
+            try:
+                raws = fenbi.fetch_paper(cookie, key, interval=max(interval, 8.0))
+                break
+            except Exception as e:  # noqa: BLE001
+                print(f"⚠ 拉卷失败(第{att+1}次) {src[:36]}: {str(e)[:50]}，休眠120s")
+                time.sleep(120)
+        if raws is None:
+            print(f"⚠ 放弃 {src[:40]}")
             total_gap += len(items)
             continue
+        time.sleep(45)  # 卷间冷却：连续密集 getExercise 会触发粉笔风控 400
         # 粉笔侧对齐键表
         remote = {}
         for raw in raws or []:
