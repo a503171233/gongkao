@@ -1399,14 +1399,16 @@ class StudyStore:
             from poc.knowledge import get_knowledge_store
             ks = get_knowledge_store()
         tree = ks.get_tree(teacher_id, "", "knowledge")
+        # 批次23 四层树：掌握度锚定「知识点层」（模块0/章节1/知识点2），
+        # 不再下钻考点层（depth3）——词根按知识点名匹配题库标注
         leaves: list[dict] = []
 
-        def _walk(nodes: list[dict]) -> None:
+        def _walk(nodes: list[dict], depth: int = 0) -> None:
             for n in nodes or []:
-                if n.get("children"):
-                    _walk(n["children"])
-                else:
+                if depth == 2:
                     leaves.append(n)
+                elif n.get("children"):
+                    _walk(n["children"], depth + 1)
 
         _walk(tree.get("nodes") or [])
         if not leaves:
@@ -1446,18 +1448,19 @@ class StudyStore:
     _PLAN_TTL_DAYS = 7
 
     def _plan_leaves(self, ks, teacher_id: str) -> list[dict]:
-        """收集知识树叶（含顶层模块归属）：[{node_id, name, module}]。"""
+        """收集「知识点层」节点（批次23 四层树：模块0/章节1/知识点2）：
+        [{node_id, name, module}]。考点层不进计划。"""
         tree = ks.get_tree(teacher_id, "", "knowledge")
         leaves: list[dict] = []
 
-        def _walk(nodes: list[dict], module: str = "") -> None:
+        def _walk(nodes: list[dict], module: str = "", depth: int = 0) -> None:
             for n in nodes or []:
                 mod = module or n["name"]
-                if n.get("children"):
-                    _walk(n["children"], mod)
-                else:
+                if depth == 2:
                     leaves.append({"node_id": n["node_id"], "name": n["name"],
                                    "module": mod})
+                elif n.get("children"):
+                    _walk(n["children"], mod, depth + 1)
 
         _walk(tree.get("nodes") or [])
         return leaves

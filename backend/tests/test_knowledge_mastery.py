@@ -129,8 +129,10 @@ a_ks = poc.api.knowledge_store if hasattr(poc.api, "knowledge_store") else None
 if a_ks is None:
     from poc.knowledge import get_knowledge_store
     a_ks = get_knowledge_store()
+# 批次23 四层树：掌握度锚定「知识点层」（模块→章节→知识点），API 段同步 3 层结构
 aroot = a_ks.create_node("T888", "言语理解与表达", category="模块")
-aleaf = a_ks.create_node("T888", "主旨概括", parent_id=aroot["node_id"], category="言语理解与表达")
+achap = a_ks.create_node("T888", "片段阅读", parent_id=aroot["node_id"], category="言语理解与表达")
+aleaf = a_ks.create_node("T888", "主旨概括", parent_id=achap["node_id"], category="片段阅读")
 aq = poc.api.study_store.add_question("T888", "choice", "主旨题1：意在说明？", "A",
                                       options=["A. 甲", "B. 乙", "C. 丙", "D. 丁"],
                                       analysis="找中心句", category="言语理解",
