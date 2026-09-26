@@ -51,7 +51,7 @@
   function showToast(msg, type) {
     var div = document.createElement('div');
     div.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;box-shadow:0 2px 12px rgba(0,0,0,.15);';
-    div.style.background = type === 'error' ? '#e5484d' : (type === 'success' ? '#30a46c' : '#4a6cf7');
+    div.style.background = type === 'error' ? 'var(--bad)' : (type === 'success' ? 'var(--good)' : 'var(--wood)');
     div.textContent = msg;
     document.body.appendChild(div);
     setTimeout(function () { div.remove(); }, 3000);
@@ -80,25 +80,25 @@
       if (!box) return;
       var acc = (s.accuracy == null) ? '—' : Math.round(s.accuracy * 100) + '%';
       var byT = (s.by_teacher || []).map(function (t) {
-        return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #e5e7eb;font-size:13px">' +
+        return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line-2);font-size:13px">' +
           '<span>' + escapeHtml(t.teacher_id) + '</span>' +
           '<span>' + t.n + ' 题 · 正确 ' + (t.ok || 0) + (t.pending ? ' · ' + t.pending + ' 待批' : '') + '</span></div>';
       }).join('');
       var days = (s.recent_days || []).map(function (d) {
-        return '<span style="display:inline-block;margin:2px 6px 0 0;padding:3px 8px;border-radius:8px;background:#f0f4ff;font-size:12px">' +
+        return '<span style="display:inline-block;margin:2px 6px 0 0;padding:3px 8px;border-radius:8px;background:var(--gold-soft);font-size:12px">' +
           escapeHtml(d.d.slice(5)) + ' · ' + d.n + '题</span>';
       }).join('');
       box.innerHTML =
-        '<div style="padding:12px;background:#f8faff;border-radius:8px;margin-bottom:10px">' +
+        '<div style="padding:12px;background:var(--card-2);border-radius:8px;margin-bottom:10px">' +
           '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">' +
-            '<div><div style="font-size:12px;color:#888">累计练习</div><div style="font-size:22px;font-weight:700;color:#4a6cf7">' + s.total + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">客观正确率</div><div style="font-size:22px;font-weight:700;color:#30a46c">' + acc + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">已批改</div><div style="font-size:22px;font-weight:700">' + s.graded + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">累计练习</div><div style="font-size:22px;font-weight:700;color:var(--wood)">' + s.total + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">客观正确率</div><div style="font-size:22px;font-weight:700;color:var(--good)">' + acc + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">已批改</div><div style="font-size:22px;font-weight:700">' + s.graded + '</div></div>' +
           '</div>' +
-          '<div style="font-size:12px;color:#888;margin-bottom:4px">按老师</div>' + (byT || '<div style="font-size:13px;color:#999">暂无练习记录</div>') +
-          (days ? '<div style="font-size:12px;color:#888;margin:8px 0 4px">近 7 天</div><div>' + days + '</div>' : '') +
+          '<div style="font-size:12px;color:var(--ink-3);margin-bottom:4px">按老师</div>' + (byT || '<div style="font-size:13px;color:var(--ink-3)">暂无练习记录</div>') +
+          (days ? '<div style="font-size:12px;color:var(--ink-3);margin:8px 0 4px">近 7 天</div><div>' + days + '</div>' : '') +
         '</div>' +
-        '<button onclick="C4.openPractice()" style="padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">返回练习</button>';
+        '<button onclick="C4.openPractice()" style="padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">返回练习</button>';
     }).catch(function (e) {
       showToast('统计加载失败: ' + (e && e.message ? e.message : e), 'error');
     });
@@ -132,13 +132,13 @@
 
     container.innerHTML = '<h3>📌 我的收藏</h3>' +
       '<div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">' +
-        '<select onchange="C4.filterFavGroup(this.value)" style="padding:5px 8px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;max-width:130px"></select>' +
-        '<button onclick="C4.printFavorites()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
-        '<button onclick="C4.exportFavorites()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">⬇ 导出 CSV</button>' +
-        '<button onclick="C4.docxFavorites()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
+        '<select onchange="C4.filterFavGroup(this.value)" style="padding:5px 8px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer;font-size:12px;max-width:130px"></select>' +
+        '<button onclick="C4.printFavorites()" style="padding:5px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
+        '<button onclick="C4.exportFavorites()" style="padding:5px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">⬇ 导出 CSV</button>' +
+        '<button onclick="C4.docxFavorites()" style="padding:5px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
       '</div>' +
       '<div id="favList" style="margin-top:8px"></div>' +
-      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button>';
+      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button>';
 
     // 分组下拉选项（失败不阻断列表渲染）
     global.GK.api('/favorites/groups').then(function (d) {
@@ -156,25 +156,25 @@
       var el = document.getElementById('favList');
       if (!el) return;
       if (!list.length) {
-        el.innerHTML = '<p style="color:#999">' + (_favGroup ? '该分组暂无收藏' : '暂无收藏') + '</p>';
+        el.innerHTML = '<p style="color:var(--ink-3)">' + (_favGroup ? '该分组暂无收藏' : '暂无收藏') + '</p>';
         return;
       }
       el.innerHTML = '';
       list.forEach(function (f) {
         var div = document.createElement('div');
-        div.style.cssText = 'padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;';
+        div.style.cssText = 'padding:12px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px;';
         div.innerHTML = '<div style="font-weight:600;margin-bottom:4px;white-space:pre-wrap">' + renderQText(f.question) + '</div>' +
-          '<div style="font-size:13px;color:#666;margin-bottom:6px">' + escapeHtml(f.answer.substring(0, 100)) + '...</div>' +
+          '<div style="font-size:13px;color:var(--ink-2);margin-bottom:6px">' + escapeHtml(f.answer.substring(0, 100)) + '...</div>' +
           (f.fav_group
-            ? '<div style="font-size:12px;color:#4a6cf7;margin-bottom:6px">📁 ' + escapeHtml(f.fav_group) + '</div>'
+            ? '<div style="font-size:12px;color:var(--wood);margin-bottom:6px">📁 ' + escapeHtml(f.fav_group) + '</div>'
             : '') +
-          '<button onclick="C4.setFavGroup(' + f.id + ')" style="padding:4px 10px;margin-right:6px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">📁 改组</button>' +
-          '<button onclick="C4.deleteFavorite(' + f.id + ')" style="padding:4px 10px;border:1px solid #e5484d;color:#e5484d;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">取消收藏</button>';
+          '<button onclick="C4.setFavGroup(' + f.id + ')" style="padding:4px 10px;margin-right:6px;border:1px solid var(--wood);color:var(--wood);border-radius:4px;background:#fff;cursor:pointer;font-size:12px">📁 改组</button>' +
+          '<button onclick="C4.deleteFavorite(' + f.id + ')" style="padding:4px 10px;border:1px solid var(--bad);color:var(--bad);border-radius:4px;background:#fff;cursor:pointer;font-size:12px">取消收藏</button>';
         el.appendChild(div);
       });
     }).catch(function (e) {
       var el = document.getElementById('favList');
-      if (el) el.innerHTML = '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>';
+      if (el) el.innerHTML = '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>';
     });
   }
 
@@ -264,34 +264,34 @@
 
     container.innerHTML = '<h3>❌ 错题本</h3>' +
       '<div style="margin:8px 0;display:flex;gap:6px">' +
-        '<button onclick="C4.printMistakes()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
-        '<button onclick="C4.docxMistakes()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
-        '<button onclick="C4.exportMistakes()" style="padding:5px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">⬇ 导出 CSV</button>' +
+        '<button onclick="C4.printMistakes()" style="padding:5px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🖨 导出 PDF</button>' +
+        '<button onclick="C4.docxMistakes()" style="padding:5px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📄 导出 DOCX</button>' +
+        '<button onclick="C4.exportMistakes()" style="padding:5px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">⬇ 导出 CSV</button>' +
       '</div>' +
       '<div id="mistakeList" style="margin-top:8px"></div>' +
-      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button>';
+      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button>';
 
     global.GK.api('/mistakes').then(function (d) {
       var list = d.mistakes || [];
       var el = document.getElementById('mistakeList');
       if (!list.length) {
-        el.innerHTML = '<p style="color:#999">暂无错题</p>';
+        el.innerHTML = '<p style="color:var(--ink-3)">暂无错题</p>';
         return;
       }
       list.forEach(function (m) {
         var div = document.createElement('div');
-        div.style.cssText = 'padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;background:#fff8f0;';
+        div.style.cssText = 'padding:12px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px;background:#fff8f0;';
         div.innerHTML = '<div style="font-weight:600;margin-bottom:4px;white-space:pre-wrap">问：' + renderQText(m.question) + '</div>' +
-          '<div style="font-size:13px;color:#666;margin-bottom:4px">我的答案：' + escapeHtml(m.user_answer || '无') + '</div>' +
-          '<div style="font-size:13px;color:#30a46c;margin-bottom:6px">正确讲解：' + escapeHtml(m.correct_note) + '</div>' +
+          '<div style="font-size:13px;color:var(--ink-2);margin-bottom:4px">我的答案：' + escapeHtml(m.user_answer || '无') + '</div>' +
+          '<div style="font-size:13px;color:var(--good);margin-bottom:6px">正确讲解：' + escapeHtml(m.correct_note) + '</div>' +
           (m.question_id
-            ? '<button onclick="C4.openPractice(' + m.question_id + ')" style="padding:4px 10px;margin-right:6px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">🔁 重练</button>'
+            ? '<button onclick="C4.openPractice(' + m.question_id + ')" style="padding:4px 10px;margin-right:6px;border:1px solid var(--wood);color:var(--wood);border-radius:4px;background:#fff;cursor:pointer;font-size:12px">🔁 重练</button>'
             : '') +
-          '<button onclick="C4.deleteMistake(' + m.id + ')" style="padding:4px 10px;border:1px solid #e5484d;color:#e5484d;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">已掌握</button>';
+          '<button onclick="C4.deleteMistake(' + m.id + ')" style="padding:4px 10px;border:1px solid var(--bad);color:var(--bad);border-radius:4px;background:#fff;cursor:pointer;font-size:12px">已掌握</button>';
         el.appendChild(div);
       });
     }).catch(function (e) {
-      document.getElementById('mistakeList').innerHTML = '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>';
+      document.getElementById('mistakeList').innerHTML = '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>';
     });
   }
 
@@ -348,17 +348,17 @@
     var dims = r.scores || {};
     var dimHtml = ['立意', '结构', '论证', '语言'].map(function (k) {
       var v = Number(dims[k]) || 0;
-      var color = v >= 80 ? '#30a46c' : (v >= 60 ? '#f0a020' : '#e5484d');
+      var color = v >= 80 ? 'var(--good)' : (v >= 60 ? '#f0a020' : 'var(--bad)');
       return '<div style="margin-bottom:6px">' +
         '<div style="display:flex;justify-content:space-between;font-size:12px"><span>' + k + '</span><span style="color:' + color + ';font-weight:600">' + v + '</span></div>' +
-        '<div style="height:6px;background:#eef0f4;border-radius:3px;overflow:hidden"><div style="height:100%;width:' + v + '%;background:' + color + '"></div></div></div>';
+        '<div style="height:6px;background:var(--paper-2);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + v + '%;background:' + color + '"></div></div></div>';
     }).join('');
-    box.innerHTML = '<div style="padding:10px;background:#f5f0ff;border-radius:8px;margin-top:8px">' +
-      '<div style="font-weight:600;margin-bottom:6px">🤖 AI 批改 · 总分 <span style="color:#7c3aed;font-size:18px">' + (r.total != null ? r.total : '—') + '</span>/100' + (g.cached ? '（已有报告）' : '') + '</div>' +
+    box.innerHTML = '<div style="padding:10px;background:var(--gold-soft);border-radius:8px;margin-top:8px">' +
+      '<div style="font-weight:600;margin-bottom:6px">🤖 AI 批改 · 总分 <span style="color:var(--gold-deep);font-size:18px">' + (r.total != null ? r.total : '—') + '</span>/100' + (g.cached ? '（已有报告）' : '') + '</div>' +
       dimHtml +
       (r.comment ? '<div style="font-size:13px;color:#444;margin-top:6px">📝 ' + escapeHtml(r.comment) + '</div>' : '') +
-      (r.suggestions && r.suggestions.length ? '<div style="font-size:12px;color:#666;margin-top:6px">💡 ' + r.suggestions.map(escapeHtml).join('；') + '</div>' : '') +
-      (r.model_answer ? '<div style="font-size:12px;color:#30a46c;margin-top:6px;background:#f0faf4;padding:6px;border-radius:6px">📄 参考范文：' + escapeHtml(r.model_answer) + '</div>' : '') +
+      (r.suggestions && r.suggestions.length ? '<div style="font-size:12px;color:var(--ink-2);margin-top:6px">💡 ' + r.suggestions.map(escapeHtml).join('；') + '</div>' : '') +
+      (r.model_answer ? '<div style="font-size:12px;color:var(--good);margin-top:6px;background:#edf2e6;padding:6px;border-radius:6px">📄 参考范文：' + escapeHtml(r.model_answer) + '</div>' : '') +
       '</div>';
   }
 
@@ -370,8 +370,8 @@
     global.GK.api('/practice/grade', { method: 'POST', body: { log_id: logId }, timeout: 120000 })
       .then(function (g) { renderGradeReport(box, g); })
       .catch(function (e) {
-        box.innerHTML = '<span style="color:#e5484d">批改失败：' + escapeHtml(e.message) + '</span> ' +
-          '<button onclick="C4.regrade(' + logId + ')" style="padding:3px 10px;border:1px solid #7c3aed;color:#7c3aed;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">重试</button>';
+        box.innerHTML = '<span style="color:var(--bad)">批改失败：' + escapeHtml(e.message) + '</span> ' +
+          '<button onclick="C4.regrade(' + logId + ')" style="padding:3px 10px;border:1px solid var(--gold-deep);color:var(--gold-deep);border-radius:4px;background:#fff;cursor:pointer;font-size:12px">重试</button>';
       });
   }
 
@@ -421,12 +421,12 @@
     }
 
     container.innerHTML = '<h3>📅 错题强化 · 今日巩固</h3>' +
-      '<div style="font-size:12px;color:#888;margin-bottom:8px">艾宾浩斯记忆节奏：1 → 2 → 4 → 7 → 15 → 30 天，连续答对 6 次即掌握</div>' +
-      '<div id="reviewStats" style="margin-bottom:10px"><p style="color:#999">加载中...</p></div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px">艾宾浩斯记忆节奏：1 → 2 → 4 → 7 → 15 → 30 天，连续答对 6 次即掌握</div>' +
+      '<div id="reviewStats" style="margin-bottom:10px"><p style="color:var(--ink-3)">加载中...</p></div>' +
       '<div id="reviewList"></div>' +
       '<div id="reviewGroups" style="margin-top:12px"></div>' +
-      '<button onclick="C4.openPractice()" style="margin:12px 6px 0 0;padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">✏️ 去练习</button>' +
-      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button>';
+      '<button onclick="C4.openPractice()" style="margin:12px 6px 0 0;padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">✏️ 去练习</button>' +
+      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button>';
 
     // 复习概览
     global.GK.api('/review/stats').then(function (s) {
@@ -436,15 +436,15 @@
       el.innerHTML =
         '<div style="padding:10px;background:#fff5f5;border-radius:8px">' +
           '<div style="display:flex;gap:18px;flex-wrap:wrap">' +
-            '<div><div style="font-size:12px;color:#888">待巩固</div><div style="font-size:22px;font-weight:700;color:#e5484d">' + s.due + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">复习队列</div><div style="font-size:22px;font-weight:700">' + s.in_queue + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">已掌握</div><div style="font-size:22px;font-weight:700;color:#30a46c">' + (s.mastered || 0) + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">下次复习</div><div style="font-size:15px;font-weight:600">' + nextTxt + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">待巩固</div><div style="font-size:22px;font-weight:700;color:var(--bad)">' + s.due + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">复习队列</div><div style="font-size:22px;font-weight:700">' + s.in_queue + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">已掌握</div><div style="font-size:22px;font-weight:700;color:var(--good)">' + (s.mastered || 0) + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">下次复习</div><div style="font-size:15px;font-weight:600">' + nextTxt + '</div></div>' +
           '</div>' +
         '</div>';
     }).catch(function (e) {
       var el = document.getElementById('reviewStats');
-      if (el) el.innerHTML = '<p style="color:#e5484d">概览加载失败: ' + escapeHtml(e.message) + '</p>';
+      if (el) el.innerHTML = '<p style="color:var(--bad)">概览加载失败: ' + escapeHtml(e.message) + '</p>';
     });
 
     // 到期待巩固队列
@@ -453,24 +453,24 @@
       if (!el) return;
       var due = d.due || [];
       if (!due.length) {
-        el.innerHTML = '<div style="padding:10px;background:#f0faf4;border-radius:8px;color:#30a46c;font-size:13px">✓ 今日无到期错题，继续保持！</div>';
+        el.innerHTML = '<div style="padding:10px;background:#edf2e6;border-radius:8px;color:var(--good);font-size:13px">✓ 今日无到期错题，继续保持！</div>';
         return;
       }
-      var html = '<div style="font-size:12px;color:#888;margin:10px 0 6px">待巩固 ' + due.length + ' 题（按最急优先）</div>';
+      var html = '<div style="font-size:12px;color:var(--ink-3);margin:10px 0 6px">待巩固 ' + due.length + ' 题（按最急优先）</div>';
       due.forEach(function (q) {
         var stageTag = q.review_stage != null
-          ? '<span style="display:inline-block;padding:1px 6px;border-radius:8px;background:#ffeef0;color:#e5484d;font-size:11px">第 ' + q.review_stage + ' 轮</span>' : '';
-        var catBadge = q.category ? '<span style="display:inline-block;padding:1px 6px;border-radius:8px;background:#eef4ff;color:#4a6cf7;font-size:11px">' + escapeHtml(q.category) + '</span>' : '';
-        html += '<div style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px">' +
+          ? '<span style="display:inline-block;padding:1px 6px;border-radius:8px;background:#ffeef0;color:var(--bad);font-size:11px">第 ' + q.review_stage + ' 轮</span>' : '';
+        var catBadge = q.category ? '<span style="display:inline-block;padding:1px 6px;border-radius:8px;background:var(--gold-soft);color:var(--wood);font-size:11px">' + escapeHtml(q.category) + '</span>' : '';
+        html += '<div style="padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:6px">' +
           '<div style="font-size:13px;white-space:pre-wrap;margin-bottom:4px">' + renderQText(q.question) + '</div>' +
           '<div style="margin-bottom:4px">' + stageTag + ' ' + catBadge + '</div>' +
-          '<button onclick="C4.openPractice(' + q.id + ')" style="padding:4px 10px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">🔁 重做此题</button>' +
+          '<button onclick="C4.openPractice(' + q.id + ')" style="padding:4px 10px;border:1px solid var(--wood);color:var(--wood);border-radius:4px;background:#fff;cursor:pointer;font-size:12px">🔁 重做此题</button>' +
           '</div>';
       });
       el.innerHTML = html;
     }).catch(function (e) {
       var el = document.getElementById('reviewList');
-      if (el) el.innerHTML = '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>';
+      if (el) el.innerHTML = '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>';
     });
 
     // 知识点归组
@@ -482,14 +482,14 @@
         el.innerHTML = '';
         return;
       }
-      var html = '<div style="font-size:12px;color:#888;margin:12px 0 6px">📚 错题知识点分布</div>';
+      var html = '<div style="font-size:12px;color:var(--ink-3);margin:12px 0 6px">📚 错题知识点分布</div>';
       var top = groups.slice(0, 6);
       var max = top[0].mistake_count || 1;
       top.forEach(function (g) {
         var pct = Math.round((g.mistake_count / max) * 100);
         html += '<div style="margin-bottom:6px">' +
-          '<div style="display:flex;justify-content:space-between;font-size:12px"><span>' + escapeHtml(g.knowledge_point) + '</span><span style="color:#666">' + g.mistake_count + ' 题</span></div>' +
-          '<div style="height:6px;background:#eef0f4;border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#f0a020"></div></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:12px"><span>' + escapeHtml(g.knowledge_point) + '</span><span style="color:var(--ink-2)">' + g.mistake_count + ' 题</span></div>' +
+          '<div style="height:6px;background:var(--paper-2);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#f0a020"></div></div>' +
           '</div>';
       });
       el.innerHTML = html;
@@ -509,14 +509,14 @@
 
     container.innerHTML = '<h3>✏️ 真题练习</h3>' +
       '<div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-        '<select id="practiceCat" style="padding:5px 8px;border:1px solid #d0d4de;border-radius:6px;font-size:13px;max-width:160px;background:#fff"><option value="">📚 全部分类</option></select>' +
-        '<button id="todayModeBtn" style="padding:5px 12px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff8f8;cursor:pointer;font-size:12px">🎯 今日练习</button>' +
-        '<button id="wrongModeBtn" style="padding:5px 12px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">❌ 只刷错题</button>' +
-        '<button onclick="C4.openReview()" style="padding:5px 12px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📅 今日巩固</button>' +
-        '<button onclick="C4.openReport()" style="padding:5px 12px;border:1px solid #7c3aed;color:#7c3aed;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📊 学情报告</button>' +
+        '<select id="practiceCat" style="padding:5px 8px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;max-width:160px;background:#fff"><option value="">📚 全部分类</option></select>' +
+        '<button id="todayModeBtn" style="padding:5px 12px;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff8f8;cursor:pointer;font-size:12px">🎯 今日练习</button>' +
+        '<button id="wrongModeBtn" style="padding:5px 12px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">❌ 只刷错题</button>' +
+        '<button onclick="C4.openReview()" style="padding:5px 12px;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📅 今日巩固</button>' +
+        '<button onclick="C4.openReport()" style="padding:5px 12px;border:1px solid var(--gold-deep);color:var(--gold-deep);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">📊 学情报告</button>' +
       '</div>' +
       '<div id="practiceArea" style="margin-top:8px">' +
-      '<p style="color:#999">加载中...</p>' +
+      '<p style="color:var(--ink-3)">加载中...</p>' +
       '</div>';
 
     // 分类下拉（#36：题库分类清单 + 切换即抽题）
@@ -542,7 +542,7 @@
     function syncTodayBtn() {
       var on = practiceState.mode === 'today';
       tbtn.textContent = on ? '🔥 今日练习中（退出）' : '🎯 今日练习';
-      tbtn.style.borderColor = on ? '#e5484d' : '#f2b8b8';
+      tbtn.style.borderColor = on ? 'var(--bad)' : '#f2b8b8';
       tbtn.style.background = on ? '#fff0f0' : '#fff8f8';
     }
     syncTodayBtn();
@@ -557,8 +557,8 @@
     function syncWrongBtn() {
       var on = practiceState.mode === 'wrong';
       wbtn.textContent = on ? '✅ 错题模式中（退出）' : '❌ 只刷错题';
-      wbtn.style.borderColor = on ? '#e5484d' : '#d0d4de';
-      wbtn.style.color = on ? '#e5484d' : '#333';
+      wbtn.style.borderColor = on ? 'var(--bad)' : 'var(--line-2)';
+      wbtn.style.color = on ? 'var(--bad)' : 'var(--ink)';
     }
     syncWrongBtn();
     wbtn.onclick = function () {
@@ -575,7 +575,7 @@
       global.GK.api(url).then(function (d) {
         renderQuestion(d);
       }).catch(function (e) {
-        document.getElementById('practiceArea').innerHTML = '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>';
+        document.getElementById('practiceArea').innerHTML = '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>';
       });
     }
 
@@ -585,10 +585,10 @@
       // 题型标签 + #36 分类徽标
       var typeLabel = { choice: '选择题', judge: '判断题', essay: '简答题' }[d.type] || '练习题';
       var catBadge = d.category
-        ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#eef4ff;color:#4a6cf7;font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.category) + '</span>' : '';
+        ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:var(--gold-soft);color:var(--wood);font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.category) + '</span>' : '';
       // 批次12c：今日练习来源徽标（到期错题/薄弱专项/智能新题）
       if (d.today_note) {
-        catBadge += '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff0f0;color:#e5484d;font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.today_note) + '</span>';
+        catBadge += '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff0f0;color:var(--bad);font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.today_note) + '</span>';
       }
       if (d.mode_fallback === 'no_wrong') {
         showToast('暂无未掌握错题，已切换普通抽题', '');
@@ -599,7 +599,7 @@
       if (d.type === 'choice' && d.options && d.options.length) {
         optionsHtml = '<div style="margin-top:8px">';
         d.options.forEach(function (opt) {
-          optionsHtml += '<label style="display:block;padding:6px 10px;margin-bottom:6px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:14px">' +
+          optionsHtml += '<label style="display:block;padding:6px 10px;margin-bottom:6px;border:1px solid var(--line-2);border-radius:6px;cursor:pointer;font-size:14px">' +
             '<input type="radio" name="practiceOpt" value="' + escapeHtml(String(opt).charAt(0)) + '" style="margin-right:6px;vertical-align:top">' +
             '<span style="display:inline-block;max-width:88%">' + renderQText(String(opt)) + '</span></label>';
         });
@@ -615,28 +615,28 @@
           '<label style="margin-right:16px"><input type="radio" name="practiceOpt" value="对" style="margin-right:4px">对</label>' +
           '<label><input type="radio" name="practiceOpt" value="错" style="margin-right:4px">错</label></div>';
       } else {
-        answerInputHtml = '<textarea id="practiceAnswer" style="width:100%;height:80px;border:1px solid #d0d4de;border-radius:6px;padding:8px;font-size:14px;resize:none;margin-top:8px"></textarea>';
+        answerInputHtml = '<textarea id="practiceAnswer" style="width:100%;height:80px;border:1px solid var(--line-2);border-radius:6px;padding:8px;font-size:14px;resize:none;margin-top:8px"></textarea>';
       }
 
       var noAnsTip = (d.has_answer === false)
         ? '<div style="font-size:12px;color:#b06a00;background:#fff8e6;border:1px solid #ffe1a8;border-radius:6px;padding:4px 8px;margin-bottom:8px">本题暂无答案与解析，仅供练习，不计入正确率</div>'
         : '';
 
-      area.innerHTML = '<div style="padding:12px;background:#f0f4ff;border-radius:8px;margin-bottom:12px">' +
-        '<div style="font-size:12px;color:#888;margin-bottom:6px">【' + typeLabel + '】' + catBadge + '</div>' +
+      area.innerHTML = '<div style="padding:12px;background:var(--gold-soft);border-radius:8px;margin-bottom:12px">' +
+        '<div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">【' + typeLabel + '】' + catBadge + '</div>' +
         noAnsTip +
         '<div style="font-weight:600;margin-bottom:8px;white-space:pre-wrap">' + renderQText(d.question) + '</div>' +
         optionsHtml +
         answerInputHtml +
-        (d.hint ? '<div style="font-size:12px;color:#999;margin-top:6px">' + escapeHtml(d.hint) + '</div>' : '') +
+        (d.hint ? '<div style="font-size:12px;color:var(--ink-3);margin-top:6px">' + escapeHtml(d.hint) + '</div>' : '') +
         '<div style="margin-top:8px;display:flex;gap:8px">' +
-        '<button id="submitPractice" style="flex:1;padding:8px;border:none;border-radius:6px;background:#4a6cf7;color:#fff;cursor:pointer">提交</button>' +
-        '<button onclick="C4.openPractice()" style="padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">下一题</button>' +
-        (d.id != null ? '<button onclick="C4.addFavorite(' + d.id + ')" title="加入收藏夹" style="padding:8px 12px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">⭐</button>' : '') +
+        '<button id="submitPractice" style="flex:1;padding:8px;border:none;border-radius:6px;background:var(--wood);color:#fff;cursor:pointer">提交</button>' +
+        '<button onclick="C4.openPractice()" style="padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">下一题</button>' +
+        (d.id != null ? '<button onclick="C4.addFavorite(' + d.id + ')" title="加入收藏夹" style="padding:8px 12px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">⭐</button>' : '') +
         '</div>' +
         '<div id="practiceResult" style="margin-top:8px"></div>' +
         '</div>' +
-        '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button>';
+        '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button>';
 
       document.getElementById('submitPractice').onclick = function () {
         var answer = '';
@@ -663,11 +663,11 @@
             wrong = !ok;
             // #4 学习闭环：判分即展示解析（后端随 submit 返回 analysis），无需去错题本翻
             var analysisHtml = (log.analysis && log.analysis.trim())
-              ? '<div style="margin-top:6px;padding:6px 8px;background:#fff;border:1px solid #e8e8ee;border-radius:6px;font-size:13px;color:#555;white-space:pre-wrap"><b>📖 解析</b><br>' + renderQText(log.analysis) + '</div>'
+              ? '<div style="margin-top:6px;padding:6px 8px;background:#fff;border:1px solid var(--line-2);border-radius:6px;font-size:13px;color:var(--ink-2);white-space:pre-wrap"><b>📖 解析</b><br>' + renderQText(log.analysis) + '</div>'
               : '';
-            result.innerHTML = '<div style="padding:8px;border-radius:6px;background:' + (ok ? '#e6f9f0' : '#fff8f0') + '">' +
+            result.innerHTML = '<div style="padding:8px;border-radius:6px;background:' + (ok ? '#e3ecda' : '#fff8f0') + '">' +
               '<strong>' + (ok ? '✓ 回答正确' : '✗ 回答错误') + '</strong>' +
-              (log.feedback ? '<br><span style="font-size:13px;color:#666">' + escapeHtml(log.feedback) + '</span>' : '') +
+              (log.feedback ? '<br><span style="font-size:13px;color:var(--ink-2)">' + escapeHtml(log.feedback) + '</span>' : '') +
               analysisHtml +
               '</div>';
           } else if (d.has_answer === false) {
@@ -675,7 +675,7 @@
             wrong = false;
             result.innerHTML = '<div style="padding:8px;border-radius:6px;background:#fff8e6">' +
               '<strong>本题暂无答案</strong>' +
-              '<br><span style="font-size:13px;color:#666">答案与解析尚未采集到，本题仅作练习，不计入正确率。</span>' +
+              '<br><span style="font-size:13px;color:var(--ink-2)">答案与解析尚未采集到，本题仅作练习，不计入正确率。</span>' +
               '</div>';
             btn.disabled = false;
             btn.textContent = '提交';
@@ -683,7 +683,7 @@
           } else {
             // #36 简答题：提交后自动 AI 批改（submit 快速返回，批改独立渲染/可重试）
             wrong = false;
-            result.innerHTML = '<div style="padding:8px;border-radius:6px;background:#f5f0ff">' +
+            result.innerHTML = '<div style="padding:8px;border-radius:6px;background:var(--gold-soft)">' +
               '<strong>🤖 AI 批改中…（约需 10~30 秒）</strong></div>' +
               '<div id="gradeBox"></div>';
             regrade(log.id);
@@ -692,7 +692,7 @@
           if (wrong && global.C4) {
             var mb = document.createElement('button');
             mb.textContent = '❌ 记入错题本';
-            mb.style.cssText = 'margin-top:8px;padding:5px 12px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff;cursor:pointer;font-size:12px';
+            mb.style.cssText = 'margin-top:8px;padding:5px 12px;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff;cursor:pointer;font-size:12px';
             mb.onclick = function () {
               var note = (log.feedback || d.hint || '');
               global.C4.recordMistake(d.question, answer, note, [], global.GK.store.sessionId || '', d.id);
@@ -702,7 +702,7 @@
           btn.disabled = false;
           btn.textContent = '提交';
         }).catch(function (e) {
-          document.getElementById('practiceResult').innerHTML = '<p style="color:#e5484d">提交失败: ' + escapeHtml(e.message) + '</p>';
+          document.getElementById('practiceResult').innerHTML = '<p style="color:var(--bad)">提交失败: ' + escapeHtml(e.message) + '</p>';
           btn.disabled = false;
           btn.textContent = '提交';
         });
@@ -728,9 +728,9 @@
     }
 
     container.innerHTML = '<h3>📊 学情报告</h3>' +
-      '<div id="reportArea"><p style="color:#999">加载中...</p></div>' +
-      '<button onclick="C4.openPractice()" style="margin-top:12px;padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">✏️ 去练习</button> ' +
-      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button>';
+      '<div id="reportArea"><p style="color:var(--ink-3)">加载中...</p></div>' +
+      '<button onclick="C4.openPractice()" style="margin-top:12px;padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">✏️ 去练习</button> ' +
+      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button>';
 
     global.GK.api('/practice/report?teacher_id=' + encodeURIComponent(teacherId)).then(function (r) {
       var area = document.getElementById('reportArea');
@@ -738,47 +738,47 @@
 
       var cats = (r.by_category || []).map(function (c) {
         var pct = Math.round((c.accuracy || 0) * 100);
-        var color = pct >= 80 ? '#30a46c' : (pct >= 60 ? '#f0a020' : '#e5484d');
+        var color = pct >= 80 ? 'var(--good)' : (pct >= 60 ? '#f0a020' : 'var(--bad)');
         return '<div style="margin-bottom:8px">' +
           '<div style="display:flex;justify-content:space-between;font-size:13px"><span>' + escapeHtml(c.category) + '（' + c.total + ' 题）</span>' +
           '<span style="color:' + color + ';font-weight:600">' + pct + '%（对 ' + c.correct + '）</span></div>' +
-          '<div style="height:8px;background:#eef0f4;border-radius:4px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + color + '"></div></div>' +
+          '<div style="height:8px;background:var(--paper-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + color + '"></div></div>' +
           '</div>';
       }).join('');
 
       var weakHtml = (r.weak && r.weak.length)
-        ? '<div style="font-size:13px;color:#e5484d;margin:6px 0">⚠ 薄弱分类：' + r.weak.map(escapeHtml).join('、') + '</div>' +
+        ? '<div style="font-size:13px;color:var(--bad);margin:6px 0">⚠ 薄弱分类：' + r.weak.map(escapeHtml).join('、') + '</div>' +
           r.weak.map(function (w) {
-            return '<button onclick="C4.practiceCategory(\'' + escapeHtml(w) + '\')" style="padding:5px 12px;margin:4px 6px 0 0;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🎯 ' + escapeHtml(w) + ' 专项练习</button>';
+            return '<button onclick="C4.practiceCategory(\'' + escapeHtml(w) + '\')" style="padding:5px 12px;margin:4px 6px 0 0;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🎯 ' + escapeHtml(w) + ' 专项练习</button>';
           }).join('')
-        : '<div style="font-size:13px;color:#30a46c;margin:6px 0">✓ 暂无明显薄弱点，继续保持！</div>';
+        : '<div style="font-size:13px;color:var(--good);margin:6px 0">✓ 暂无明显薄弱点，继续保持！</div>';
 
       var days = (r.recent_days || []).map(function (d) {
         var pct = d.n ? Math.round((d.ok / d.n) * 100) : 0;
-        var color = pct >= 60 ? '#30a46c' : '#f0a020';
-        return '<span style="display:inline-block;margin:2px 6px 0 0;padding:3px 8px;border-radius:8px;background:#f0f4ff;font-size:12px">' +
+        var color = pct >= 60 ? 'var(--good)' : '#f0a020';
+        return '<span style="display:inline-block;margin:2px 6px 0 0;padding:3px 8px;border-radius:8px;background:var(--gold-soft);font-size:12px">' +
           escapeHtml(String(d.d).slice(5)) + ' · ' + d.ok + '/' + d.n + ' <span style="color:' + color + '">' + pct + '%</span></span>';
       }).join('');
 
       var essayHtml = r.essay && r.essay.pending
-        ? '<div style="font-size:12px;color:#7c3aed;margin-top:8px">✍ 主观题待批 ' + r.essay.pending + ' 道（提交练习后自动 AI 批改）</div>'
+        ? '<div style="font-size:12px;color:var(--gold-deep);margin-top:8px">✍ 主观题待批 ' + r.essay.pending + ' 道（提交练习后自动 AI 批改）</div>'
         : (r.essay && r.essay.avg_score != null
-            ? '<div style="font-size:12px;color:#7c3aed;margin-top:8px">✍ 主观题 AI 批改平均分：' + Math.round(r.essay.avg_score * 100) + '/100</div>'
+            ? '<div style="font-size:12px;color:var(--gold-deep);margin-top:8px">✍ 主观题 AI 批改平均分：' + Math.round(r.essay.avg_score * 100) + '/100</div>'
             : '');
 
       area.innerHTML =
-        '<div style="padding:12px;background:#f8faff;border-radius:8px;margin-bottom:10px">' +
+        '<div style="padding:12px;background:var(--card-2);border-radius:8px;margin-bottom:10px">' +
           '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px">' +
-            '<div><div style="font-size:12px;color:#888">已批改题数</div><div style="font-size:22px;font-weight:700;color:#4a6cf7">' + r.graded + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">客观正确率</div><div style="font-size:22px;font-weight:700;color:#30a46c">' + acc + '</div></div>' +
-            '<div><div style="font-size:12px;color:#888">答对题数</div><div style="font-size:22px;font-weight:700">' + r.correct + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">已批改题数</div><div style="font-size:22px;font-weight:700;color:var(--wood)">' + r.graded + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">客观正确率</div><div style="font-size:22px;font-weight:700;color:var(--good)">' + acc + '</div></div>' +
+            '<div><div style="font-size:12px;color:var(--ink-3)">答对题数</div><div style="font-size:22px;font-weight:700">' + r.correct + '</div></div>' +
           '</div>' + essayHtml +
         '</div>' +
-        (cats ? '<div style="font-size:12px;color:#888;margin:10px 0 6px">分类正确率</div>' + cats : '<p style="color:#999">还没有练习记录，先去刷几道题吧</p>') +
+        (cats ? '<div style="font-size:12px;color:var(--ink-3);margin:10px 0 6px">分类正确率</div>' + cats : '<p style="color:var(--ink-3)">还没有练习记录，先去刷几道题吧</p>') +
         weakHtml +
-        (days ? '<div style="font-size:12px;color:#888;margin:12px 0 4px">近 7 天</div><div>' + days + '</div>' : '');
+        (days ? '<div style="font-size:12px;color:var(--ink-3);margin:12px 0 4px">近 7 天</div><div>' + days + '</div>' : '');
     }).catch(function (e) {
-      document.getElementById('reportArea').innerHTML = '<p style="color:#e5484d">报告加载失败: ' + escapeHtml(e.message) + '</p>';
+      document.getElementById('reportArea').innerHTML = '<p style="color:var(--bad)">报告加载失败: ' + escapeHtml(e.message) + '</p>';
     });
   }
 

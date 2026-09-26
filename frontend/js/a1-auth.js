@@ -271,7 +271,7 @@
         var upgradeBtn = global.document.createElement('button');
         upgradeBtn.className = 'auth-btn';
         upgradeBtn.style.background = '#ffd700';
-        upgradeBtn.style.color = '#333';
+        upgradeBtn.style.color = 'var(--ink)';
         upgradeBtn.textContent = '开通会员';
         upgradeBtn.onclick = function () { openMembershipModal(); };
         area.appendChild(upgradeBtn);
@@ -298,7 +298,7 @@
       var anonUpgradeBtn = global.document.createElement('button');
       anonUpgradeBtn.className = 'auth-btn';
       anonUpgradeBtn.style.background = '#ffd700';
-      anonUpgradeBtn.style.color = '#333';
+      anonUpgradeBtn.style.color = 'var(--ink)';
       anonUpgradeBtn.textContent = '开通会员';
       anonUpgradeBtn.onclick = function () { openAuthModal('login'); };
       area.appendChild(anonUpgradeBtn);
@@ -348,13 +348,13 @@
   function showReminderToast(msg) {
     var toast = global.document.createElement('div');
     toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);' +
-      'background:#4a6cf7;color:#fff;padding:10px 20px;border-radius:10px;font-size:13.5px;' +
+      'background:var(--wood);color:#fff;padding:10px 20px;border-radius:10px;font-size:13.5px;' +
       'z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.18);display:flex;align-items:center;gap:12px;';
     var txt = global.document.createElement('span');
     txt.textContent = msg;
     var btn = global.document.createElement('button');
     btn.textContent = '去续费';
-    btn.style.cssText = 'background:#ffd700;color:#333;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12.5px;font-weight:600;';
+    btn.style.cssText = 'background:#ffd700;color:var(--ink);border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12.5px;font-weight:600;';
     btn.onclick = function () { toast.remove(); openMembershipModal(); };
     var close = global.document.createElement('button');
     close.textContent = '✕';
@@ -400,9 +400,9 @@
       var planList = mask.querySelector('#planList');
       plans.forEach(function (p) {
         var div = global.document.createElement('div');
-        div.style.cssText = 'padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;cursor:pointer;';
+        div.style.cssText = 'padding:12px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px;cursor:pointer;';
         div.innerHTML = '<strong>' + p.name + '</strong><br>' +
-          '<span style="color:#4a6cf7;font-size:18px">¥' + (p.price/100).toFixed(2) + '</span> · ' +
+          '<span style="color:var(--wood);font-size:18px">¥' + (p.price/100).toFixed(2) + '</span> · ' +
           p.duration_days + '天 · ' + p.benefits;
         div.onclick = function () {
           // 选择该方案，创建订单
@@ -432,7 +432,7 @@
         global.GK.api('/orders/recharge-code/activate', { method: 'POST', body: { code: code } })
           .then(function (d) {
             mask.querySelector('#membershipErr').textContent = '激活成功！会员有效期至 ' + d.membership.member_expire_at;
-            mask.querySelector('#membershipErr').style.color = '#30a46c';
+            mask.querySelector('#membershipErr').style.color = 'var(--good)';
             setTimeout(function () {
               mask.remove();
               GK.loadAuthUser(); // 刷新用户信息
@@ -440,7 +440,7 @@
           })
           .catch(function (e) {
             mask.querySelector('#membershipErr').textContent = '激活失败: ' + e.message;
-            mask.querySelector('#membershipErr').style.color = '#e5484d';
+            mask.querySelector('#membershipErr').style.color = 'var(--bad)';
             btn.disabled = false;
             btn.textContent = '激活';
           });
@@ -469,7 +469,7 @@
         '<h2>找回密码</h2>' +
         '<div class="err" id="fpErr"></div>' +
         '<div id="fpBody">' +
-          '<p style="font-size:13px;color:#555;margin:4px 0 8px">第 1 步 · 输入用户名</p>' +
+          '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">第 1 步 · 输入用户名</p>' +
           '<input id="fpUsername" type="text" placeholder="用户名">' +
         '</div>' +
         '<div class="row" style="margin-top:12px">' +
@@ -497,7 +497,7 @@
           }
           // 第 2 步：答密保问题
           mask.querySelector('#fpBody').innerHTML =
-            '<p style="font-size:13px;color:#555;margin:4px 0 8px">第 2 步 · 回答密保问题</p>' +
+            '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">第 2 步 · 回答密保问题</p>' +
             '<div style="font-size:14px;font-weight:600;margin-bottom:8px">' + escapeHtml(d.security_question) + '</div>' +
             '<input id="fpAnswer" type="text" placeholder="密保答案">';
           btn.textContent = '验证';
@@ -510,7 +510,7 @@
               .then(function (v) {
                 // 第 3 步：设新密码
                 mask.querySelector('#fpBody').innerHTML =
-                  '<p style="font-size:13px;color:#555;margin:4px 0 8px">第 3 步 · 设置新密码</p>' +
+                  '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">第 3 步 · 设置新密码</p>' +
                   '<input id="fpNewPass" type="password" placeholder="新密码（至少 6 位）">' +
                   '<input id="fpNewPass2" type="password" placeholder="再次输入新密码">';
                 btn.textContent = '重置密码';
@@ -524,7 +524,7 @@
                   global.GK.api('/password/forgot/reset', { method: 'POST', body: { ticket: v.ticket, new_password: p1 } })
                     .then(function () {
                       mask.querySelector('#fpBody').innerHTML =
-                        '<p style="color:#30a46c;font-size:14px;margin:8px 0">✅ 密码已重置，请用新密码登录</p>';
+                        '<p style="color:var(--good);font-size:14px;margin:8px 0">✅ 密码已重置，请用新密码登录</p>';
                       var cancelBtn = mask.querySelector('.cancel');
                       cancelBtn.textContent = '去登录';
                       cancelBtn.onclick = function () { mask.remove(); openAuthModal('login'); };
@@ -555,7 +555,7 @@
         '<div class="modal" style="max-width:420px">' +
           '<h2>设置密保问题</h2>' +
           '<div class="err" id="secErr"></div>' +
-          '<p style="font-size:13px;color:#555;margin:4px 0 8px">用于忘记密码时自助找回，请牢记答案</p>' +
+          '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">用于忘记密码时自助找回，请牢记答案</p>' +
           '<select id="secQuestion">' + options + '<option value="">自定义…</option></select>' +
           '<input id="secQuestionCustom" type="text" placeholder="自定义密保问题（选自定义时填写）" style="display:none">' +
           '<input id="secAnswer" type="text" placeholder="密保答案">' +

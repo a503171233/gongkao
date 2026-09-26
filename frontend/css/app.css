@@ -176,8 +176,8 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
 .auth-btn:hover { border-color: var(--gold); color: var(--wood-deep); }
 .auth-btn.primary { background: var(--wood); color: #fffaf0; border-color: var(--wood); font-weight: 600; }
 .auth-btn.primary:hover { background: var(--wood-deep); }
-#c4StudyBtn, #c4ReportBtn, #c4FavBtn, #c4MistBtn, #c5MockBtn, #c4ForumBtn { margin-left: 8px; padding: 7px 15px; border: 1px solid var(--gold-soft); border-radius: 999px; background: var(--card); color: var(--wood); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .25s var(--spring); white-space: nowrap; }
-#c4StudyBtn:hover, #c4ReportBtn:hover, #c4FavBtn:hover, #c4MistBtn:hover, #c5MockBtn:hover, #c4ForumBtn:hover { background: var(--gold-soft); transform: translateY(-1px); }
+#c4StudyBtn, #c4ReportBtn, #c4FavBtn, #c4MistBtn, #c5MockBtn, #c6SmartBtn, #c4ForumBtn, #c8Btn, #c9ReportBtn, #c10FenbiBtn, #c7MsgBtn { margin-left: 8px; padding: 7px 15px; border: 1px solid var(--gold-soft); border-radius: 999px; background: var(--card); color: var(--wood); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .25s var(--spring); white-space: nowrap; }
+#c4StudyBtn:hover, #c4ReportBtn:hover, #c4FavBtn:hover, #c4MistBtn:hover, #c5MockBtn:hover, #c6SmartBtn:hover, #c4ForumBtn:hover, #c8Btn:hover, #c9ReportBtn:hover, #c10FenbiBtn:hover, #c7MsgBtn:hover { background: var(--gold-soft); transform: translateY(-1px); }
 
 #chat { flex: 1; overflow-y: auto; padding: 26px; max-width: 900px; width: 100%; margin: 0 auto; }
 .hint { text-align: center; color: var(--ink-3); font-size: 13.5px; padding: 70px 20px; line-height: 2.1; background: radial-gradient(400px 140px at 50% 40%, rgba(255,250,240,.7), transparent 75%); border-radius: var(--radius); }
@@ -244,7 +244,7 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
   header h1 { font-size: 15px; }
   .teacher-tabs { width: 100%; order: 5; margin-left: 0; }
   #authArea { margin-left: 0; flex-wrap: wrap; }
-  #c4StudyBtn, #c4ReportBtn, #c4FavBtn, #c4MistBtn, #c5MockBtn, #c4ForumBtn { margin-left: 6px; padding: 6px 12px; font-size: 12.5px; }
+  #c4StudyBtn, #c4ReportBtn, #c4FavBtn, #c4MistBtn, #c5MockBtn, #c6SmartBtn, #c4ForumBtn, #c8Btn, #c9ReportBtn, #c10FenbiBtn, #c7MsgBtn { margin-left: 6px; padding: 6px 12px; font-size: 12.5px; }
   #info { font-size: 11px; }
   #chat { padding: 14px; }
   .bubble { max-width: 90%; font-size: 14px; }
