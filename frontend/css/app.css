@@ -270,17 +270,8 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
     overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
   .teacher-tabs::-webkit-scrollbar { display: none; }
   #authArea { order: 4; margin-left: 0; flex-wrap: wrap; }
-  /* 批次25 · 功能按钮横滑工具条（13 按钮不再堆叠 5 行） */
-  .tool-strip {
-    order: 5; display: flex; flex-wrap: nowrap; width: 100%;
-    gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    margin: 2px -12px 0; padding: 2px 12px 4px;
-    border-bottom: 1px solid var(--line); scroll-snap-type: x proximity;
-  }
-  .tool-strip::-webkit-scrollbar { display: none; }
-  .tool-strip .head-btn { order: 0; flex: 0 0 auto; white-space: nowrap; margin-left: 0;
-    min-height: 36px; scroll-snap-align: start; }
+  /* 批次26 · App 化导航：工具条由底部 Tab 栏替代（13 功能收进「更多」菜单，chat.html 内联） */
+  .tool-strip { display: none; }
   .hero { padding: 46px 16px 30px; }
   .nav-inner { padding: 10px 14px; }
   .nav-links { width: 100%; margin-left: 0; }
@@ -331,4 +322,127 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
     padding-right: max(16px, env(safe-area-inset-right)) !important;
   }
   body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+}
+
+/* =====================================================================
+ * 批次26 · 全站设计系统升级（暖木精修）
+ * —— 设计令牌扩展 / 焦点与三态 / 动效体系 / 骨架屏 / 打字机光标
+ *    / 数据可视化 / 移动端底部 Tab（App 化）/ 更多菜单
+ * ===================================================================== */
+:root {
+  /* 暖木色阶扩展（精修层次用） */
+  --wood-050: #faf6ef;  --wood-100: #f3ead9;  --wood-200: #e6d5b8;
+  --wood-300: #d4b88c;  --wood-500: #a1744a;  --wood-700: #6f4a2d;
+  --gold-050: #fbf6ea;
+  --ink-4: #b5ad9c;                       /* 极弱注释字 */
+  /* 动效令牌（时长与缓动分离，微交互统一节奏） */
+  --ease-out: cubic-bezier(.22,1,.36,1);
+  --dur-fast: .16s;  --dur: .3s;  --dur-slow: .55s;
+  /* 焦点环（键盘可达性） */
+  --focus-ring: 0 0 0 3px rgba(201,160,90,.35);
+  --z-tabbar: 80;
+}
+
+/* ---------- 键盘焦点可达（不干扰鼠标点击） ---------- */
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 8px; }
+
+/* ---------- 按钮三态统一：按压微缩反馈 ---------- */
+.btn, .head-btn, .tabbar button { will-change: transform; }
+.btn:active, .head-btn:active { transform: scale(.96); transition-duration: var(--dur-fast); }
+
+/* ---------- 面板悬浮层次（桌面端呼吸感） ---------- */
+@media (hover: hover) {
+  .panel { transition: box-shadow var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out); }
+  .panel:hover { box-shadow: var(--shadow-2); border-color: var(--line-2); }
+}
+
+/* ---------- 进入动画：内容区浮现 ---------- */
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.enter { animation: fadeSlide var(--dur-slow) var(--ease-out) both; }
+.enter-d1 { animation-delay: .06s; }  .enter-d2 { animation-delay: .12s; }  .enter-d3 { animation-delay: .18s; }
+
+/* ---------- 骨架屏 shimmer（加载占位） ---------- */
+@keyframes shimmer { from { background-position: -200px 0; } to { background-position: calc(200px + 100%) 0; } }
+.skel { position: relative; overflow: hidden; background: var(--paper-2); border-radius: 8px; min-height: 12px; }
+.skel::after { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,250,240,.9), transparent);
+  background-size: 200px 100%; animation: shimmer 1.3s infinite; }
+.skel-line { height: 13px; margin: 10px 4px; }
+.skel-line.w50 { width: 50%; } .skel-line.w70 { width: 70%; } .skel-line.w85 { width: 85%; }
+.skel-block { height: 54px; margin: 10px 0; border-radius: 12px; }
+
+/* ---------- 流式回答打字机光标（AI 正在输出） ---------- */
+.streaming::after { content: '▍'; color: var(--gold); margin-left: 2px;
+  animation: cursorBlink 1s steps(2) infinite; }
+@keyframes cursorBlink { 50% { opacity: 0; } }
+
+/* ---------- 数据可视化：环形进度 / 渐变条 / 等宽数字 ---------- */
+.ring { display: inline-block; vertical-align: -3px; }
+.ring .ring-fg { transition: stroke-dashoffset var(--dur-slow) var(--ease-out); }
+.bar-fill { background: linear-gradient(90deg, var(--gold), var(--wood)); border-radius: 999px;
+  transform-origin: left; animation: barGrow .7s var(--ease-out) both;
+  transition: width var(--dur-slow) var(--ease-out); }
+@keyframes barGrow { from { transform: scaleX(0); } }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ---------- 桌面工具条分组分隔符（学/练/测/评 信息架构） ---------- */
+.ts-sep { width: 1px; align-self: stretch; margin: 6px 4px;
+  background: linear-gradient(180deg, transparent, var(--line-2), transparent); }
+
+/* ---------- 移动端底部 Tab 栏（App 化导航） ---------- */
+.tabbar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-tabbar);
+  background: rgba(250,246,239,.94); backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-top: 1px solid var(--line);
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  box-shadow: 0 -1px 12px rgba(93,72,41,.06);
+  grid-template-columns: repeat(5, 1fr); }
+.tabbar button { appearance: none; border: none; background: none; font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-size: 10.5px; font-weight: 600; color: var(--ink-3); cursor: pointer;
+  padding: 5px 2px; border-radius: 12px; min-height: 50px;
+  transition: color var(--dur-fast) var(--ease-out); }
+.tabbar button .ti { font-size: 21px; line-height: 1.2; font-style: normal;
+  transition: transform var(--dur-fast) var(--spring); }
+.tabbar button:active .ti { transform: scale(.86); }
+.tabbar button.on { color: var(--wood-deep); }
+.tabbar button.on .ti { transform: translateY(-1px) scale(1.08); }
+.tabbar button .tdot { position: absolute; }   /* 消息角标由按钮内元素自行定位 */
+
+/* 「更多」菜单（底部升起的功能网格） */
+.more-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: calc(var(--z-tabbar) + 1);
+  transform: translateY(105%); transition: transform var(--dur-slow) var(--spring);
+  background: var(--card); border-radius: 22px 22px 0 0;
+  box-shadow: var(--shadow-3); padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+  max-height: 72vh; overflow-y: auto; }
+.more-sheet.open { transform: translateY(0); }
+.more-sheet .ms-head { display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; }
+.more-sheet .ms-head b { font-size: 16px; }
+.more-sheet .ms-close { border: 1px solid var(--line-2); background: var(--paper);
+  width: 34px; height: 34px; border-radius: 50%; font-size: 15px; color: var(--ink-2); cursor: pointer; }
+.ms-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.ms-grid .ms-item { display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 4px 10px; border-radius: 14px; background: var(--paper);
+  border: 1px solid transparent; cursor: pointer; font-family: inherit;
+  font-size: 11.5px; color: var(--ink-2); font-weight: 600;
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.ms-grid .ms-item:active { transform: scale(.94); background: var(--gold-050); }
+.ms-grid .ms-item .mi { font-size: 22px; font-style: normal; }
+.ms-sheet-mask { position: fixed; inset: 0; z-index: var(--z-tabbar);
+  background: rgba(61,58,51,.32); opacity: 0; pointer-events: none;
+  transition: opacity var(--dur) var(--ease-out); }
+.ms-sheet-mask.show { opacity: 1; pointer-events: auto; }
+
+@media (max-width: 720px) {
+  body.has-tabbar { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  body.has-tabbar .tabbar { display: grid; }
+}
+
+/* ---------- 无障碍：尊重减弱动态偏好 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .enter, .hero, .rise { animation: none !important; }
+  .skel::after { animation: none !important; }
+  .streaming::after { animation: none !important; }
+  * { transition-duration: .01ms !important; }
 }

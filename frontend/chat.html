@@ -23,7 +23,7 @@
   </div>
   <h3>💬 会话历史</h3>
   <button id="newSessionBtn">＋ 新会话</button>
-  <div id="sessionList"></div>
+  <div id="sessionList"><div class="skel skel-line w85"></div><div class="skel skel-line w70"></div><div class="skel skel-line w50"></div></div>
 </aside>
 <div id="main">
 <header>
@@ -38,11 +38,14 @@
   <button id="c4ReportBtn" class="head-btn" onclick="C4.openReport()">📊 练习统计</button>
   <button id="c4FavBtn" class="head-btn" onclick="C4.openFavorites()">📌 收藏</button>
   <button id="c4MistBtn" class="head-btn" onclick="C4.openMistakes()">❌ 错题本</button>
+  <span class="ts-sep" aria-hidden="true"></span>
   <button id="c5MockBtn" class="head-btn" onclick="C5.openMockExam()">📝 模考</button>
   <button id="c6SmartBtn" class="head-btn" onclick="C6.openSmartExam()">🧩 组卷</button>
+  <span class="ts-sep" aria-hidden="true"></span>
   <button id="c8Btn" class="head-btn" onclick="C8.openIncentive()">🏆 激励</button>
   <button id="c9ReportBtn" class="head-btn" onclick="C9.openReport()">📈 报告</button>
   <button id="c10FenbiBtn" class="head-btn" onclick="C10.openFenbi()">🎯 提升计划</button>
+  <span class="ts-sep" aria-hidden="true"></span>
   <button id="c11EssayBtn" class="head-btn" onclick="C11.openEssay()">✍️ 申论</button>
   <button id="c12IvBtn" class="head-btn" onclick="C12.openInterview()">🎤 面试</button>
   <button id="c4ForumBtn" class="head-btn" onclick="location.href='/forum.html'">💬 论坛</button>
@@ -294,6 +297,100 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   // 页面就绪后渲染一次（对应默认老师 / URL 直达老师）
   setTimeout(function () { renderSideVol(); }, 50);
+})();
+</script>
+<!-- 批次26 · 移动端底部 Tab（App 化导航）+ 更多菜单 -->
+<div class="ms-sheet-mask" id="msMask" onclick="TAB.closeMore()"></div>
+<nav class="tabbar" id="tabbar" aria-label="底部导航">
+  <button data-tab="chat" class="on" onclick="TAB.go('chat')"><i class="ti">💬</i>学习</button>
+  <button data-tab="practice" onclick="TAB.go('practice')"><i class="ti">📚</i>练习</button>
+  <button data-tab="exam" onclick="TAB.go('exam')"><i class="ti">📝</i>测考</button>
+  <button data-tab="report" onclick="TAB.go('report')"><i class="ti">📊</i>报告</button>
+  <button data-tab="more" onclick="TAB.go('more')"><i class="ti">🧭</i>更多</button>
+</nav>
+<div class="more-sheet" id="moreSheet" role="dialog" aria-label="全部功能">
+  <div class="ms-head"><b>全部功能</b><button class="ms-close" onclick="TAB.closeMore()" aria-label="关闭">✕</button></div>
+  <div class="ms-grid">
+    <button class="ms-item" onclick="TAB.run(function(){C4.openPractice()})"><i class="mi">📚</i>练习</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openReport()})"><i class="mi">📊</i>练习统计</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openFavorites()})"><i class="mi">📌</i>收藏</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openMistakes()})"><i class="mi">❌</i>错题本</button>
+    <button class="ms-item" onclick="TAB.run(function(){C5.openMockExam()})"><i class="mi">📝</i>模考</button>
+    <button class="ms-item" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="mi">🧩</i>组卷</button>
+    <button class="ms-item" onclick="TAB.run(function(){C8.openIncentive()})"><i class="mi">🏆</i>激励</button>
+    <button class="ms-item" onclick="TAB.run(function(){C9.openReport()})"><i class="mi">📈</i>报告</button>
+    <button class="ms-item" onclick="TAB.run(function(){C10.openFenbi()})"><i class="mi">🎯</i>提升计划</button>
+    <button class="ms-item" onclick="TAB.run(function(){C11.openEssay()})"><i class="mi">✍️</i>申论批改</button>
+    <button class="ms-item" onclick="TAB.run(function(){C12.openInterview()})"><i class="mi">🎤</i>面试练习</button>
+    <button class="ms-item" onclick="TAB.run(function(){C7.openMessages()})"><i class="mi">🔔</i>消息中心</button>
+    <button class="ms-item" onclick="location.href='/knowledge.html'"><i class="mi">🧠</i>知识体系</button>
+    <button class="ms-item" onclick="location.href='/forum.html'"><i class="mi">💬</i>学习论坛</button>
+    <button class="ms-item" onclick="location.href='/'"><i class="mi">🏠</i>官网首页</button>
+    <button class="ms-item" onclick="location.href='/articles.html'"><i class="mi">📰</i>备考资讯</button>
+  </div>
+</div>
+<script>
+// 批次26 · Tab 导航：移动端 App 化（5 tab + 更多菜单；仅 ≤720px 显示，桌面自动隐藏）
+(function () {
+  "use strict";
+  var sheet = document.getElementById("moreSheet");
+  var mask = document.getElementById("msMask");
+  var tabs = document.querySelectorAll("#tabbar button");
+  // tab → 动作映射（复用既有面板函数，零后端改动）
+  var ACTIONS = {
+    chat: null,                                   // 回到对话：关面板+收起菜单
+    practice: function () { C4.openPractice(); },
+    exam: function () { C5.openMockExam(); },
+    report: function () { C9.openReport(); },
+    more: null                                    // 打开更多菜单
+  };
+  function setOn(key) {
+    tabs.forEach(function (b) { b.classList.toggle("on", b.dataset.tab === key); });
+  }
+  window.TAB = {
+    go: function (key) {
+      if (key === "more") {
+        setOn("more");
+        sheet.classList.add("open");
+        mask.classList.add("show");
+        return;
+      }
+      TAB.closeMore();
+      setOn(key);
+      var fn = ACTIONS[key];
+      if (key === "chat") {
+        // 回对话：点遮罩式关闭所有面板（复用各面板关闭逻辑——ESC/遮罩等价路径）
+        document.querySelectorAll(".c-panel, #c4Panel").forEach(function (p) {
+          var btn = p.querySelector(".close, [data-close], .panel-close");
+          if (btn) btn.click();
+          else p.style.display = "none";
+        });
+        var chatEl = document.getElementById("chat");
+        if (chatEl) chatEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (typeof fn === "function") fn();
+    },
+    run: function (fn) {          // 更多菜单项：先收起菜单再执行
+      TAB.closeMore();
+      setTimeout(fn, 120);        // 等收起动画过半，避免面板与菜单动画打架
+    },
+    closeMore: function () {
+      sheet.classList.remove("open");
+      mask.classList.remove("show");
+      if (document.querySelector("#tabbar button.on[data-tab='more']")) setOn("chat");
+    }
+  };
+  // 仅移动端挂 body 标记（CSS 据此显示 tabbar + 预留底部空间）
+  function mount() {
+    if (window.matchMedia("(max-width: 720px)").matches) {
+      document.body.classList.add("has-tabbar");
+    } else {
+      document.body.classList.remove("has-tabbar");
+    }
+  }
+  mount();
+  window.addEventListener("resize", mount);
 })();
 </script>
 </div><!-- /#main -->

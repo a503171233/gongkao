@@ -86,7 +86,7 @@
     avatar.className = 'avatar';
     avatar.textContent = '师';
     var bubble = document.createElement('div');
-    bubble.className = 'bubble';
+    bubble.className = 'bubble streaming';   // 批次26：流式输出中，末尾打字机光标
     // 思考占位：首个 delta 到达时移除（非整段重绘）
     var thinking = document.createElement('span');
     thinking.className = 'thinking';
@@ -159,6 +159,7 @@
   function finish() {
     state.done = true;
     if (state.bubble) removeThinking(state.bubble);
+    if (state.bubble) state.bubble.classList.remove('streaming');  // 批次26：输出结束移除光标
     // 拒答检测：完整回答含拒答标志 → 浅橙拒答样式（现状 .rejected 类）
     if (state.bubble && !state.blocked && state.answer.indexOf(REJECT_MARK) !== -1) {
       state.bubble.classList.add('rejected');
@@ -236,6 +237,7 @@
     var names = list.map(function (r) { return REASON_CN[r] || r; }).filter(Boolean).join('、');
     // 替换当前回答内容（清空增量文本与 refs，避免残留）
     state.bubble.textContent = '';
+    state.bubble.classList.remove('streaming');  // 批次26：拦截为终态，移除光标
     var tip = '⚠️ 回答被幻觉检测拦截：未能通过教学资料校验';
     if (names) tip += '（' + names + '）';
     state.bubble.appendChild(document.createTextNode(tip));
@@ -274,6 +276,7 @@
     if (status) text += ' (HTTP ' + status + ')';
     errDiv.textContent = text;
     state.bubble.appendChild(errDiv);
+    state.bubble.classList.remove('streaming');  // 批次26：错误为终态，移除光标
     state.done = true;   // 错误后不再接受迟到 delta
     scrollToBottom();
   }

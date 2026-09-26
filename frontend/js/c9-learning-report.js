@@ -77,8 +77,10 @@
   }
 
   function bar(color, widthPct, bg) {
+    // 批次26：高光渐变条 + scaleX 生长动画（动画在 .bar-fill CSS 类）
     return '<div style="height:7px;background:' + (bg || 'var(--line)') + ';border-radius:4px;overflow:hidden">' +
-      '<div style="height:100%;width:' + Math.max(0, Math.min(100, widthPct)) + '%;background:' + color + ';border-radius:4px"></div>' +
+      '<div class="bar-fill" style="height:100%;width:' + Math.max(0, Math.min(100, widthPct)) + '%;background:' +
+      'linear-gradient(90deg,rgba(255,255,255,.22),rgba(255,255,255,0) 65%),' + color + '"></div>' +
       '</div>';
   }
 

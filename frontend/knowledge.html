@@ -277,7 +277,7 @@ a { color: var(--wood-deep); text-decoration: none; }
           <button type="button" data-v="tree" class="on" onclick="setView('tree')">🌲 树状</button>
           <button type="button" data-v="map" onclick="setView('map')">🧠 导图</button>
         </div>
-        <span class="mlegend" id="mlegend">🟢 ≥80% 扎实 · 🟡 60-79% 一般 · 🔴 &lt;60% 薄弱 · ⚪ 未练</span>
+        <span class="mlegend" id="mlegend"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#7a9e6d;vertical-align:-1px"></i> ≥80% 扎实 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b08340;vertical-align:-1px"></i> 60-79% 一般 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b45a4a;vertical-align:-1px"></i> &lt;60% 薄弱 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(139,94,60,.4);vertical-align:-1px;box-sizing:border-box"></i> 未练</span>
         <button class="btn ghost sm" onclick="togglePlan()" title="根据你的掌握度生成 7 天冲刺学习计划">📋 学习计划</button>
         <div class="dl">
           <button class="btn ghost sm" onclick="downloadFmt('md')" title="下载 Markdown 大纲（可导入 XMind / 幕布）">⬇ .md</button>
@@ -329,23 +329,43 @@ async function initTeacher() {
   } catch (e) { $('#teacher').innerHTML = '<option value="T001">默认老师（T001）</option>'; }
 }
 
+// 批次26 · 数字滚动动画（rAF + easeOutCubic）
+function countUp(el, target, dur) {
+  const start = performance.now();
+  function step(ts) {
+    const p = Math.min((ts - start) / (dur || 900), 1);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function skelStats() {
+  return `<div class="card">${'<div class="skel skel-line w50"></div>'.repeat(2)}<div class="skel skel-block"></div></div>`.repeat(3);
+}
+
 async function loadStats() {
   const box = $('#stats');
+  if (!box.innerHTML.includes('cn')) box.innerHTML = skelStats();  // 骨架占位（shimmer）
   try {
     const s = await api('/public/knowledge/stats?teacher_id=' + encodeURIComponent(tid()) + '&tree_type=' + treeType);
     const cats = (s.categories || []).slice(0, 5).map(c => `${esc(c.category)} ${c.count}`).join(' · ');
     const isQ = treeType === 'qtype';
     box.innerHTML = `
-      <div class="card"><div class="cl">${isQ ? '题型节点' : '知识节点'}</div><div class="cn">${s.total || 0}</div><div class="cs">${isQ ? '多级细分 · 如 行测/判断推理/图形推理' : cats || '暂无分类标签'}</div></div>
-      <div class="card"><div class="cl">分类 ${isQ ? '体系' : '标签'}</div><div class="cn gold">${(s.categories || []).length}</div><div class="cs">${cats || '—'}</div></div>
-      <div class="card"><div class="cl">检索模式</div><div class="cn green">${(s.total || 0) > 0 ? '可检索' : '建设中'}</div><div class="cs">单击节点显示完整路径</div></div>`;
+      <div class="card enter"><div class="cl">${isQ ? '题型节点' : '知识节点'}</div><div class="cn tnum">${s.total || 0}</div><div class="cs">${isQ ? '多级细分 · 如 行测/判断推理/图形推理' : cats || '暂无分类标签'}</div></div>
+      <div class="card enter enter-d1"><div class="cl">分类 ${isQ ? '体系' : '标签'}</div><div class="cn gold tnum">${(s.categories || []).length}</div><div class="cs">${cats || '—'}</div></div>
+      <div class="card enter enter-d2"><div class="cl">检索模式</div><div class="cn green">${(s.total || 0) > 0 ? '可检索' : '建设中'}</div><div class="cs">单击节点显示完整路径</div></div>`;
+    box.querySelectorAll('.cn.tnum').forEach(el => {
+      const n = parseInt(el.textContent, 10);
+      if (n > 0) countUp(el, n);
+    });
   } catch (e) { box.innerHTML = ''; }
 }
 
 async function loadTree() {
   const kw = (($('#kw') && $('#kw').value) || '').trim();
   const box = $('#tree-box');
-  box.innerHTML = '<div class="loading">加载中…</div>';
+  box.innerHTML = '<div class="skel skel-block"></div>'.repeat(4)
+    + '<div class="skel skel-line w70"></div><div class="skel skel-line w50"></div>';  // 批次26 骨架屏
   try {
     await loadMastery();  // 批次20：先拉掌握度（未登录静默为 null）
     const r = await api('/public/knowledge/tree?teacher_id=' + encodeURIComponent(tid())
@@ -413,6 +433,17 @@ function aggStats(nodes, depth) {
   return out;
 }
 
+// 批次26 · 环形进度小环（SVG，替代 emoji 圆点——掌握度一眼可读）
+function ringSvg(pct, color) {
+  const r = 5, c = 2 * Math.PI * r;
+  const off = (c * (1 - pct / 100)).toFixed(1);
+  return `<svg class="ring" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">`
+    + `<circle cx="7" cy="7" r="${r}" fill="none" stroke="rgba(139,94,60,.18)" stroke-width="2.6"/>`
+    + `<circle class="ring-fg" cx="7" cy="7" r="${r}" fill="none" stroke="${color}" stroke-width="2.6"`
+    + ` stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off}"`
+    + ` transform="rotate(-90 7 7)"/></svg>`;
+}
+
 // 批次20：掌握度徽标（知识点层用后端明细，模块/章节用聚合；考点层不显示）
 function masteryBadge(nodeId, depth) {
   if (!mastery || (depth !== undefined && depth > 2)) return '';
@@ -421,8 +452,8 @@ function masteryBadge(nodeId, depth) {
   if (!done) return '<span class="mastery none">未练</span>';
   const pct = Math.round(correct / done * 100);
   const lv = (pct >= 80 && done >= 3) ? 'strong' : (pct >= 60 ? 'mid' : 'weak');
-  const icon = lv === 'strong' ? '🟢' : (lv === 'mid' ? '🟡' : '🔴');
-  return `<span class="mastery ${lv}" title="做题 ${done} · 答对 ${correct}">${icon} ${pct}% · ${done}题</span>`;
+  const col = lv === 'strong' ? '#7a9e6d' : (lv === 'mid' ? '#b08340' : '#b45a4a');
+  return `<span class="mastery ${lv}" title="做题 ${done} · 答对 ${correct}">${ringSvg(pct, col)} ${pct}% · ${done}题</span>`;
 }
 
 function render(nodes, depth) {
