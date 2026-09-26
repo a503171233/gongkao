@@ -279,12 +279,15 @@ async function loadTree() {
   }
 }
 
-// 记录每个节点的完整路径文字
-function buildPaths(nodes, anc) {
+// 记录每个节点的完整路径文字 + 顶层模块归属（批次21 申论/面试分流跳转）
+let modules = {};   // node_id -> 顶层模块名
+function buildPaths(nodes, anc, topName) {
   (nodes || []).forEach(n => {
+    const t = topName || n.name;               // 顶层节点名即模块名
+    if (!anc.length) modules[n.node_id] = t;
     const p = anc.concat(n.name);
     paths[n.node_id] = p.join(' / ');
-    buildPaths(n.children, p);
+    buildPaths(n.children, p, t);
   });
 }
 
@@ -387,10 +390,14 @@ function switchType() {
   loadTree();
 }
 
-// 批次19：知识点 → 练习联动。跳学习中心，登录后自动按该节点抽题；
-// 未登录则走平台登录模态框，登录后可在练习面板分类/知识点继续。
+// 批次21：知识点 → 练习联动按模块分流——
+// 行测模块：跳学习中心按知识点抽题；申论：跳申论 AI 批改；面试：跳面试练习。
+// 未登录则走平台登录模态框，登录后可在对应面板继续。
 function goPractice(nodeId) {
-  location.href = '/chat.html?kp=' + encodeURIComponent(nodeId);
+  const mod = modules[nodeId] || '';
+  if (mod === '申论') location.href = '/chat.html?essay=1';
+  else if (mod === '面试') location.href = '/chat.html?interview=1';
+  else location.href = '/chat.html?kp=' + encodeURIComponent(nodeId);
 }
 
 function setView(mode) {

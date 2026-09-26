@@ -188,13 +188,31 @@ document.addEventListener('DOMContentLoaded', function () {
         window.C5 && typeof C5.openMockExam === 'function') {
       setTimeout(function () { try { C5.openMockExam(); } catch (e) {} }, 900);
     }
-    // 批次19：知识页「去练习」→ /chat.html?kp=<node_id> → 自动打开知识点专项抽题
-    var kpNode = hasToken ? new URLSearchParams(location.search).get('kp') : null;
+    // 批次19/21：知识页「去练习」→ /chat.html?kp=<node_id> 自动抽题；
+    // 申论/面试叶子 → ?essay=1 / ?interview=1 直接打开对应练习面板
+    var sp = new URLSearchParams(location.search);
+    var kpNode = hasToken ? sp.get('kp') : null;
     if (kpNode && window.C4 && typeof C4.practiceByKnowledge === 'function') {
       setTimeout(function () {
         try {
           C4.practiceByKnowledge(kpNode);
           history.replaceState(null, '', location.pathname);  // 清参数，刷新不重放
+        } catch (e) {}
+      }, 900);
+    } else if (hasToken && sp.get('essay') === '1' && window.C11 &&
+               typeof C11.openEssay === 'function') {
+      setTimeout(function () {
+        try {
+          C11.openEssay();
+          history.replaceState(null, '', location.pathname);
+        } catch (e) {}
+      }, 900);
+    } else if (hasToken && sp.get('interview') === '1' && window.C12 &&
+               typeof C12.openInterview === 'function') {
+      setTimeout(function () {
+        try {
+          C12.openInterview();
+          history.replaceState(null, '', location.pathname);
         } catch (e) {}
       }, 900);
     }
