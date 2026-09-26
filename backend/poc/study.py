@@ -127,6 +127,44 @@ def normalize_category(raw) -> str:
     return ""
 
 
+# ---------------- 批次19 知识体系 → 练习联动 ----------------
+
+# 知识树模块名 → 题库 category 大类映射（L3 模块级兜底；题库 category 为 6 枚举）
+_KB_MODULE_CATEGORY = {
+    "言语理解与表达": "言语理解",
+    "判断推理": "判断推理",
+    "数量关系": "数量关系",
+    "资料分析": "资料分析",
+    "常识判断": "常识判断",
+}
+
+_KP_STRIP_SUFFIXES = ("问题", "策略", "题")  # 词根剥离后缀（链式）
+
+
+def _kp_terms(name: str) -> list[str]:
+    """知识点/章节名 → 题库检索词根序列（批次19 练习联动）。
+    规则：原名 → 链式剥离「问题/策略/题」后缀 → 按「与」拆分；
+    词根去重保序，长度<2 的碎片丢弃（避免单字误命中）。"""
+    t = (name or "").strip()
+    if not t:
+        return []
+    terms = [t]
+    cur = t
+    for suf in _KP_STRIP_SUFFIXES:
+        if cur.endswith(suf) and len(cur) - len(suf) >= 2:
+            cur = cur[: -len(suf)]
+            terms.append(cur)
+    if "与" in t:
+        terms.extend(p for p in t.split("与") if len(p) >= 2)
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in terms:
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
 # 题目来源（枚举类型 + 可选出处）。source_type 枚举：AI采集 / 用户提供 / 公开题库 / 文档库 / 互联网搜索
 QUESTION_SOURCE_TYPES = ["AI采集", "用户提供", "公开题库", "文档库", "互联网搜索"]
 
@@ -1258,6 +1296,79 @@ class StudyStore:
         with self._connect() as conn:
             qrows = conn.execute(sql + " ORDER BY id", args).fetchall()
         return self._parse_qrows(qrows)
+
+    def _qbank_like_pool(self, teacher_id: str, term: str) -> list[dict]:
+        """批次19：按词根模糊检索题库（knowledge_point / category 两列 LIKE）。"""
+        like = f"%{term}%"
+        sql = (f"SELECT * FROM question_bank WHERE {_teacher_scope_sql()} AND enabled=1 "
+               "AND (knowledge_point LIKE ? OR category LIKE ?) ORDER BY id")
+        with self._connect() as conn:
+            rows = conn.execute(sql, (teacher_id, like, like)).fetchall()
+        return self._parse_qrows(rows)
+
+    def get_practice_by_knowledge(self, teacher_id: str, node_id: str,
+                                  user_id: str = "anonymous",
+                                  ks=None) -> dict:
+        """批次19：按知识树节点抽题（知识页「去练习」联动）。
+        三级检索逐级回退：
+          L1 知识点词根 → knowledge_point/category LIKE（如「比重问题」→ %比重%）
+          L2 所属章节名词根 → 同上（如「图形推理」章节）
+          L3 模块名 → category 大类精确（题库 6 枚举，保证必有题）
+        命中后随机抽一题，payload 附 practice_scope（命中层级/词根/节点完整路径）。
+        ks 参数供测试注入临时 KnowledgeStore（默认全局单例）。"""
+        import random
+        if ks is None:
+            from poc.knowledge import get_knowledge_store
+            ks = get_knowledge_store()
+        node = ks.get_node(node_id) if node_id else None
+        if not node or node.get("teacher_id") != teacher_id:
+            raise ValueError("知识点不存在")
+        if node.get("tree_type") != "knowledge":
+            raise ValueError("仅知识体系树节点支持练习联动")
+        # 祖先链（自叶向根）
+        chain = [node]
+        seen_ids = {node["node_id"]}
+        cur = node
+        while cur.get("parent_id"):
+            p = ks.get_node(cur["parent_id"])
+            if not p or p["node_id"] in seen_ids:
+                break
+            chain.append(p)
+            seen_ids.add(p["node_id"])
+            cur = p
+        node_path = [n["name"] for n in reversed(chain)]
+
+        def _hit(pool: list[dict], level: str, term: str) -> dict:
+            resp = self._practice_payload(random.choice(pool))
+            resp["practice_scope"] = {
+                "level": level,
+                "term": term,
+                "node_path": node_path,
+                "note": {"knowledge": "🎯 知识点专项", "chapter": "📂 章节专项",
+                         "module": "📚 模块练习"}[level],
+            }
+            return resp
+
+        # L1 知识点词根
+        for term in _kp_terms(node["name"]):
+            pool = self._qbank_like_pool(teacher_id, term)
+            if pool:
+                return _hit(pool, "knowledge", term)
+        # L2 章节词根（chain[1] 为直接父节点）
+        if len(chain) > 1:
+            for term in _kp_terms(chain[1]["name"]):
+                pool = self._qbank_like_pool(teacher_id, term)
+                if pool:
+                    return _hit(pool, "chapter", term)
+        # L3 模块兜底（映射大类 → 原名，各试一次）
+        module = chain[-1]["name"]
+        for cat in dict.fromkeys([_KB_MODULE_CATEGORY.get(module, ""), module]):
+            if not cat:
+                continue
+            pool = self._qbank_pool(teacher_id, category=cat)
+            if pool:
+                return _hit(pool, "module", cat)
+        raise ValueError("该知识点暂无可练习的题目")
 
     def _difficulty_hint(self, user_id: str) -> dict:
         """#13 难度预估：近期客观题按难度档正确率 → 建议抽题难度区间。

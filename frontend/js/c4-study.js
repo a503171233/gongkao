@@ -339,7 +339,7 @@
   // -----------------------------------------------------------------
   // 4. 练习功能（题库客观题/判断题/简答题 + #36 分类专项/只刷错题/AI 批改）
   // -----------------------------------------------------------------
-  var practiceState = { category: '', mode: '' };
+  var practiceState = { category: '', mode: '', kpNodeId: '' };  // kpNodeId: 批次19 知识点专项
 
   // #36 AI 批改报告渲染（四维进度条 + 总评 + 建议 + 参考范文）
   function renderGradeReport(box, g) {
@@ -379,7 +379,23 @@
   function practiceCategory(cat) {
     practiceState.category = cat || '';
     practiceState.mode = '';
+    practiceState.kpNodeId = '';
     openPractice();
+  }
+
+  // 批次19 知识体系 → 练习联动：按知识树节点抽题（knowledge.html「去练习」入口）。
+  // 复用 openPractice 整套面板/渲染/提交流程：kpNodeId 挂到 practiceState，
+  // loadQuestion 检测到即改走 /practice/by-knowledge 抽题。
+  function practiceByKnowledge(nodeId) {
+    practiceState.kpNodeId = nodeId || '';
+    practiceState.category = '';
+    practiceState.mode = '';
+    openPractice(null, true);  // keepKp=true：保留知识点专项模式
+  }
+
+  // 批次19：知识点专项「下一题」（同一知识点继续抽题）
+  function nextByKnowledge() {
+    openPractice(null, true);
   }
 
   // #22 收藏断头路修复：练习题加入收藏夹（后端 POST /favorites 早已存在，此前前端无任何入口）
@@ -496,8 +512,10 @@
     }).catch(function () { /* 归组失败静默 */ });
   }
 
-  function openPractice(questionId) {
+  function openPractice(questionId, keepKp) {
     var teacherId = GK.store.teacherId || 'T001';
+    // 批次19：普通入口（学情报告/错题重练等）清知识点专项；keepKp=true 保留
+    if (!keepKp) practiceState.kpNodeId = '';
 
     var container = document.getElementById('c4Panel');
     if (!container) {
@@ -507,7 +525,7 @@
       document.body.appendChild(container);
     }
 
-    container.innerHTML = '<h3>✏️ 真题练习</h3>' +
+    container.innerHTML = '<h3>' + (keepKp && practiceState.kpNodeId ? '✏️ 知识点专项练习' : '✏️ 真题练习') + '</h3>' +
       '<div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
         '<select id="practiceCat" style="padding:5px 8px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;max-width:160px;background:#fff"><option value="">📚 全部分类</option></select>' +
         '<button id="todayModeBtn" style="padding:5px 12px;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff8f8;cursor:pointer;font-size:12px">🎯 今日练习</button>' +
@@ -532,6 +550,7 @@
       sel.value = practiceState.category;
       sel.onchange = function () {
         practiceState.category = sel.value;
+        practiceState.kpNodeId = '';  // 批次19：切分类即退出知识点专项
         loadQuestion();
       };
     }).catch(function () { /* 分类加载失败不阻塞抽题 */ });
@@ -549,6 +568,7 @@
     tbtn.onclick = function () {
       practiceState.mode = practiceState.mode === 'today' ? '' : 'today';
       practiceState.category = '';  // 今日练习与分类专项互斥
+      practiceState.kpNodeId = '';  // 批次19：与知识点专项互斥
       syncTodayBtn();
       syncWrongBtn();
       loadQuestion();
@@ -563,15 +583,23 @@
     syncWrongBtn();
     wbtn.onclick = function () {
       practiceState.mode = practiceState.mode === 'wrong' ? '' : 'wrong';
+      practiceState.kpNodeId = '';  // 批次19：与知识点专项互斥
       syncWrongBtn();
       loadQuestion();
     };
 
     function loadQuestion(qid) {
-      var url = '/practice/next?teacher_id=' + encodeURIComponent(teacherId);
-      if (practiceState.category) url += '&category=' + encodeURIComponent(practiceState.category);
-      if (practiceState.mode) url += '&mode=' + practiceState.mode;
-      if (qid) url += '&question_id=' + qid;
+      var url;
+      if (practiceState.kpNodeId && !qid) {
+        // 批次19 知识点专项：按知识树节点抽题（三级回退后端已处理）
+        url = '/practice/by-knowledge?teacher_id=' + encodeURIComponent(teacherId) +
+          '&node_id=' + encodeURIComponent(practiceState.kpNodeId);
+      } else {
+        url = '/practice/next?teacher_id=' + encodeURIComponent(teacherId);
+        if (practiceState.category) url += '&category=' + encodeURIComponent(practiceState.category);
+        if (practiceState.mode) url += '&mode=' + practiceState.mode;
+        if (qid) url += '&question_id=' + qid;
+      }
       global.GK.api(url).then(function (d) {
         renderQuestion(d);
       }).catch(function (e) {
@@ -589,6 +617,14 @@
       // 批次12c：今日练习来源徽标（到期错题/薄弱专项/智能新题）
       if (d.today_note) {
         catBadge += '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff0f0;color:var(--bad);font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(d.today_note) + '</span>';
+      }
+      // 批次19：知识点专项命中标注（层级徽标 + 完整节点路径）
+      if (d.practice_scope) {
+        var sc = d.practice_scope;
+        catBadge += '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:var(--gold-soft);color:var(--wood-deep);font-size:11px;margin-left:6px;vertical-align:1px">' + escapeHtml(sc.note || '') + '</span>';
+        if (sc.node_path && sc.node_path.length) {
+          catBadge += '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:var(--paper-2);color:var(--ink-2);font-size:11px;margin-left:6px;vertical-align:1px">📍 ' + escapeHtml(sc.node_path.join(' / ')) + '</span>';
+        }
       }
       if (d.mode_fallback === 'no_wrong') {
         showToast('暂无未掌握错题，已切换普通抽题', '');
@@ -631,7 +667,7 @@
         (d.hint ? '<div style="font-size:12px;color:var(--ink-3);margin-top:6px">' + escapeHtml(d.hint) + '</div>' : '') +
         '<div style="margin-top:8px;display:flex;gap:8px">' +
         '<button id="submitPractice" style="flex:1;padding:8px;border:none;border-radius:6px;background:var(--wood);color:#fff;cursor:pointer">提交</button>' +
-        '<button onclick="C4.openPractice()" style="padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">下一题</button>' +
+        '<button onclick="C4.' + (practiceState.kpNodeId ? 'nextByKnowledge()' : 'openPractice()') + '" style="padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">下一题</button>' +
         (d.id != null ? '<button onclick="C4.addFavorite(' + d.id + ')" title="加入收藏夹" style="padding:8px 12px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">⭐</button>' : '') +
         '</div>' +
         '<div id="practiceResult" style="margin-top:8px"></div>' +
@@ -806,7 +842,9 @@
     showPracticeStats: showPracticeStats,
     regrade: regrade,
     addFavorite: addFavorite,
-    practiceCategory: practiceCategory
+    practiceCategory: practiceCategory,
+    practiceByKnowledge: practiceByKnowledge,
+    nextByKnowledge: nextByKnowledge
   };
   global.GK.c4Ready = true;
 

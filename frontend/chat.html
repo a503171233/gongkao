@@ -188,6 +188,16 @@ document.addEventListener('DOMContentLoaded', function () {
         window.C5 && typeof C5.openMockExam === 'function') {
       setTimeout(function () { try { C5.openMockExam(); } catch (e) {} }, 900);
     }
+    // 批次19：知识页「去练习」→ /chat.html?kp=<node_id> → 自动打开知识点专项抽题
+    var kpNode = hasToken ? new URLSearchParams(location.search).get('kp') : null;
+    if (kpNode && window.C4 && typeof C4.practiceByKnowledge === 'function') {
+      setTimeout(function () {
+        try {
+          C4.practiceByKnowledge(kpNode);
+          history.replaceState(null, '', location.pathname);  // 清参数，刷新不重放
+        } catch (e) {}
+      }, 900);
+    }
   } catch (e) {}
 });
 

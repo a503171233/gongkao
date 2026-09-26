@@ -1048,6 +1048,24 @@ def get_next_practice(
     return practice
 
 
+@app.get("/practice/by-knowledge")
+def practice_by_knowledge(
+    teacher_id: str = "T001",
+    node_id: str = "",
+    authorization: str = Header(default=""),
+):
+    """批次19：按知识树节点抽题（知识页「去练习」联动）。需登录。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    try:
+        return study_store.get_practice_by_knowledge(teacher_id, node_id,
+                                                     user["user_id"])
+    except ValueError as e:
+        status = 404 if "不存在" in str(e) else 400
+        raise HTTPException(status_code=status, detail=str(e)) from e
+
+
 @app.get("/practice/categories")
 def practice_categories(teacher_id: str = "T001"):
     """#36 老师题库分类清单（含题量），供练习面板下拉。匿名可访问（只读）。"""
@@ -4039,104 +4057,6 @@ def _forum_require_user(user: dict) -> dict:
         raise HTTPException(status_code=401, detail="请先登录")
     return user
 
-
-# ========== #23 知识导图数据源：题库聚合的题型/知识树（public 只读） ==========
-
-def _kb_tree_rows(teacher_id: str) -> list:
-    """题库 category/knowledge_point 聚合行（含题量），共享题库并入。"""
-    with study_store._connect() as conn:
-        return conn.execute(
-            "SELECT category, knowledge_point, COUNT(*) n FROM question_bank "
-            f"WHERE {study_mod._teacher_scope_sql()} AND enabled=1 "
-            "GROUP BY category, knowledge_point ORDER BY n DESC",
-            (teacher_id,),
-        ).fetchall()
-
-
-def _kb_tree_nodes(rows, keyword: str = "") -> list[dict]:
-    """聚合行 → 三层树：分类 → 知识点组（kp 首段）→ 叶子（kp 细分）。
-    keyword 命中叶子/组/分类名时保留该节点及其祖先链。"""
-    kw = (keyword or "").strip().lower()
-    cats: dict[str, dict] = {}
-
-    def _hit(name: str) -> bool:
-        return bool(kw) and kw in name.lower()
-
-    for r in rows:
-        cat = (r["category"] or "综合").strip() or "综合"
-        kp = (r["knowledge_point"] or "").strip()
-        n = r["n"]
-        c = cats.setdefault(cat, {
-            "node_id": f"c:{cat}", "name": cat, "category": cat,
-            "count": 0, "children": {},
-        })
-        c["count"] += n
-        if not kp:
-            continue
-        parts = kp.split("-", 1)
-        group_name = (parts[0].strip() or kp)
-        leaf_name = (parts[1].strip() if len(parts) > 1 else "") or kp
-        g = c["children"].setdefault(f"g:{cat}:{group_name}", {
-            "node_id": f"g:{cat}:{group_name}", "name": group_name,
-            "count": 0, "children": {},
-        })
-        g["count"] += n
-        if f"k:{cat}:{kp}" not in g["children"]:
-            g["children"][f"k:{cat}:{kp}"] = {
-                "node_id": f"k:{cat}:{kp}", "name": leaf_name,
-                "category": cat, "count": n,
-                "description": f"{kp} · {n} 题",
-            }
-        else:  # 同 kp 多行（理论不会，防御）
-            g["children"][f"k:{cat}:{kp}"]["count"] += n
-            g["children"][f"k:{cat}:{kp}"]["description"] += f"/{n}"
-
-    def _prune(node: dict) -> dict | None:
-        """keyword 过滤：命中自身 → 整棵保留；否则仅保留命中的子孙。"""
-        kids = [ _prune(ch) for ch in node.get("children", {}).values() ]
-        kids = [k for k in kids if k]
-        kept = kids if kids else []
-        if _hit(node["name"]):
-            node["children"] = node.get("children", {})
-            return node
-        if not kw:
-            node["children"] = sorted(kept, key=lambda x: -x.get("count", 0)) if kept else []
-            return node
-        if kept:
-            node["children"] = sorted(kept, key=lambda x: -x.get("count", 0))
-            return node
-        return None
-
-    out = []
-    for c in sorted(cats.values(), key=lambda x: -x.get("count", 0)):
-        pruned = _prune(c)
-        if pruned:
-            out.append(pruned)
-    return out
-
-
-@app.get("/public/knowledge/stats")
-def knowledge_stats(teacher_id: str = "T001", tree_type: str = "knowledge"):
-    """#23 导图页统计卡：节点数（叶子=细分知识点）+ 分类清单。匿名只读。"""
-    rows = _kb_tree_rows(teacher_id)
-    nodes = _kb_tree_nodes(rows)
-    leaves = 0
-    for c in nodes:
-        for g in c.get("children", []):
-            leaves += max(1, len(g.get("children", [])))
-    return {
-        "total": leaves,
-        "categories": [{"category": c["name"], "count": c["count"]} for c in nodes],
-    }
-
-
-@app.get("/public/knowledge/tree")
-def knowledge_tree(teacher_id: str = "T001", tree_type: str = "knowledge",
-                   keyword: str = ""):
-    """#23 题库知识树（knowledge/qtype 两模式同源：均基于题库分类与知识点聚合）。
-    node 契约与 knowledge.html 一致：{node_id, name, category?, description?, children[]}。"""
-    rows = _kb_tree_rows(teacher_id)
-    return {"nodes": _kb_tree_nodes(rows, keyword=keyword)}
 
 
 @app.get("/public/forum/notice")
