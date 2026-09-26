@@ -196,7 +196,7 @@ a { color: var(--wood-deep); text-decoration: none; }
 @media (max-width: 480px) {
   /* 顶栏：单行 + 链接条横滑不折行（修按钮文字竖排） */
   .knav { flex-wrap: nowrap; padding: 9px 12px; gap: 10px; }
-  .brand { flex: 0 0 auto; font-size: 14.5px; gap: 8px; }
+  .brand { flex: 0 0 auto; font-size: 14.5px; gap: 8px; min-height: 40px; display: inline-flex; align-items: center; }
   .brand .mark { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
   .knav .links {
     margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -216,14 +216,21 @@ a { color: var(--wood-deep); text-decoration: none; }
   .cards .card { padding: 11px 10px; }
   /* 工具栏：控件全宽、触控 40px */
   .toolbar { gap: 8px; }
-  .toolbar select, .toolbar input[type=search], .toolbar .head-btn {
+  .toolbar select, .toolbar input[type=search], .toolbar .head-btn, .btn {
     min-height: 40px; font-size: 14px;   /* 16px 防 iOS 聚焦缩放，14px 由页面 scale */
   }
+  .kn-row .caret, .kn-row .prac { min-height: 32px; }  /* 树行内紧凑触控（行高约束下 32px） */
   .toolbar select, .toolbar input[type=search] { flex: 1 1 130px; }
   .toolbar .grow { min-width: 0; flex: 1 1 100%; }
   /* 树行：徽标紧凑、desc 字号微升保可读 */
-  .kn-row { gap: 7px; }
-  .kn-row .badge { white-space: nowrap; flex: 0 0 auto; }
+  .kn-row { gap: 6px; padding: 10px 8px; }
+  .kn-row .badge { white-space: nowrap; flex: 0 0 auto; max-width: 108px; overflow: hidden; text-overflow: ellipsis; }
+  /* 批次25：触控目标 32px+（caret 22→32 / 去练习 24→32）；隐藏子节点数省空间 */
+  .kn-row .caret { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
+  .kn-row .cnt { display: none; }
+  .kn-row .nm { font-size: 14px; line-height: 1.4; }
+  .kn-row .prac { padding: 6px 11px; font-size: 12px; min-height: 32px; display: inline-flex; align-items: center; }
+  .kn-row .mastery { font-size: 10.5px; padding: 3px 7px; white-space: nowrap; }
   .kn-desc { font-size: 12.5px; line-height: 1.7; margin-left: 8px; }
   /* 学习计划：7 天卡单列 */
   .plan-days { grid-template-columns: 1fr; }

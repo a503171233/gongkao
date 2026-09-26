@@ -177,6 +177,8 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
 .auth-btn.primary { background: var(--wood); color: #fffaf0; border-color: var(--wood); font-weight: 600; }
 .auth-btn.primary:hover { background: var(--wood-deep); }
 .head-btn { margin-left: 8px; padding: 7px 15px; border: 1px solid var(--gold-soft); border-radius: 999px; background: var(--card); color: var(--wood); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .25s var(--spring); white-space: nowrap; }
+/* 批次25：功能按钮容器——桌面透明化（按钮仍直接参与 header flex），移动端变横滑工具条 */
+.tool-strip { display: contents; }
 .head-btn:hover { background: var(--gold-soft); transform: translateY(-1px); }
 
 #chat { flex: 1; overflow-y: auto; padding: 26px; max-width: 900px; width: 100%; margin: 0 auto; }
@@ -262,12 +264,23 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
   }
   /* header 允许换行；按钮不压缩、保持触控尺寸 */
   header { flex-wrap: wrap; row-gap: 6px; }
-  .head-btn { flex: 0 0 auto; }
   header .home-link { order: 1; }
   header .logo, header h1 { order: 2; }
-  #authArea { order: 3; margin-left: auto; }
-  .head-btn { order: 4; }
-  .teacher-tabs { order: 5; }
+  .teacher-tabs { order: 3; width: auto; flex: 1 1 auto; min-width: 0; margin-left: 0;
+    overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+  .teacher-tabs::-webkit-scrollbar { display: none; }
+  #authArea { order: 4; margin-left: 0; flex-wrap: wrap; }
+  /* 批次25 · 功能按钮横滑工具条（13 按钮不再堆叠 5 行） */
+  .tool-strip {
+    order: 5; display: flex; flex-wrap: nowrap; width: 100%;
+    gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 2px -12px 0; padding: 2px 12px 4px;
+    border-bottom: 1px solid var(--line); scroll-snap-type: x proximity;
+  }
+  .tool-strip::-webkit-scrollbar { display: none; }
+  .tool-strip .head-btn { order: 0; flex: 0 0 auto; white-space: nowrap; margin-left: 0;
+    min-height: 36px; scroll-snap-align: start; }
   .hero { padding: 46px 16px 30px; }
   .nav-inner { padding: 10px 14px; }
   .nav-links { width: 100%; margin-left: 0; }
