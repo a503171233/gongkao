@@ -8,6 +8,7 @@
 
 数据存储：独立 study.db（SQLite 标准库），与 auth.db/chat.db/pay.db 隔离。
 """
+import json
 import os
 import re
 import sqlite3
@@ -374,6 +375,23 @@ class StudyStore:
             """)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_review_due ON review_schedule(user_id, next_review_at)")
+
+            # 批次22 个性化学习计划：一用户一老师同时只保留一份 active 计划
+            # payload = JSON {"days":[{day,title,focus,items:[{kind,node_id,name,module,level,note,done}]}]}
+            conn.executescript("""
+            CREATE TABLE IF NOT EXISTS study_plans (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                teacher_id  TEXT NOT NULL,
+                days        INTEGER NOT NULL DEFAULT 7,
+                payload     TEXT NOT NULL,
+                active      INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT NOT NULL
+            );
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_study_plan_user "
+                "ON study_plans(user_id, teacher_id, active)")
 
         # 收藏分组平滑迁移：老库补 fav_group 列（列已存在则忽略，不阻断启动）
         try:
@@ -1421,6 +1439,181 @@ class StudyStore:
             out[leaf["node_id"]] = {"done": done, "correct": correct,
                                     "accuracy": acc, "level": level}
         return {"mastery": out, "total_done": len(recs)}
+
+    # ==================== 批次22 个性化学习计划 ====================
+    _PLAN_DAY_TITLES = ["攻弱补短", "持续精进", "稳步推进", "查漏补缺",
+                        "冲刺演练", "申论实战", "面试与模考"]
+    _PLAN_TTL_DAYS = 7
+
+    def _plan_leaves(self, ks, teacher_id: str) -> list[dict]:
+        """收集知识树叶（含顶层模块归属）：[{node_id, name, module}]。"""
+        tree = ks.get_tree(teacher_id, "", "knowledge")
+        leaves: list[dict] = []
+
+        def _walk(nodes: list[dict], module: str = "") -> None:
+            for n in nodes or []:
+                mod = module or n["name"]
+                if n.get("children"):
+                    _walk(n["children"], mod)
+                else:
+                    leaves.append({"node_id": n["node_id"], "name": n["name"],
+                                   "module": mod})
+
+        _walk(tree.get("nodes") or [])
+        return leaves
+
+    @staticmethod
+    def _plan_item(kind: str, name: str, module: str = "", level: str = "",
+                   node_id: str = "", accuracy=None, note: str = "") -> dict:
+        return {"kind": kind, "name": name, "module": module, "level": level,
+                "node_id": node_id, "accuracy": accuracy, "note": note,
+                "done": False}
+
+    def generate_study_plan(self, teacher_id: str, user_id: str, ks=None) -> dict:
+        """批次22 个性化学习计划：掌握度驱动生成 7 天冲刺处方（纯规则零 LLM）。
+        结构：Day1-5 行测弱项（weak 按正确率升序 → mid → none）每天 3 点；
+        Day6 申论日（弱项 2 点 + 写作任务）；Day7 面试 + 本周模考收官。
+        生成即作废旧计划（同用户同老师同时仅一份 active）。"""
+        if ks is None:
+            from poc.knowledge import get_knowledge_store
+            ks = get_knowledge_store()
+        leaves = self._plan_leaves(ks, teacher_id)
+        if not leaves:
+            raise ValueError("知识树为空，请先初始化知识体系")
+        mastery = self.knowledge_mastery(teacher_id, user_id, ks)["mastery"]
+
+        xingce: dict[str, list[dict]] = {"weak": [], "mid": [], "none": []}
+        shenlun: dict[str, list[dict]] = {"weak": [], "mid": [], "none": []}
+        mianshi: dict[str, list[dict]] = {"weak": [], "mid": [], "none": []}
+        buckets = {"申论": shenlun, "面试": mianshi}
+        for lf in leaves:
+            m = mastery.get(lf["node_id"]) or {}
+            lv = m.get("level") or "none"
+            if lv == "strong":
+                continue
+            pool = buckets.get(lf["module"], xingce)[lv]
+            pool.append(self._plan_item("kp", lf["name"], lf["module"], lv,
+                                        lf["node_id"], m.get("accuracy")))
+        # 行测：weak 按正确率升序（越差越靠前）→ mid 同规则 → none 保持树序
+        for pool in (xingce, shenlun, mianshi):
+            pool["weak"].sort(key=lambda x: (x["accuracy"] if x["accuracy"] is not None else 0.0))
+            pool["mid"].sort(key=lambda x: (x["accuracy"] if x["accuracy"] is not None else 0.0),
+                             )
+        ordered_xc = xingce["weak"] + xingce["mid"] + xingce["none"]
+
+        def take(pool: dict, n: int) -> list[dict]:
+            out = pool["weak"][:n]
+            got = len(out)
+            if got < n:
+                out += pool["mid"][:n - got]
+                got = len(out)
+            if got < n:
+                out += pool["none"][:n - got]
+            for it in out:
+                for k in ("weak", "mid", "none"):
+                    if it in pool[k]:
+                        pool[k].remove(it)
+                        break
+            return out
+
+        # 弱项注脚
+        for lv, note in (("weak", "🔴 薄弱优先"), ("mid", "🟡 待巩固"),
+                         ("none", "⚪ 新学")):
+            for pool in (xingce, shenlun, mianshi):
+                for it in pool[lv]:
+                    if not it["note"]:
+                        it["note"] = note
+
+        days: list[dict] = []
+        for i in range(5):  # Day1-5 行测
+            picks = take(xingce, 3)
+            if not picks:
+                break
+            days.append({"day": i + 1, "title": f"Day {i + 1} · {self._PLAN_DAY_TITLES[i]}",
+                         "focus": "行测", "items": picks})
+        # Day6 申论日
+        d6 = take(shenlun, 2)
+        d6.append(self._plan_item("essay", "完成一篇申论大作文并 AI 批改",
+                                  "申论", "task", note="✍️ C11 批改面板"))
+        days.append({"day": 6, "title": f"Day 6 · {self._PLAN_DAY_TITLES[5]}",
+                     "focus": "申论", "items": d6})
+        # Day7 面试 + 模考
+        d7 = take(mianshi, 1)
+        d7.append(self._plan_item("interview", "AI 面试实战一轮（结构化问答）",
+                                  "面试", "task", note="🎤 C12 面试面板"))
+        d7.append(self._plan_item("mock", "一场结构组卷模考，检验本周成果",
+                                  "综合", "task", note="📝 C6 组卷模考"))
+        days.append({"day": 7, "title": f"Day 7 · {self._PLAN_DAY_TITLES[6]}",
+                     "focus": "综合", "items": d7})
+
+        total = sum(len(d["items"]) for d in days)
+        if not total:
+            raise ValueError("暂无可安排的学习项（知识树为空或全部已扎实）")
+
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("UPDATE study_plans SET active=0 "
+                         "WHERE user_id=? AND teacher_id=? AND active=1",
+                         (user_id, teacher_id))
+            cur = conn.execute(
+                "INSERT INTO study_plans(user_id, teacher_id, days, payload, active, created_at) "
+                "VALUES(?,?,?,?,1,?)",
+                (user_id, teacher_id, len(days), json.dumps({"days": days}, ensure_ascii=False), now))
+            plan_id = cur.lastrowid
+        return {"plan_id": plan_id, "created_at": now, "days": days}
+
+    def get_active_plan(self, teacher_id: str, user_id: str) -> dict | None:
+        """当前生效计划（7 天内），含进度统计；过期懒清理。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, created_at, payload FROM study_plans "
+                "WHERE user_id=? AND teacher_id=? AND active=1 "
+                "ORDER BY id DESC LIMIT 1",
+                (user_id, teacher_id)).fetchone()
+        if row is None:
+            return None
+        created = row["created_at"]
+        try:
+            from datetime import datetime as _dtm, timezone as _tz
+            ct = _dtm.strptime(created, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_tz.utc)
+            age_days = (_dtm.now(_tz.utc) - ct).total_seconds() / 86400
+        except ValueError:
+            age_days = 0
+        if age_days > self._PLAN_TTL_DAYS:
+            with self._connect() as conn:
+                conn.execute("UPDATE study_plans SET active=0 WHERE id=?", (row["id"],))
+            return None
+        days = json.loads(row["payload"]).get("days") or []
+        items = [it for d in days for it in d.get("items") or []]
+        done = sum(1 for it in items if it.get("done"))
+        return {"plan_id": row["id"], "created_at": created,
+                "days": days,
+                "progress": {"done": done, "total": len(items),
+                             "pct": round(done * 100 / len(items)) if items else 0}}
+
+    def checkin_plan_item(self, user_id: str, plan_id: int, day: int, idx: int) -> dict:
+        """打卡：翻转指定天/序位的完成状态，返回最新进度。"""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, payload, active FROM study_plans "
+                "WHERE id=? AND user_id=?", (plan_id, user_id)).fetchone()
+        if row is None or not row["active"]:
+            raise ValueError("计划不存在或已失效")
+        payload = json.loads(row["payload"])
+        days = payload.get("days") or []
+        target = next((d for d in days if d.get("day") == day), None)
+        items = (target or {}).get("items") or []
+        if idx < 0 or idx >= len(items):
+            raise ValueError("打卡项不存在")
+        items[idx]["done"] = not items[idx].get("done")
+        with self._connect() as conn:
+            conn.execute("UPDATE study_plans SET payload=? WHERE id=?",
+                         (json.dumps(payload, ensure_ascii=False), plan_id))
+        done = sum(1 for d in days for it in d["items"] if it.get("done"))
+        total = sum(len(d.get("items") or []) for d in days)
+        return {"done": items[idx]["done"],
+                "progress": {"done": done, "total": total,
+                             "pct": round(done * 100 / total) if total else 0}}
 
     def _difficulty_hint(self, user_id: str) -> dict:
         """#13 难度预估：近期客观题按难度档正确率 → 建议抽题难度区间。

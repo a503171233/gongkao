@@ -1076,6 +1076,50 @@ def knowledge_mastery(teacher_id: str = "T001",
     return study_store.knowledge_mastery(teacher_id, user["user_id"])
 
 
+# ---------- 批次22 个性化学习计划（掌握度驱动 7 天冲刺处方） ----------
+class StudyPlanCheckinReq(BaseModel):
+    plan_id: int
+    day: int
+    idx: int
+
+
+@app.post("/study/plan/generate")
+def study_plan_generate(teacher_id: str = "T001",
+                        authorization: str = Header(default="")):
+    """生成 7 天学习计划（同用户同老师旧计划自动作废）。需登录。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    try:
+        return study_store.generate_study_plan(teacher_id, user["user_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/study/plan")
+def study_plan_get(teacher_id: str = "T001",
+                   authorization: str = Header(default="")):
+    """当前生效学习计划（7 天内），无则 plan=null。需登录。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return {"plan": study_store.get_active_plan(teacher_id, user["user_id"])}
+
+
+@app.post("/study/plan/checkin")
+def study_plan_checkin(req: StudyPlanCheckinReq,
+                       authorization: str = Header(default="")):
+    """计划项打卡（翻转完成状态）。需登录。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    try:
+        return study_store.checkin_plan_item(user["user_id"], req.plan_id,
+                                             req.day, req.idx)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/practice/categories")
 def practice_categories(teacher_id: str = "T001"):
     """#36 老师题库分类清单（含题量），供练习面板下拉。匿名可访问（只读）。"""

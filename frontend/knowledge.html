@@ -126,6 +126,28 @@ a { color: var(--wood-deep); text-decoration: none; }
 .mastery.weak { background: rgba(180,90,74,.14); color: var(--bad); }
 .mastery.none { background: var(--paper-2); color: var(--ink-3); font-weight: 600; }
 .mlegend { font-size: 11px; color: var(--ink-3); font-weight: 600; display: none; }
+/* 批次22 学习计划面板 */
+#plan-box { display: none; margin-top: 14px; }
+.plan-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.plan-head h3 { margin: 0; font-size: 15px; color: var(--ink); }
+.plan-progress { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.pbar { flex: 1; height: 8px; background: rgba(0,0,0,.07); border-radius: 99px; overflow: hidden; }
+.pbar > i { display: block; height: 100%; background: linear-gradient(90deg, #8a9a5b, #a3b06e); border-radius: 99px; transition: width .3s; }
+.plan-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.plan-day { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,.55); }
+.plan-day h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink); display: flex; gap: 6px; align-items: center; }
+.plan-day h4 .focus { font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: rgba(201,160,90,.14); color: #8a6d3b; }
+.plan-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px dashed rgba(0,0,0,.06); font-size: 12.5px; }
+.plan-item .note { flex-shrink: 0; font-size: 11px; color: var(--ink-3); }
+.plan-item .nm { flex: 1; min-width: 0; color: var(--ink); }
+.plan-item .nm small { display: block; color: var(--ink-3); font-size: 11px; }
+.plan-item.done .nm { text-decoration: line-through; color: var(--ink-3); }
+.plan-item .ck { flex-shrink: 0; border: 1px solid var(--line); background: #fff; border-radius: 99px; padding: 2px 10px; font-size: 11.5px; cursor: pointer; color: var(--ink-2); }
+.plan-item .ck.on { background: #8a9a5b; border-color: #8a9a5b; color: #fff; }
+.plan-item .go { flex-shrink: 0; border: none; background: none; color: #8a6d3b; font-size: 12px; cursor: pointer; padding: 2px 4px; }
+.plan-item .go:hover { text-decoration: underline; }
+.plan-empty { text-align: center; padding: 28px 0 18px; color: var(--ink-3); font-size: 13px; }
+.plan-empty .btn { margin-top: 10px; }
 
 .empty, .loading { text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13px; }
 .loading::before { content:''; display:inline-block; width:16px; height:16px; margin-right:8px;
@@ -198,6 +220,7 @@ a { color: var(--wood-deep); text-decoration: none; }
           <button type="button" data-v="map" onclick="setView('map')">🧠 导图</button>
         </div>
         <span class="mlegend" id="mlegend">🟢 ≥80% 扎实 · 🟡 60-79% 一般 · 🔴 &lt;60% 薄弱 · ⚪ 未练</span>
+        <button class="btn ghost sm" onclick="togglePlan()" title="根据你的掌握度生成 7 天冲刺学习计划">📋 学习计划</button>
         <div class="dl">
           <button class="btn ghost sm" onclick="downloadFmt('md')" title="下载 Markdown 大纲（可导入 XMind / 幕布）">⬇ .md</button>
           <button class="btn ghost sm" onclick="downloadFmt('mm')" title="下载 FreeMind .mm 思维导图">⬇ .mm</button>
@@ -205,6 +228,7 @@ a { color: var(--wood-deep); text-decoration: none; }
         </div>
       </div>
     </div>
+    <div id="plan-box"></div>
     <div id="tree-box"><div class="loading">加载中…</div></div>
     <div id="map-box" class="mapscroll" style="display:none">
       <div class="map-tools">
@@ -398,6 +422,128 @@ function goPractice(nodeId) {
   if (mod === '申论') location.href = '/chat.html?essay=1';
   else if (mod === '面试') location.href = '/chat.html?interview=1';
   else location.href = '/chat.html?kp=' + encodeURIComponent(nodeId);
+}
+
+// ==================== 批次22 个性化学习计划 ====================
+let planLoaded = false;
+
+function planApi(path, opts) {
+  const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
+  opts = opts || {};
+  opts.headers = Object.assign({ 'Accept': 'application/json',
+    'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Bearer ' + tk } : {});
+  return fetch('/api' + path, opts).then(async r => {
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+    return j;
+  });
+}
+
+function togglePlan() {
+  const box = $('#plan-box');
+  if (!box) return;
+  const show = box.style.display === 'none' || !box.style.display;
+  box.style.display = show ? 'block' : 'none';
+  if (show && !planLoaded) loadPlan();
+}
+
+async function loadPlan() {
+  const box = $('#plan-box');
+  box.innerHTML = '<div class="loading">加载计划…</div>';
+  try {
+    const j = await planApi('/study/plan?teacher_id=' + encodeURIComponent(tid()));
+    if (!j.plan) { renderPlanEmpty(); return; }
+    renderPlan(j.plan);
+  } catch (e) { renderPlanError(String(e.message || e)); }
+  planLoaded = true;
+}
+
+async function genPlan() {
+  const box = $('#plan-box');
+  box.innerHTML = '<div class="loading">正在根据你的掌握度生成 7 天计划…</div>';
+  try {
+    const j = await planApi('/study/plan/generate?teacher_id=' + encodeURIComponent(tid()), { method: 'POST' });
+    renderPlan(j);
+  } catch (e) { renderPlanError(String(e.message || e)); }
+  planLoaded = true;
+}
+
+async function checkinItem(planId, day, idx, btn) {
+  btn.disabled = true;
+  try {
+    const j = await planApi('/study/plan/checkin', {
+      method: 'POST', body: JSON.stringify({ plan_id: planId, day: day, idx: idx }) });
+    // 更新按钮态与划线
+    btn.classList.toggle('on', j.done);
+    btn.textContent = j.done ? '✓ 已完成' : '打卡';
+    const row = btn.closest('.plan-item');
+    if (row) row.classList.toggle('done', j.done);
+    const bar = $('#plan-pbar'), lbl = $('#plan-pct');
+    if (bar && lbl) {
+      bar.style.width = (j.progress.pct || 0) + '%';
+      lbl.textContent = `${j.progress.done}/${j.progress.total}（${j.progress.pct}%）`;
+    }
+  } catch (e) { alert('打卡失败：' + (e.message || e)); }
+  btn.disabled = false;
+}
+
+function planItemGo(it) {
+  if (it.kind === 'kp' && it.node_id) return goPractice(it.node_id);
+  if (it.kind === 'essay') location.href = '/chat.html?essay=1';
+  else if (it.kind === 'interview') location.href = '/chat.html?interview=1';
+  else if (it.kind === 'mock') location.href = '/chat.html?mt=mock';
+}
+
+function planGoLabel(kind) {
+  return { kp: '🎯 去练习', essay: '✍️ 去写作', interview: '🎤 去面试', mock: '📝 去模考' }[kind] || '';
+}
+
+function renderPlan(plan) {
+  const box = $('#plan-box');
+  const p = plan.progress || { done: 0, total: 0, pct: 0 };
+  const daysHtml = (plan.days || []).map(d => `
+    <div class="plan-day">
+      <h4>${esc(d.title)} <span class="focus">${esc(d.focus)}</span></h4>
+      ${(d.items || []).map((it, i) => `
+        <div class="plan-item ${it.done ? 'done' : ''}">
+          <button class="ck ${it.done ? 'on' : ''}" onclick="checkinItem(${plan.plan_id},${d.day},${i},this)">${it.done ? '✓ 已完成' : '打卡'}</button>
+          <span class="note">${esc(it.note || '')}</span>
+          <span class="nm">${esc(it.name)}${it.module ? `<small>${esc(it.module)}${it.level && it.level !== 'task' ? ' · ' + ({ weak: '薄弱', mid: '待巩固', none: '新学', strong: '巩固' }[it.level] || it.level) : ''}</small>` : ''}</span>
+          ${planGoLabel(it.kind) ? `<button class="go" onclick="planItemGo(planItems[${d.day}][${i}])">${planGoLabel(it.kind)}</button>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  // 供按钮跳转取参（避免内联 onclick 传对象转义问题）
+  window.planItems = {};
+  (plan.days || []).forEach(d => { window.planItems[d.day] = d.items || []; });
+  box.innerHTML = `
+    <div class="plan-head">
+      <h3>📋 我的 7 天学习计划</h3>
+      <div class="plan-progress">
+        <div class="pbar"><i id="plan-pbar" style="width:${p.pct || 0}%"></i></div>
+        <span id="plan-pct">${p.done}/${p.total}（${p.pct || 0}%）</span>
+      </div>
+      <button class="btn ghost sm" onclick="genPlan()" title="按最新掌握度重新生成（旧计划作废）">🔄 重新生成</button>
+    </div>
+    <div class="plan-days">${daysHtml}</div>`;
+}
+
+function renderPlanEmpty() {
+  $('#plan-box').innerHTML = `
+    <div class="plan-empty">
+      暂无学习计划。系统会根据你的知识掌握度（薄弱优先）生成一份 7 天冲刺处方：<br>
+      Day1-5 行测弱项 · Day6 申论实战 · Day7 面试与模考收官。
+      <br><button class="btn primary sm" onclick="genPlan()">✨ 生成我的学习计划</button>
+    </div>`;
+}
+
+function renderPlanError(msg) {
+  const login = String(msg).indexOf('登录') >= 0;
+  $('#plan-box').innerHTML = `
+    <div class="plan-empty">
+      ${login ? '🔐 学习计划需要登录后使用。' : '⚠️ 加载失败：' + esc(msg)}
+      ${login ? '<br><a class="btn primary sm" href="/chat.html" style="margin-top:10px;display:inline-block">去登录</a>' : ''}
+    </div>`;
+  planLoaded = true;
 }
 
 function setView(mode) {

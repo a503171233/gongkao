@@ -67,6 +67,7 @@ scripts/health_check.py
 scripts/regression.py
 backend/scripts/*
 !backend/scripts/seed_knowledge_tree.py
+!backend/scripts/annotate_knowledge_points.py
 backend/tests/archive/
 backend/tests/_*.py
 backend/tests/probe_*.py
