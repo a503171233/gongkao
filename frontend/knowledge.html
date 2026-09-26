@@ -214,6 +214,8 @@ a { color: var(--wood-deep); text-decoration: none; }
   .cards { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
   .card { padding: 12px 12px; border-radius: 12px; }
   .cards .card { padding: 11px 10px; }
+  .cards .cn { font-size: 23px; white-space: nowrap; letter-spacing: -0.5px; }  /* 「可检索」等文字卡防折行 */
+  .cards .cs { font-size: 11px; }
   /* 工具栏：控件全宽、触控 40px */
   .toolbar { gap: 8px; }
   .toolbar select, .toolbar input[type=search], .toolbar .head-btn, .btn {
