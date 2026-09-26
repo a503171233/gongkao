@@ -119,6 +119,13 @@ a { color: var(--wood-deep); text-decoration: none; }
   border: 1px solid var(--line-2); background: var(--card); color: var(--wood-deep);
   cursor: pointer; font-family: inherit; font-weight: 600; }
 .kn-row .prac:hover { border-color: var(--gold); background: var(--gold-soft); }
+/* 批次20 掌握度徽标 */
+.mastery { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+.mastery.strong { background: rgba(122,158,109,.16); color: var(--good); }
+.mastery.mid { background: rgba(201,160,90,.18); color: var(--gold-deep); }
+.mastery.weak { background: rgba(180,90,74,.14); color: var(--bad); }
+.mastery.none { background: var(--paper-2); color: var(--ink-3); font-weight: 600; }
+.mlegend { font-size: 11px; color: var(--ink-3); font-weight: 600; display: none; }
 
 .empty, .loading { text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13px; }
 .loading::before { content:''; display:inline-block; width:16px; height:16px; margin-right:8px;
@@ -190,6 +197,7 @@ a { color: var(--wood-deep); text-decoration: none; }
           <button type="button" data-v="tree" class="on" onclick="setView('tree')">🌲 树状</button>
           <button type="button" data-v="map" onclick="setView('map')">🧠 导图</button>
         </div>
+        <span class="mlegend" id="mlegend">🟢 ≥80% 扎实 · 🟡 60-79% 一般 · 🔴 &lt;60% 薄弱 · ⚪ 未练</span>
         <div class="dl">
           <button class="btn ghost sm" onclick="downloadFmt('md')" title="下载 Markdown 大纲（可导入 XMind / 幕布）">⬇ .md</button>
           <button class="btn ghost sm" onclick="downloadFmt('mm')" title="下载 FreeMind .mm 思维导图">⬇ .mm</button>
@@ -221,6 +229,9 @@ let paths = {};             // 命中节点的完整路径缓存（点击时展�
 let viewMode = 'tree';
 let lastNodes = [];
 let mapZoom = 1, mapW = 0, mapH = 0;
+// 批次20 掌握度：null=未加载/未登录（不渲染徽标）；{}=已登录无记录
+let mastery = null;
+let aggOut = null;          // 章节聚合 {node_id: {done, correct}}
 
 function api(path){ return fetch('/api' + path, { headers:{'Accept':'application/json'} }).then(r=>r.json()); }
 function tid(){ return ($('#teacher') && $('#teacher').value) || 'T001'; }
@@ -253,11 +264,13 @@ async function loadTree() {
   const box = $('#tree-box');
   box.innerHTML = '<div class="loading">加载中…</div>';
   try {
+    await loadMastery();  // 批次20：先拉掌握度（未登录静默为 null）
     const r = await api('/public/knowledge/tree?teacher_id=' + encodeURIComponent(tid())
       + '&tree_type=' + treeType + '&keyword=' + encodeURIComponent(kw));
     lastNodes = r.nodes || [];
     paths = {};
     buildPaths(lastNodes, []);
+    aggOut = mastery ? aggStats(lastNodes) : null;  // 批次20 章节聚合
     if (!kw) collapse.clear();
     if (viewMode === 'map') { renderMap(); } else { render(lastNodes); }
     loadStats();
@@ -273,6 +286,51 @@ function buildPaths(nodes, anc) {
     paths[n.node_id] = p.join(' / ');
     buildPaths(n.children, p);
   });
+}
+
+// 批次20：拉取掌握度（页面默认 fetch 不带 token，此处手动附；
+// 未登录/失败 → mastery 保持 null 不渲染徽标）
+async function loadMastery() {
+  try {
+    const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
+    const resp = await fetch('/api/knowledge/mastery?teacher_id=' + encodeURIComponent(tid()), {
+      headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + tk }
+    });
+    const j = await resp.json();
+    mastery = (resp.ok && j.mastery) ? j.mastery : null;
+  } catch (e) { mastery = null; }
+  const lg = $('#mlegend');
+  if (lg) lg.style.display = mastery ? 'inline' : 'none';
+}
+
+// 批次20：后序聚合——章节掌握度 = 子叶累加
+function aggStats(nodes) {
+  const out = {};
+  (nodes || []).forEach(n => {
+    if (n.children && n.children.length) {
+      const childOut = aggStats(n.children);
+      let d = 0, c = 0;
+      Object.values(childOut).forEach(x => { d += x.done; c += x.correct; });
+      Object.assign(out, childOut);
+      out[n.node_id] = { done: d, correct: c };
+    } else {
+      const m = (mastery || {})[n.node_id] || {};
+      out[n.node_id] = { done: m.done || 0, correct: m.correct || 0 };
+    }
+  });
+  return out;
+}
+
+// 批次20：掌握度徽标（叶子用后端明细，章节用聚合；口径与后端一致）
+function masteryBadge(nodeId) {
+  if (!mastery) return '';
+  const st = (aggOut && aggOut[nodeId]) || {};
+  const done = st.done || 0, correct = st.correct || 0;
+  if (!done) return '<span class="mastery none">未练</span>';
+  const pct = Math.round(correct / done * 100);
+  const lv = (pct >= 80 && done >= 3) ? 'strong' : (pct >= 60 ? 'mid' : 'weak');
+  const icon = lv === 'strong' ? '🟢' : (lv === 'mid' ? '🟡' : '🔴');
+  return `<span class="mastery ${lv}" title="做题 ${done} · 答对 ${correct}">${icon} ${pct}% · ${done}题</span>`;
 }
 
 function render(nodes, depth) {
@@ -295,6 +353,7 @@ function render(nodes, depth) {
         ${kids ? `<span class="cnt">${n.children.length}</span>` : ''}
         ${n.description ? `<span class="desc" title="${esc(n.description)}">${esc(n.description)}</span>` : ''}
         <span style="flex:1"></span>
+        ${masteryBadge(n.node_id)}
         ${(!kids && treeType === 'knowledge') ? `<button class="prac" onclick="goPractice('${esc(n.node_id)}')" title="按该知识点抽题练习">🎯 去练习</button>` : ''}
       </div>
       ${(!collapsed && kids) ? render(n.children, depth + 1) : ''}
@@ -309,6 +368,7 @@ function toggle(id){ collapse.has(id) ? collapse.delete(id) : collapse.add(id); 
 function loadRaw(){ const kw=($('#kw')&&$('#kw').value||'').trim();
   api('/public/knowledge/tree?teacher_id='+encodeURIComponent(tid())+'&tree_type='+treeType+'&keyword='+encodeURIComponent(kw))
     .then(r=>{ lastNodes=r.nodes||[]; paths={}; buildPaths(lastNodes,[]);
+      aggOut = mastery ? aggStats(lastNodes) : null;
       if(viewMode==='map'){ renderMap(); } else { render(lastNodes); } }); }
 
 function showPath(id) {
@@ -511,7 +571,6 @@ function downloadPng() {
   img.src = url;
 }
 
-initTeacher().then(loadTree);
-</script>
+initTeacher().then(loadTree);</script>
 </body>
 </html>

@@ -1370,6 +1370,58 @@ class StudyStore:
                 return _hit(pool, "module", cat)
         raise ValueError("该知识点暂无可练习的题目")
 
+    def knowledge_mastery(self, teacher_id: str, user_id: str, ks=None) -> dict:
+        """批次20 知识掌握度地图：知识树叶 × 用户练习记录聚合。
+        匹配：叶子词根（_kp_terms）命中题目 knowledge_point/category（子串包含），
+        聚合该题集的判分练习（口径与 practice_report 一致：score>=0 计入，>0 判对）。
+        返回 {node_id: {done, correct, accuracy, level}}；
+        level: none(未练) / weak(<60%) / mid(60-79% 或样本<3) / strong(≥80% 且 ≥3 题)。
+        章节级由前端子叶聚合，后端只出叶子。"""
+        if ks is None:
+            from poc.knowledge import get_knowledge_store
+            ks = get_knowledge_store()
+        tree = ks.get_tree(teacher_id, "", "knowledge")
+        leaves: list[dict] = []
+
+        def _walk(nodes: list[dict]) -> None:
+            for n in nodes or []:
+                if n.get("children"):
+                    _walk(n["children"])
+                else:
+                    leaves.append(n)
+
+        _walk(tree.get("nodes") or [])
+        if not leaves:
+            return {"mastery": {}, "total_done": 0}
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT pl.score, qb.knowledge_point AS kp, qb.category AS cat "
+                "FROM practice_logs pl LEFT JOIN question_bank qb ON qb.id = pl.question_id "
+                "WHERE pl.user_id=? AND pl.teacher_id=? AND pl.score>=0",
+                (user_id, teacher_id),
+            ).fetchall()
+        recs = [(r["kp"] or "", r["cat"] or "", 1 if r["score"] > 0 else 0) for r in rows]
+        out: dict[str, dict] = {}
+        for leaf in leaves:
+            terms = _kp_terms(leaf["name"])
+            done = correct = 0
+            for kp, cat, ok in recs:
+                if any(t in kp for t in terms) or any(t in cat for t in terms):
+                    done += 1
+                    correct += ok
+            acc = round(correct / done, 4) if done else None
+            if not done:
+                level = "none"
+            elif acc >= 0.8 and done >= 3:
+                level = "strong"
+            elif acc >= 0.6:
+                level = "mid"
+            else:
+                level = "weak"
+            out[leaf["node_id"]] = {"done": done, "correct": correct,
+                                    "accuracy": acc, "level": level}
+        return {"mastery": out, "total_done": len(recs)}
+
     def _difficulty_hint(self, user_id: str) -> dict:
         """#13 难度预估：近期客观题按难度档正确率 → 建议抽题难度区间。
         近 60 题：easy(1-2)/mid(3)/hard(4-5) 三桶；整体正确率<40% 降档，

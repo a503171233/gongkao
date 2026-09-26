@@ -1066,6 +1066,16 @@ def practice_by_knowledge(
         raise HTTPException(status_code=status, detail=str(e)) from e
 
 
+@app.get("/knowledge/mastery")
+def knowledge_mastery(teacher_id: str = "T001",
+                      authorization: str = Header(default="")):
+    """批次20 知识掌握度地图：知识树叶 × 用户练习记录聚合。需登录。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return study_store.knowledge_mastery(teacher_id, user["user_id"])
+
+
 @app.get("/practice/categories")
 def practice_categories(teacher_id: str = "T001"):
     """#36 老师题库分类清单（含题量），供练习面板下拉。匿名可访问（只读）。"""
