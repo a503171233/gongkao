@@ -126,7 +126,7 @@
     if (!container) {
       container = document.createElement('div');
       container.id = 'c4Panel';
-      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
+      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;max-width:100vw;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
       document.body.appendChild(container);
     }
 
@@ -258,7 +258,7 @@
     if (!container) {
       container = document.createElement('div');
       container.id = 'c4Panel';
-      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
+      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;max-width:100vw;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
       document.body.appendChild(container);
     }
 
@@ -416,7 +416,7 @@
     if (!container) {
       container = document.createElement('div');
       container.id = 'c4Panel';
-      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
+      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;max-width:100vw;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
       document.body.appendChild(container);
     }
 
@@ -503,7 +503,7 @@
     if (!container) {
       container = document.createElement('div');
       container.id = 'c4Panel';
-      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
+      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;max-width:100vw;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
       document.body.appendChild(container);
     }
 
@@ -723,7 +723,7 @@
     if (!container) {
       container = document.createElement('div');
       container.id = 'c4Panel';
-      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
+      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:400px;max-width:100vw;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
       document.body.appendChild(container);
     }
 

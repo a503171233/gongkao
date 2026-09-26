@@ -5575,3 +5575,90 @@ def admin_fenbi_bindings(authorization: str = Header(default="")):
     if not admin:
         raise HTTPException(403, "需要管理员权限")
     return {"bindings": fenbi_bind_store.list_bindings()}
+
+# =====================================================================
+# 批次18 · 申论批改 + 面试练习（学员自助训练模块）
+# =====================================================================
+from . import essay as essay_mod
+from . import interview as interview_mod
+
+essay_store = essay_mod.EssayStore()
+interview_store = interview_mod.InterviewStore()
+
+
+def _train_llm_call(messages):
+    """申论/面试共用 LLM 通道（同任务书：注册表默认模型优先，长输出）。"""
+    return _fenbi_llm_call(messages)
+
+
+class EssayGradeReq(BaseModel):
+    essay_type: str
+    title: str = ""
+    prompt: str = ""
+    essay: str
+
+
+class InterviewQReq(BaseModel):
+    module: str
+    difficulty: str = "standard"
+
+
+class InterviewAReq(BaseModel):
+    qid: int
+    answer: str
+
+
+@app.post("/me/essay/grade")
+def me_essay_grade(req: EssayGradeReq, authorization: str = Header(default="")):
+    """申论 AI 批改：题型+题目+作答 → 维度评分/逐段批注/改进建议。"""
+    user = _resolve_user(authorization)
+    try:
+        return essay_mod.grade_essay(essay_store, user["user_id"], req.model_dump(),
+                                     _train_llm_call)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/me/essay/history")
+def me_essay_history(limit: int = Query(30, ge=1, le=100),
+                     authorization: str = Header(default="")):
+    user = _resolve_user(authorization)
+    return {"items": essay_store.history(user["user_id"], limit)}
+
+
+@app.get("/me/essay/{gid}")
+def me_essay_detail(gid: int, authorization: str = Header(default="")):
+    user = _resolve_user(authorization)
+    d = essay_store.get(user["user_id"], gid)
+    if not d:
+        raise HTTPException(404, "记录不存在")
+    return d
+
+
+@app.post("/me/interview/question")
+def me_interview_question(req: InterviewQReq, authorization: str = Header(default="")):
+    """结构化面试 AI 出题（五模块）。"""
+    user = _resolve_user(authorization)
+    try:
+        return interview_mod.gen_question(interview_store, user["user_id"],
+                                          req.module, _train_llm_call, req.difficulty)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/me/interview/answer")
+def me_interview_answer(req: InterviewAReq, authorization: str = Header(default="")):
+    """面试作答 AI 点评：要点/结构/语言 + 参考框架。"""
+    user = _resolve_user(authorization)
+    try:
+        return interview_mod.review_answer(interview_store, user["user_id"],
+                                           req.qid, req.answer, _train_llm_call)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/me/interview/history")
+def me_interview_history(limit: int = Query(30, ge=1, le=100),
+                         authorization: str = Header(default="")):
+    user = _resolve_user(authorization)
+    return {"items": interview_store.history(user["user_id"], limit)}

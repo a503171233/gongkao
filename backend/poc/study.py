@@ -603,8 +603,11 @@ class StudyStore:
     # ==================== 练习 ====================
     # #13 真实题库：优先题库抽题，题库为空回落知识库知识点兜底
     def _qbank_pool(self, teacher_id: str, qtype: str | None = None,
-                    category: str | None = None) -> list[dict]:
-        """题库可用题目（enabled=1，按老师/共享题库/题型/分类过滤）。category 为 #36 分类专项练习。"""
+                    category: str | None = None,
+                    min_difficulty: int | None = None,
+                    max_difficulty: int | None = None) -> list[dict]:
+        """题库可用题目（enabled=1，按老师/共享题库/题型/分类/难度过滤）。
+        category 为 #36 分类专项练习；min/max_difficulty 为 #13 难度预估区间。"""
         sql = f"SELECT * FROM question_bank WHERE {_teacher_scope_sql()} AND enabled=1"
         args: list = [teacher_id]
         if qtype:
@@ -613,6 +616,12 @@ class StudyStore:
         if category:
             sql += " AND category=?"
             args.append(category)
+        if min_difficulty:
+            sql += " AND difficulty>=?"
+            args.append(min_difficulty)
+        if max_difficulty:
+            sql += " AND difficulty<=?"
+            args.append(max_difficulty)
         sql += " ORDER BY id"
         with self._connect() as conn:
             rows = conn.execute(sql, args).fetchall()
@@ -1216,6 +1225,7 @@ class StudyStore:
             "id": q["id"],
             "hint": self._qtype_label(q["qtype"]),
             "category": q.get("category") or "综合",
+            "difficulty": q.get("difficulty") or 3,
             # 无答案题（仅题干+选项的练习卷）或答案待核题：前端据此提示"暂无答案"，
             # 不再误走主观题 AI 批改分支（score=-1 与"主观题待评"共用）
             "has_answer": self._answer_trusted(q),
@@ -1249,6 +1259,53 @@ class StudyStore:
             qrows = conn.execute(sql + " ORDER BY id", args).fetchall()
         return self._parse_qrows(qrows)
 
+    def _difficulty_hint(self, user_id: str) -> dict:
+        """#13 难度预估：近期客观题按难度档正确率 → 建议抽题难度区间。
+        近 60 题：easy(1-2)/mid(3)/hard(4-5) 三桶；整体正确率<40% 降档，
+        简单≥80%且中等≥60%（或中等≥85%且样本足）升档，其余匹配当前水平。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT pl.score, qb.difficulty FROM practice_logs pl "
+                "JOIN question_bank qb ON qb.id = pl.question_id "
+                "WHERE pl.user_id=? AND pl.score IS NOT NULL "
+                "AND pl.question_id IS NOT NULL "
+                "ORDER BY pl.created_at DESC LIMIT 60",
+                (user_id,),
+            ).fetchall()
+        fit = {"level": "fit", "min_difficulty": None, "max_difficulty": None,
+               "note": "⚖️ 匹配当前水平"}
+        if not rows:
+            fit["reason"] = "暂无答题记录，从标准难度开始"
+            return fit
+        buckets: dict[str, list[int]] = {}
+        for r in rows:
+            d = r["difficulty"] or 3
+            k = "easy" if d <= 2 else ("mid" if d == 3 else "hard")
+            b = buckets.setdefault(k, [0, 0])
+            b[0] += 1
+            b[1] += 1 if r["score"] >= 0.99 else 0
+
+        def acc(k: str) -> float | None:
+            t, c = buckets.get(k, [0, 0])
+            return (c / t) if t else None
+
+        total = len(rows)
+        overall = sum(1 for r in rows if r["score"] >= 0.99) / total
+        easy_a, mid_a = acc("easy"), acc("mid")
+        if overall < 0.4 and total >= 5:
+            return {"level": "down", "min_difficulty": 1, "max_difficulty": 2,
+                    "note": "📉 基础巩固",
+                    "reason": f"近期正确率 {int(overall * 100)}%，先夯实简单题"}
+        high_ready = (easy_a is not None and easy_a >= 0.8
+                      and (mid_a is None or mid_a >= 0.6)) or \
+                     (mid_a is not None and mid_a >= 0.85 and total >= 10)
+        if high_ready:
+            return {"level": "up", "min_difficulty": 4, "max_difficulty": 5,
+                    "note": "📈 难度提升",
+                    "reason": "近期正确率优秀，推荐挑战高难度题"}
+        fit["reason"] = f"近期正确率 {int(overall * 100)}%，保持当前难度"
+        return fit
+
     def get_next_practice(self, teacher_id: str, user_id: str = "anonymous",
                           category: str | None = None, mode: str | None = None,
                           question_id: int | None = None) -> dict:
@@ -1275,6 +1332,7 @@ class StudyStore:
                 return self._practice_payload(random.choice(wrong_pool))
 
         # 1.5) 批次12c 今日练习：到期错题 → 薄弱分类未做题 → 普通抽题
+        #      批次18 #13 难度预估：按近期正确率动态升降推荐难度档
         if mode == "today":
             due = self.list_due_reviews(user_id, teacher_id=teacher_id, limit=1)
             if due["due"]:
@@ -1282,6 +1340,8 @@ class StudyStore:
                 item["today_kind"] = "due_review"
                 item["today_note"] = "📅 今日巩固 · 到期错题（艾宾浩斯）"
                 return item
+            hint = self._difficulty_hint(user_id)
+            dmin, dmax = hint.get("min_difficulty"), hint.get("max_difficulty")
             try:
                 rep = self.practice_report(user_id, teacher_id)
                 # practice_report 的 weak 在顶层；learning_report 才包 weekly 层
@@ -1289,12 +1349,16 @@ class StudyStore:
             except Exception:  # noqa: BLE001
                 weak = []
             if weak:
-                wpool = self._qbank_pool(teacher_id, category=random.choice(weak))
+                wpool = self._qbank_pool(teacher_id, category=random.choice(weak),
+                                         min_difficulty=dmin, max_difficulty=dmax) \
+                    if (dmin or dmax) else \
+                    self._qbank_pool(teacher_id, category=random.choice(weak))
                 if wpool:
                     q = random.choice(wpool)
                     resp = self._practice_payload(q)
                     resp["today_kind"] = "weak"
-                    resp["today_note"] = f"🎯 薄弱专项 · {q.get('category') or ''}"
+                    resp["today_note"] = f"🎯 薄弱专项 · {q.get('category') or ''} · {hint['note']}"
+                    resp["difficulty_hint"] = hint
                     return resp
             # 薄弱池无题 → 落到普通抽题（resp 在下方返回点打标）
 
@@ -1314,13 +1378,23 @@ class StudyStore:
             candidates = [q for q in pool if q["question"] not in done_right]
             if not candidates:
                 candidates = pool
+            # #13 难度预估：today 模式按建议难度档收敛候选（无题则放宽）
+            hint = self._difficulty_hint(user_id) if mode == "today" else None
+            if hint and (hint.get("min_difficulty") or hint.get("max_difficulty")):
+                dcand = [q for q in candidates
+                         if (hint.get("min_difficulty") or 1) <= (q.get("difficulty") or 3)
+                         <= (hint.get("max_difficulty") or 5)]
+                if dcand:
+                    candidates = dcand
             q = random.choice(candidates)
             resp = self._practice_payload(q)
             if mode == "wrong":
                 resp["mode_fallback"] = "no_wrong"  # 错题池空，已回落普通抽题
             if mode == "today":
                 resp["today_kind"] = "fresh"
-                resp["today_note"] = "✨ 智能新题"
+                resp["today_note"] = "✨ 智能新题 · " + hint["note"] if hint else "✨ 智能新题"
+                if hint:
+                    resp["difficulty_hint"] = hint
             return resp
 
         # 兜底：知识库知识点
