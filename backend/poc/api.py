@@ -5975,6 +5975,26 @@ def me_fenbi_login_qrcode(authorization: str = Header(default="")):
         raise HTTPException(400, str(e))
 
 
+class FenbiLoginPwdReq(BaseModel):
+    account: str
+    password: str
+
+
+@app.post("/me/fenbi/login/password")
+def me_fenbi_login_password(req: FenbiLoginPwdReq,
+                            authorization: str = Header(default="")):
+    """发起账密登录会话（批次26-K）：账号=手机号或邮箱；密码仅驻内存
+    不落库，提交后可能触发滑块（返回截图待人拖），轮询 status 至 success。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    try:
+        return fenbi_login_manager.start_password(
+            user["user_id"], req.account, req.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/me/fenbi/login/status")
 def me_fenbi_login_status(sid: str = "",
                           authorization: str = Header(default="")):

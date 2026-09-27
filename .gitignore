@@ -69,6 +69,7 @@ backend/scripts/*
 !backend/scripts/seed_knowledge_tree.py
 !backend/scripts/annotate_knowledge_points.py
 !backend/scripts/moa_batch_run.py
+!backend/scripts/smoke_pwd_login.py
 backend/tests/archive/
 backend/tests/_*.py
 backend/tests/probe_*.py

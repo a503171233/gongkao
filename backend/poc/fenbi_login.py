@@ -59,7 +59,7 @@ class _Session:
     def __init__(self, sid: str, user_id: str, mode: str, phone: str):
         self.sid = sid
         self.user_id = user_id
-        self.mode = mode            # sms / qrcode
+        self.mode = mode            # sms / qrcode / password
         self.phone = phone
         self.state = "init"
         self.shot = ""
@@ -144,6 +144,23 @@ class LoginSessionManager:
         s = self._create(user_id, "qrcode", "")
         s._thread = threading.Thread(target=self._worker_qrcode, daemon=True,
                                      args=(s,), name=f"fb-qr-{s.sid[:8]}")
+        s._thread.start()
+        return s.view()
+
+    def start_password(self, user_id: str, account: str,
+                       password: str) -> dict:
+        """账密登录会话（批次26-K）：账号=手机号或邮箱；密码仅驻内存，
+        不落库、不进 status 响应。"""
+        account = str(account or "").strip()
+        password = str(password or "")
+        if not account:
+            raise ValueError("请输入手机号或邮箱")
+        if not password:
+            raise ValueError("请输入密码")
+        s = self._create(user_id, "password", account)
+        s._password = password
+        s._thread = threading.Thread(target=self._worker_password, daemon=True,
+                                     args=(s,), name=f"fb-pwd-{s.sid[:8]}")
         s._thread.start()
         return s.view()
 
@@ -439,6 +456,124 @@ class LoginSessionManager:
                 s.set_state("failed", error=f"绑定落库失败：{str(e)[:100]}")
         self._finish(s)
 
+    # ---------------- worker：账密流程（批次26-K） ----------------
+
+    def _worker_password(self, s: _Session) -> None:
+        """账号密码登录：2026-09-27 实测弹窗存在「账号密码登录」入口，
+        表单 = input[placeholder="手机号或邮箱"] + input[type=password]。"""
+        from playwright.sync_api import sync_playwright
+        try:
+            self._sem.acquire()
+            s.set_state("sending", hint="正在打开粉笔登录页…")
+            self._persist(s)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True, args=_LOGIN_ARGS)
+                s._browser = browser
+                ctx = browser.new_context(
+                    viewport={"width": 1280, "height": 720}, locale="zh-CN",
+                    user_agent=_UA)
+                ctx.add_init_script(
+                    "Object.defineProperty(navigator,'webdriver',"
+                    "{get:()=>undefined})")
+                page = ctx.new_page()
+                page.set_default_timeout(15000)
+
+                page.goto("https://www.fenbi.com",
+                          wait_until="domcontentloaded")
+                page.wait_for_selector('button:has-text("登录")',
+                                       timeout=20000)
+                page.click('button:has-text("登录")')
+                page.wait_for_selector('input[placeholder="手机号"]',
+                                       timeout=15000)
+                # 切「账号密码登录」视图
+                page.locator("text=账号密码登录").first.click(timeout=8000)
+                page.wait_for_selector(
+                    'input[placeholder="手机号或邮箱"]', timeout=10000)
+                time.sleep(0.8)
+                s.set_state("submitting", hint="正在提交账号密码…")
+                page.fill('input[placeholder="手机号或邮箱"]', s.phone)
+                time.sleep(random.uniform(0.2, 0.4))
+                page.fill('input[type="password"]', s._password)
+                time.sleep(random.uniform(0.2, 0.4))
+                try:
+                    page.eval_on_selector(
+                        ".fenbi-login-modal-agreement-checkbox",
+                        "el => el.click()")
+                except Exception:  # noqa: BLE001
+                    try:  # 兜底：协议区域首元素
+                        page.locator(
+                            '.fenbi-login-modal-wrapper [class*="agree"]'
+                        ).first.click(timeout=3000)
+                    except Exception:  # noqa: BLE001
+                        pass
+                _click_pwd_login(page)
+
+                # ---- 提交后分支：滑块 / 错误 / 成功（≤2 轮提交） ----
+                for rnd in range(1, 3):
+                    if s.cancelled():
+                        return
+                    # 等结果（滑块出现 / 报错 / 登录态），最多 12s
+                    err = ""
+                    got_slider = False
+                    for _ in range(24):
+                        if s.cancelled():
+                            return
+                        time.sleep(0.5)
+                        if _logged_in(ctx):
+                            self._bound(s, _cookie_str(ctx))
+                            return
+                        if _slider_frame(page) is not None:
+                            got_slider = True
+                            break
+                        err = _page_error(page)
+                        if err:
+                            break
+                    if got_slider:
+                        time.sleep(2.0)
+                        s.set_state("need_drag", shot=_shot_b64(page),
+                                    hint="请完成滑块验证")
+                        self._persist(s)
+                        if not s._drag_evt.wait(_CODE_WAIT):
+                            s.set_state("failed",
+                                        error="滑块验证超时，请重新发起")
+                            return
+                        if s.cancelled():
+                            return
+                        dist = s._drag_val
+                        s._drag_evt.clear()
+                        s.set_state("submitting", hint="正在拖动滑块…")
+                        human_drag(page.mouse, 542, 477, float(dist))
+                        time.sleep(3.0)
+                        if _logged_in(ctx):
+                            self._bound(s, _cookie_str(ctx))
+                            return
+                        if _slider_gone(page):
+                            # 滑块过了但没自动登录 → 再提交一次
+                            s.set_state("submitting",
+                                        hint="验证通过，正在重新提交…")
+                            _click_pwd_login(page)
+                            continue
+                        continue      # 滑块未通过 → 等待新一轮拖动
+                    if err and ("密码" in err or "错误" in err
+                                or "不存在" in err or "失败" in err):
+                        s.set_state("failed",
+                                    error=f"账号或密码可能不正确（{err[:80]}）"
+                                          "，请检查后重试")
+                        self._finish(s)
+                        return
+                    if err:
+                        break
+                    break
+                s.set_state("failed", error="登录未完成（"
+                                            f"{err or '页面无响应'}），"
+                                            "请稍后重试或改用验证码/扫码")
+                self._finish(s)
+        except Exception as e:  # noqa: BLE001
+            s.set_state("failed", error=f"账密登录会话异常：{str(e)[:120]}")
+            self._finish(s)
+        finally:
+            self._sem.release()
+
 
 # ---------------- 页面交互工具（沿用批次15验证过的选择器） ----------------
 
@@ -486,6 +621,24 @@ def _click_login(page) -> None:
         const cand=[...document.querySelectorAll('*')].filter(e=>
             e.textContent.trim()==='登录' && e.tagName!=='BUTTON'
             && e.closest('[class*="modal"]'));
+        (cand[cand.length-1]||cand[0]||{}).click?.();
+    }""")
+
+
+def _click_pwd_login(page) -> None:
+    """账密视图提交：优先弹窗内 button，兜底语义匹配非标题「登录」。"""
+    try:
+        page.locator(
+            '.fenbi-login-modal-wrapper button:has-text("登录")'
+        ).last.click(timeout=3000)
+        return
+    except Exception:  # noqa: BLE001
+        pass
+    page.evaluate("""() => {
+        const cand=[...document.querySelectorAll('*')].filter(e=>
+            e.textContent.trim()==='登录' && e.tagName!=='BUTTON'
+            && e.closest('[class*="modal"]')
+            && !e.querySelector('input'));
         (cand[cand.length-1]||cand[0]||{}).click?.();
     }""")
 

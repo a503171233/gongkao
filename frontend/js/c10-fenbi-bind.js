@@ -128,20 +128,24 @@
         '<div style="font-size:12px;opacity:.9;margin-top:4px">自动同步你的粉笔错题，AI 诊断薄弱点并定制 4 周提分任务书</div>' +
       '</div>' +
       '<div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">' +
+        '<div onclick="C10.startPwd()" style="border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;cursor:pointer">' +
+          '<div style="font-weight:700;font-size:13.5px">🔑 方式一：账号密码登录（最直接）</div>' +
+          '<div style="color:var(--ink-3);font-size:12px;margin-top:3px">输入粉笔手机号/邮箱和密码，直接登录；密码仅用于本次登录，不保存</div>' +
+        '</div>' +
         '<div onclick="C10.startCookie()" style="border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;cursor:pointer">' +
-          '<div style="font-weight:700;font-size:13.5px">📋 方式一：粘贴 Cookie（推荐，最简单）</div>' +
+          '<div style="font-weight:700;font-size:13.5px">📋 方式二：粘贴 Cookie（免密码）</div>' +
           '<div style="color:var(--ink-3);font-size:12px;margin-top:3px">电脑浏览器登录粉笔网页版 → 复制 Cookie 粘贴即可，1 分钟完成</div>' +
         '</div>' +
         '<div onclick="C10.startSms()" style="border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;cursor:pointer">' +
-          '<div style="font-weight:700;font-size:13.5px">📱 方式二：手机验证码登录</div>' +
+          '<div style="font-weight:700;font-size:13.5px">📱 方式三：手机验证码登录</div>' +
           '<div style="color:var(--ink-3);font-size:12px;margin-top:3px">输入粉笔手机号，接收短信验证码完成登录</div>' +
         '</div>' +
         '<div onclick="C10.startQrcode()" style="border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;cursor:pointer">' +
-          '<div style="font-weight:700;font-size:13.5px">🔷 方式三：粉笔 APP 扫码登录</div>' +
+          '<div style="font-weight:700;font-size:13.5px">🔷 方式四：粉笔 APP 扫码登录</div>' +
           '<div style="color:var(--ink-3);font-size:12px;margin-top:3px">打开粉笔 APP 扫一扫，账号密码都不经过本平台</div>' +
         '</div>' +
       '</div>' +
-      '<div style="color:var(--ink-3);font-size:11.5px;margin-top:14px;line-height:1.7">· 仅采集错题数据用于分析，题目原文只保存在你的账号下<br>· 随时可解除绑定；账号密码不会也无法被本平台获取</div>';
+      '<div style="color:var(--ink-3);font-size:11.5px;margin-top:14px;line-height:1.7">· 仅采集错题数据用于分析，题目原文只保存在你的账号下<br>· 随时可解除绑定；账密登录的密码用后即弃，本平台不存储</div>';
   }
 
   // ---------------- Cookie 绑定 ----------------
@@ -448,6 +452,41 @@
       });
   }
 
+  function startPwd() {
+    _curMode = 'password';
+    var body = document.getElementById('c10Body');
+    body.innerHTML =
+      '<div style="font-weight:700;font-size:14px;margin-bottom:8px">🔑 账号密码登录</div>' +
+      '<div id="c10LoginArea">' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+          '<input id="c10PwdAccount" type="text" placeholder="粉笔手机号或邮箱" ' +
+            'style="padding:10px;border:1px solid var(--line-2);border-radius:8px;font-size:14px">' +
+          '<input id="c10PwdPass" type="password" placeholder="粉笔账号密码" ' +
+            'style="padding:10px;border:1px solid var(--line-2);border-radius:8px;font-size:14px">' +
+          '<button onclick="C10.submitPwdStart()" style="padding:10px;border:none;border-radius:8px;background:var(--wood);color:#fff;font-size:13.5px;cursor:pointer">登录并绑定</button>' +
+          '<div style="color:var(--ink-3);font-size:11px;line-height:1.6">密码仅用于本次登录粉笔，用后即弃、不保存；若触发安全验证会弹出滑块请你协助拖动。</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px">' + btn('← 返回', 'C10.refresh()', 'border-color:var(--line-2);color:var(--ink-2)') + '</div>';
+  }
+
+  function submitPwdStart() {
+    var acc = (document.getElementById('c10PwdAccount') || {}).value || '';
+    var pwd = (document.getElementById('c10PwdPass') || {}).value || '';
+    if (!acc.trim() || !pwd) { showToast('请输入账号和密码', 'error'); return; }
+    renderLoginShell('🔑 账号密码登录', '<p style="color:var(--ink-3);text-align:center;padding:20px 0">正在打开登录会话…</p>');
+    global.GK.api('/me/fenbi/login/password', { method: 'POST', body: { account: acc.trim(), password: pwd } })
+      .then(function (r) {
+        _curSid = r.sid;
+        pwd.value = ''; acc.value = '';
+        pollLogin();
+      })
+      .catch(function (e) {
+        renderLoginShell('🔑 账号密码登录',
+          '<p style="color:var(--bad);font-size:12.5px">会话发起失败：' + escapeHtml(e && e.message ? e.message : e) + '</p>');
+      });
+  }
+
   function pollLogin() {
     stopTimers();
     _loginTimer = setInterval(function () {
@@ -469,8 +508,10 @@
     }
     if (state === 'failed' || state === 'cancelled' || state === 'timeout') {
       stopTimers();
+      var retry = _curMode === 'password' ? 'C10.startPwd()'
+        : _curMode === 'qrcode' ? 'C10.startQrcode()' : 'C10.startSms()';
       area.innerHTML = '<p style="color:var(--bad);font-size:12.5px">登录失败：' + escapeHtml(r.error || state) + '</p>' +
-        '<div style="margin-top:8px">' + btn('重试', 'C10.startSms()', 'border-color:var(--line-2);color:var(--ink-2)') + '</div>';
+        '<div style="margin-top:8px">' + btn('重试', retry, 'border-color:var(--line-2);color:var(--ink-2)') + '</div>';
       return;
     }
     if (state === 'ready_qrcode' && r.shot) {
@@ -537,6 +578,8 @@
     submitCookie: submitCookie,
     startSms: startSms,
     startQrcode: startQrcode,
+    startPwd: startPwd,
+    submitPwdStart: submitPwdStart,
     submitCode: submitCode,
     submitDrag: submitDrag,
     analyze: analyze,

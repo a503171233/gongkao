@@ -122,6 +122,42 @@ def _main():
     store.clear_session_shot("sid-t")
     chk("清截图", store.get_session("sid-t")["shot"] == "")
 
+    # ---- 批次26-K：账密通道状态机 ----
+    for bad_acc, bad_pwd, name in [("", "x", "空账号拒绝"),
+                                   ("  ", "x", "纯空格账号拒绝"),
+                                   ("a@b.com", "", "空密码拒绝")]:
+        try:
+            mgr.start_password("u9", bad_acc, bad_pwd)
+            chk(name, False)
+        except ValueError:
+            chk(name, True)
+
+    # 造 password 活动会话 → 同用户再发起被互斥
+    s5 = fl._Session("sid-p", "u10", "password", "13800000010")
+    s5.set_state("submitting")
+    s5._password = "secret!"
+    mgr._sessions["sid-p"] = s5
+    try:
+        mgr.start_password("u10", "13800000010", "pw1")
+        chk("password 同用户互斥", False)
+    except ValueError:
+        chk("password 同用户互斥", True)
+
+    # view 掩码 + 密码绝不外泄
+    v5 = s5.view()
+    chk("password view 掩码", v5["phone"] == "138****0010"
+        and v5["mode"] == "password")
+    chk("密码不进 view", "secret" not in str(v5))
+    chk("密码不进留痕", "secret" not in str(store.get_session("sid-p") or {}))
+
+    # 邮箱账号放行（账密表单支持手机号或邮箱）
+    try:
+        v6 = mgr.start_password("u11", "user@example.com", "pw-11")
+        chk("邮箱账号放行", v6["mode"] == "password")
+        mgr.cancel(v6["sid"], "u11")
+    except ValueError:
+        chk("邮箱账号放行", False)
+
     print(f"\n结果：{'全部通过' if not fails else f'失败 {len(fails)} 项: {fails}'}")
     sys.exit(1 if fails else 0)
 
