@@ -24,9 +24,9 @@
 
   .card { background: #fffaf0; border: 1px solid #e2d9c6; border-radius: 14px; box-shadow: 0 2px 16px rgba(93,72,41,.10); padding: 20px; margin-bottom: 16px; }
   .qbar { display: flex; gap: 10px; }
-  #query { flex: 1; border: 1px solid #d2c5ab; border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; background: #fffaf0; color: #3d3a33; }
+  #query { flex: 1; min-width: 0; border: 1px solid #d2c5ab; border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; background: #fffaf0; color: #3d3a33; }
   #query:focus { border-color: #c9a05a; box-shadow: 0 0 0 3px rgba(201,160,90,.18); }
-  #send { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; border: none; border-radius: 10px; padding: 0 24px; font-size: 15px; cursor: pointer; }
+  #send { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; border: none; border-radius: 10px; padding: 0 24px; font-size: 15px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
   #send:disabled { opacity: .5; cursor: not-allowed; }
   .qlimit { font-size: 12px; color: #999; margin-top: 8px; }
 

@@ -27,6 +27,8 @@
 </aside>
 <div id="main">
 <header>
+  <!-- 批次27-C：移动端抽屉开关（桌面隐藏，≤720px 显示） -->
+  <button type="button" class="head-btn side-toggle" onclick="document.body.classList.add('side-open')" aria-label="打开会话栏">☰</button>
   <a class="home-link" href="/" title="返回官网首页">⌂ 官网首页</a>
   <div class="logo">书</div>
   <h1>书山公考 · 学习中心</h1>
@@ -395,5 +397,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 </div><!-- /#main -->
 </div><!-- /.layout -->
+<!-- 批次27-C：侧栏抽屉遮罩（点击关闭；仅移动端 side-open 时显示） -->
+<div class="side-mask" id="sideMask" onclick="document.body.classList.remove('side-open')"></div>
 </body>
 </html>

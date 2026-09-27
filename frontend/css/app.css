@@ -240,8 +240,20 @@ a:hover { color: var(--wood-deep); }
 
 @media (max-width: 720px) {
   .layout { flex-direction: column; height: 100dvh; }
-  #sidebar { width: 100%; height: auto; max-height: 30vh; border-right: none; border-bottom: 1px solid var(--line); }
-  #sessionList { max-height: 18vh; }
+  /* 批次27-C：有 tabbar 时 layout 让出底部空间——修复输入框被 tabbar 整体遮挡（聊天不可用级） */
+  body.has-tabbar .layout { height: calc(100dvh - 66px - env(safe-area-inset-bottom)); }
+  /* 批次27-C：侧栏抽屉化——首屏全归聊天主界面，会话历史收进左侧抽屉 */
+  #sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: min(80vw, 320px);
+    max-height: none; border-right: 1px solid var(--line); border-bottom: none;
+    z-index: 90; transform: translateX(-103%); transition: transform var(--dur) var(--ease-out);
+    box-shadow: var(--shadow-3); overflow-y: auto; padding-bottom: 20px; }
+  body.side-open #sidebar { transform: none; }
+  .side-mask { display: none; }
+  body.side-open .side-mask { display: block; position: fixed; inset: 0; z-index: 89;
+    background: rgba(58,42,26,.38); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  /* 抽屉开关：≤720px 显示（!important 对全局 .side-toggle{display:none!important}，特异性更高者胜） */
+  #main header .side-toggle { display: inline-flex !important; order: 0; }
+  #sessionList { max-height: none; }
   #main header { padding: 10px 12px; gap: 8px; }
   #main header h1 { font-size: 15px; }
   .teacher-tabs { width: 100%; order: 5; margin-left: 0; }
@@ -270,6 +282,8 @@ a:hover { color: var(--wood-deep); }
     overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
   .teacher-tabs::-webkit-scrollbar { display: none; }
   #authArea { order: 4; margin-left: 0; flex-wrap: wrap; }
+  /* 批次27-C：模型信息行挪到 header 末位（默认 order:0 会顶到第一行喧宾夺主） */
+  #main header #info { order: 5; width: 100%; margin-left: 0; }
   /* 批次26 · App 化导航：工具条由底部 Tab 栏替代（13 功能收进「更多」菜单，chat.html 内联） */
   .tool-strip { display: none; }
   .hero { padding: 46px 16px 30px; }
@@ -348,6 +362,8 @@ a:hover { color: var(--wood-deep); }
 
 /* ---------- 按钮三态统一：按压微缩反馈 ---------- */
 .btn, .head-btn, .tabbar button { will-change: transform; }
+/* 批次27-C：移动端会话抽屉开关——桌面隐藏，≤720px 块内恢复 inline-flex */
+.side-toggle { display: none !important; }
 .btn:active, .head-btn:active { transform: scale(.96); transition-duration: var(--dur-fast); }
 
 /* ---------- 面板悬浮层次（桌面端呼吸感） ---------- */

@@ -277,6 +277,7 @@ a { color: var(--wood-deep); text-decoration: none; }
           <button type="button" data-v="tree" class="on" onclick="setView('tree')">🌲 树状</button>
           <button type="button" data-v="map" onclick="setView('map')">🧠 导图</button>
         </div>
+        <button type="button" class="btn ghost sm" id="foldBtn" onclick="toggleFold()" title="在「展开全部」与「收起分支（只留模块层）」间切换">展开全部</button>
         <span class="mlegend" id="mlegend"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#7a9e6d;vertical-align:-1px"></i> ≥80% 扎实 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b08340;vertical-align:-1px"></i> 60-79% 一般 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b45a4a;vertical-align:-1px"></i> &lt;60% 薄弱 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(139,94,60,.4);vertical-align:-1px;box-sizing:border-box"></i> 未练</span>
         <button class="btn ghost sm" onclick="togglePlan()" title="根据你的掌握度生成 7 天冲刺学习计划">📋 学习计划</button>
         <div class="dl">
@@ -374,7 +375,10 @@ async function loadTree() {
     paths = {};
     buildPaths(lastNodes, []);
     aggOut = mastery ? aggStats(lastNodes) : null;  // 批次20 章节聚合
-    if (!kw) collapse.clear();
+    if (!kw) {  // 批次27-C：无搜索词恢复默认折叠态（模块展开、分类/知识点收起）；搜索时全展开保证结果可见
+      foldAll = false; collapse.clear(); seedCollapse(lastNodes, 0);
+      const fb = $('#foldBtn'); if (fb) fb.textContent = '展开全部';
+    }
     if (viewMode === 'map') { renderMap(); } else { render(lastNodes); }
     loadStats();
   } catch (e) {
@@ -491,6 +495,23 @@ function render(nodes, depth) {
 function toggleDesc(id){ descOpen.has(id) ? descOpen.delete(id) : descOpen.add(id); loadRaw(); }
 
 function toggle(id){ collapse.has(id) ? collapse.delete(id) : collapse.add(id); loadRaw(); }
+
+// 批次27-C：树层级折叠默认化——472 节点全展开页面高达 5.8 万 px（约 64 屏），移动端不可用。
+// 默认只展开顶层模块（depth≥1 折叠），点 caret 逐层展开；搜索时全展开保证结果可见；一键「展开全部/收起分支」。
+let foldAll = false;   // false=默认态（模块展开、深层折叠）；true=全部展开
+function seedCollapse(nodes, depth) {
+  (nodes || []).forEach(n => {
+    if (depth >= 1 && (n.children || []).length) collapse.add(n.node_id);
+    seedCollapse(n.children, depth + 1);
+  });
+}
+function toggleFold() {
+  foldAll = !foldAll;
+  collapse.clear();
+  if (!foldAll) seedCollapse(lastNodes, 0);
+  const fb = $('#foldBtn'); if (fb) fb.textContent = foldAll ? '收起分支' : '展开全部';
+  loadRaw();
+}
 // 重新渲染（不重拉服务器，避免折叠丢失；搜索词仍在框内）
 function loadRaw(){ const kw=($('#kw')&&$('#kw').value||'').trim();
   api('/public/knowledge/tree?teacher_id='+encodeURIComponent(tid())+'&tree_type='+treeType+'&keyword='+encodeURIComponent(kw))
