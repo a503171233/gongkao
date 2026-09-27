@@ -568,18 +568,35 @@ class FenbiBindStore:
     # ---- analyses ----
 
     def start_analysis(self, user_id: str) -> tuple[int, str]:
-        """新建分析任务；返回 (id, error)。冷却 6h + 每用户单 running。"""
+        """新建分析任务；返回 (id, error)。冷却 6h + 每用户单 running。
+        批次27-E：running 超 30 分钟视为僵死（进程重启/线程被杀）自动置
+        failed 放行——否则服务重启后用户被「已有分析在进行中」永久卡死。"""
         with self._connect() as conn:
             run = conn.execute(
-                "SELECT id FROM fenbi_analyses WHERE user_id=? AND"
+                "SELECT id, created_at FROM fenbi_analyses WHERE user_id=? AND"
                 " status='running' ORDER BY id DESC LIMIT 1",
                 (user_id,)).fetchone()
             if run:
-                return 0, "已有分析在进行中，请稍候"
+                stale = False
+                if run["created_at"]:
+                    try:
+                        dt = datetime.strptime(run["created_at"],
+                                               "%Y-%m-%d %H:%M:%S")
+                        stale = time.time() - dt.timestamp() > 1800
+                    except ValueError:
+                        stale = False
+                if not stale:
+                    return 0, "已有分析在进行中，请稍候（正常约 1-3 分钟）"
+                conn.execute(
+                    "UPDATE fenbi_analyses SET status='failed',"
+                    " stage='异常', error='任务超时中断（服务重启或进程异常），请重新生成',"
+                    " done_at=? WHERE id=?", (_now(), run["id"]))
             last = conn.execute(
                 "SELECT created_at FROM fenbi_analyses WHERE user_id=? AND"
-                " status='done' ORDER BY id DESC LIMIT 1",
+                " status='done' AND (error IS NULL OR error='')"
+                " ORDER BY id DESC LIMIT 1",
                 (user_id,)).fetchone()
+            # 批次27-E：降级统计版（done+error）不进冷却——允许立即重试 AI 完整版
             if last and last["created_at"]:
                 try:
                     dt = datetime.strptime(last["created_at"],
@@ -981,6 +998,63 @@ def _build_prompt(dist: list[dict], samples: list[dict],
 _DEFAULT_REPORT = {"summary": "", "weak_points": [], "advice": [], "weeks": []}
 
 
+def _fallback_report(dist: list, raw_by_id: dict, total: int) -> dict:
+    """批次27-E 极端兜底：AI 全败时的本地统计报告（零 LLM 依赖）。
+    结构与 LLM 报告一致（summary/weak_points/advice/weeks），前端零改动可渲染；
+    数据全部来自本轮已拉取的分布树与错题快照。"""
+    mods = sorted(dist or [], key=lambda m: int(m.get("total") or 0),
+                  reverse=True)
+    total_eff = sum(int(m.get("total") or 0) for m in mods) or total or 1
+    summary = (f"本次共采集错题 {total} 道，覆盖 {len(mods)} 个模块。"
+               f"错题最集中的模块为「{mods[0].get('module', '—')}」"
+               f"（{mods[0].get('total', 0)} 道，占 "
+               f"{int(100 * int(mods[0].get('total') or 0) / total_eff)}%）。"
+               "（AI 服务暂不可用，本报告为基础统计版；服务恢复后可重新生成完整版任务书）")
+
+    weak_points = []
+    for m in mods[:5]:
+        t = int(m.get("total") or 0)
+        ratio = t / total_eff
+        level = 5 if ratio >= 0.35 else (4 if ratio >= 0.25 else
+                (3 if ratio >= 0.15 else 2))
+        pts = m.get("points") or []
+        top_pt = ""
+        if isinstance(pts, list) and pts:
+            try:
+                top = max(pts, key=lambda p: int(p.get("count") or 0))
+                top_pt = str(top.get("name") or "")
+            except (ValueError, TypeError):
+                top_pt = ""
+        reason = (f"错题 {t} 道（占 {int(ratio * 100)}%）"
+                  + (f"，其中「{top_pt}」最集中" if top_pt else ""))
+        weak_points.append({"name": top_pt or str(m.get("module") or ""),
+                            "module": str(m.get("module") or ""),
+                            "level": level, "reason": reason})
+
+    advice = []
+    for i, m in enumerate(mods[:3]):
+        advice.append(f"优先攻克「{m.get('module')}」：按知识点逐个过一遍错题解析，"
+                      f"先重做最近 20 道错题再对照答案复盘"
+                      + ("（第一优先）" if i == 0 else ""))
+    advice.append("每天固定 30-40 分钟错题重做，用系统练习模式按知识点抽题检验")
+    advice.append("每周日用一次「学习报告」回顾正确率变化，动态调整下周重心")
+
+    weeks = []
+    for i, m in enumerate(mods[:3]):
+        weeks.append({"theme": f"{m.get('module')} 专项突破",
+                      "goal": f"该模块错题重做正确率达到 70% 以上",
+                      "tasks": [
+                          {"time": f"周一-周三", "desc": f"过「{m.get('module')}」全部错题解析，归纳共性错误"},
+                          {"time": "周四-周六", "desc": "按知识点抽题重做，错两次的加入收藏反复练"},
+                          {"time": "周日", "desc": "限时小测 20 题检验阶段成果"},
+                      ]})
+    if len(weeks) < 3:
+        weeks.append({"theme": "综合模拟检验", "goal": "整卷体验与查漏",
+                      "tasks": [{"time": "本周", "desc": "完成一次完整模考，对照分布检查薄弱模块是否改善"}]})
+    return {"summary": summary, "weak_points": weak_points,
+            "advice": advice, "weeks": weeks}
+
+
 def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
                  llm_call=None) -> None:
     """完整管线（同步执行，调用方放后台线程）：
@@ -1049,20 +1123,59 @@ def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
         samples = _pick_samples(tree, raw_by_id)
         prompt = _build_prompt(dist, samples, len(qids))
         report = dict(_DEFAULT_REPORT)
-        if llm_call is not None:
-            out = llm_call([{"role": "user", "content": prompt}])
+        degraded = False
+        llm_err = ""
+
+        def _parse(out: str, repair: bool):
+            """解析任务书 JSON；repair=False 严格模式（截断不抢救，留给重试）。"""
             try:
-                obj = json.loads(out) if isinstance(out, str) else out
+                obj = json.loads(out)
+                return obj if isinstance(obj, dict) else None
             except ValueError:
                 from .api import _extract_json_obj  # 延迟导入避免循环
-                obj = _extract_json_obj(out)
-            if isinstance(obj, dict) and obj.get("summary"):
-                report = obj
+                try:
+                    return _extract_json_obj(out, repair=repair)
+                except ValueError:
+                    return None
 
-        store.update_analysis(
-            aid, status="done", stage="完成", progress=100,
-            report=json.dumps(report, ensure_ascii=False),
-            total_mistakes=len(qids), done_at=_now())
+        if llm_call is not None:
+            # 批次27-E：四级递进——①首跑严格解析（截断不抢救）→ ②带精简约束重试
+            # → ③修复器抢救截断 JSON（缩水但可用）→ ④降级本地统计报告（零 LLM）。
+            out = ""
+            for attempt in (1, 2):
+                try:
+                    msg = prompt if attempt == 1 else (
+                        prompt + "\n\n【重试要求】上一轮输出被截断或为空。"
+                        "请务必输出完整可解析的 JSON：weak_points 不超过 6 条、"
+                        "advice 每条不超过 40 字、weeks 精简到 3 条，"
+                        "总长度控制在 2500 字符以内，不要有任何 JSON 之外的文字。")
+                    out = llm_call([{"role": "user", "content": msg}])
+                    if not isinstance(out, str) or not out.strip():
+                        raise ValueError("模型返回空内容")
+                    obj = _parse(out, repair=(attempt == 2))
+                    if isinstance(obj, dict) and obj.get("summary"):
+                        report = obj
+                        break
+                    raise ValueError("报告缺少 summary 字段")
+                except Exception as le:  # noqa: BLE001  记录后重试/降级
+                    llm_err = str(le)[:120]
+                    print(f"[fenbi_bind] AI 任务书第 {attempt} 次尝试失败："
+                          f"{llm_err}", flush=True)
+            if not report.get("summary"):
+                degraded = True
+                report = _fallback_report(dist, raw_by_id, len(qids))
+
+        if degraded:
+            store.update_analysis(
+                aid, status="done", stage="完成", progress=100,
+                report=json.dumps(report, ensure_ascii=False),
+                total_mistakes=len(qids), done_at=_now(),
+                error="AI 服务不可用，已降级为基础统计版（" + llm_err + "）")
+        else:
+            store.update_analysis(
+                aid, status="done", stage="完成", progress=100,
+                report=json.dumps(report, ensure_ascii=False),
+                total_mistakes=len(qids), done_at=_now())
         print(f"[fenbi_bind] 分析完成 user={user_id} aid={aid} "
               f"错题{len(qids)} 新快照{saved}", flush=True)
     except fenbi.FenbiAuthError as e:

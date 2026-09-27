@@ -560,6 +560,12 @@
     var rep = latest.report || {};
     var dist = latest.distribution || [];
     var h = '';
+    // 批次27-E：AI 降级横幅——done 但带 error 说明是本地统计兜底版
+    if (latest.error) {
+      h += '<div style="background:rgba(245,159,0,.12);border:1px solid rgba(245,159,0,.4);border-radius:10px;padding:9px 13px;margin:14px 0 0;font-size:12px;color:#8a6d1f;line-height:1.7">' +
+        '⚠️ <b>基础统计版任务书</b>：AI 服务暂时不可用，当前展示本地统计的诊断结果。服务恢复后可点击下方「重新生成」获取 AI 完整版。' +
+        '<div style="color:var(--ink-3);font-size:11px;margin-top:3px">' + escapeHtml(latest.error) + '</div></div>';
+    }
     h += '<div style="border-top:1px dashed var(--line-2);margin:18px 0 4px"></div>';
     h += '<div style="text-align:center;margin-top:10px">' +
       '<div style="font-size:16px;font-weight:800;color:var(--ink)">学员专属提升计划任务书</div>' +

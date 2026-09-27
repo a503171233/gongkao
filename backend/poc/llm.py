@@ -37,10 +37,17 @@ _RETRYABLE_5XX = frozenset({500, 502, 503, 504})
 
 def _openai(base_url: str | None = None, api_key: str | None = None):
     """构造 OpenAI 兼容客户端：密钥/端点/超时默认取 config；可被 AI 模型管理页的
-    注册模型覆盖（base_url/api_key 显式传入时用模型自身通道），SDK 重试关闭。"""
+    注册模型覆盖（base_url/api_key 显式传入时用模型自身通道），SDK 重试关闭。
+    批次27-E：key 与端点均缺配置时快速失败并给出可操作指引，
+    替代 openai SDK 的「Missing credentials」神秘报错。"""
     g = store._GLOBAL
+    eff_key = api_key or g.api_key
+    if not eff_key:
+        raise ValueError(
+            "LLM API Key 未配置：请在管理后台「AI 模型管理」设置可用默认模型，"
+            "或在 .env 配置全局 API_KEY 后重启服务")
     return OpenAI(
-        api_key=api_key or g.api_key,
+        api_key=eff_key,
         base_url=base_url or g.api_base_url,
         timeout=g.llm_timeout,
         max_retries=0,

@@ -1716,7 +1716,10 @@ _ESSAY_GRADE_PROMPT = """你是公务员考试资深阅卷专家。请对学生�
 
 
 def _grade_llm_call(messages, tcfg, max_tokens: int = 1500) -> str:
-    """#36 批改 LLM 调用：注册表默认模型优先，失败回退全局主模型（仿 admin._llm_call）。"""
+    """#36 批改 LLM 调用：注册表默认模型优先，失败回退全局主模型（仿 admin._llm_call）。
+    批次27-E：空输出视为通道失败继续回退——部分 flash/思考型模型在长文 JSON
+    场景会返回 HTTP 200 但 content 为空串（实测 deepseek-v4-flash），若接受空串
+    会让上层把「空报告」当成功。"""
     from . import llm as llm_biz
     try:
         eff = _get_aimodel().effective_default()
@@ -1724,25 +1727,33 @@ def _grade_llm_call(messages, tcfg, max_tokens: int = 1500) -> str:
         eff = {}
     if eff:
         try:
-            return llm_biz.call_llm(
+            out = llm_biz.call_llm(
                 messages, tcfg, max_tokens=max_tokens,
                 model=eff.get("model_id"), base_url=eff.get("base_url"),
                 api_key=eff.get("api_key"), temperature=0.2)
+            if out and out.strip():
+                return out
+            print("[grade_llm] 默认模型返回空输出，回退全局通道", flush=True)
         except ValueError:
             raise
         except Exception:  # noqa: BLE001  eff 通道失败 → 回退全局
             pass
     try:
-        return llm_biz.call_llm(messages, tcfg, max_tokens=max_tokens, temperature=0.2)
+        out = llm_biz.call_llm(messages, tcfg, max_tokens=max_tokens, temperature=0.2)
+        if out and out.strip():
+            return out
+        raise ValueError("AI 服务返回了空内容（模型可能过载），请稍后重试")
     except ValueError:
         raise
     except Exception as e:  # noqa: BLE001
         raise ValueError(f"AI 服务暂不可用（{str(e)[:80]}），请稍后重试")
 
 
-def _extract_json_obj(text: str) -> dict:
+def _extract_json_obj(text: str, repair: bool = True) -> dict:
     """LLM 输出 → dict：整体解析 → 剥围栏 → raw_decode 扫描首个可解析对象（优先含 scores/total 键）。
-    #36 加固：思考型模型输出前后杂文/多 JSON 块场景。"""
+    #36 加固：思考型模型输出前后杂文/多 JSON 块场景。
+    批次27-E repair 开关：False 时跳过截断修复（供「先重试拿完整版、再修复抢救」
+    的分级策略使用——修复成功的内容是缩水版，质量低于带约束重试的完整版）。"""
     t = text.strip()
     if t.startswith("```"):
         t = _re.sub(r"^```[a-zA-Z]*\s*", "", t)
@@ -1769,10 +1780,64 @@ def _extract_json_obj(text: str) -> dict:
                 found = obj
     if found is not None:
         return found
+    # 批次27-E：截断修复——LLM 长 JSON 撞 max_tokens 被截断（finish_reason=length）
+    # 时，尝试补齐未闭合的字符串/数组/对象后解析，抢救已生成的部分内容。
+    if repair:
+        repaired = _repair_truncated_json(t)
+        if repaired is not None:
+            return repaired
     raise ValueError("AI 批改返回格式异常，请重试")
 
 
-@app.post("/practice/grade")
+def _repair_truncated_json(t: str) -> dict | None:
+    """截断 JSON 修复：逐字符扫描补齐未闭合的引号/数组/对象，尽力恢复前缀内容。"""
+    if not t or "{" not in t:
+        return None
+    try:
+        obj = json.loads(t)
+        return obj if isinstance(obj, dict) else None
+    except ValueError:
+        pass
+    # 记录括号栈（外→内）与字符串/转义状态
+    stack = []
+    in_str = False
+    esc = False
+    for i, ch in enumerate(t):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+            else:
+                return None  # 括号错配，不修
+    tail = "".join(reversed(stack))
+    # 候选集：原样补括号（字符串截断先补引号）→ 逐层剥尾逗号再补（处理悬挂逗号）
+    base = t + ('"' if in_str else "")
+    candidates = [base + tail]
+    b = base.rstrip()
+    while b.endswith(","):
+        b = b[:-1].rstrip()
+        candidates.append(b + tail)
+    for c in candidates:
+        try:
+            obj = json.loads(c)
+            if isinstance(obj, dict):
+                return obj
+        except ValueError:
+            continue
+    return None
+
+
 def grade_practice(req: PracticeGradeReq, authorization: str = Header(default="")):
     """#36 主观题 AI 批改：四维评分（立意/结构/论证/语言）+ 总评 + 建议 + 参考范文。
     幂等：已有批改报告直接返回（cached=true）。"""
