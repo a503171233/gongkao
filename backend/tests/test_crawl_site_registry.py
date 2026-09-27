@@ -43,7 +43,11 @@ from poc.capabilities import registry as cap_registry  # noqa: E402
 
 
 def _patch_registry(res_by_url, fail_urls=frozenset()):
-    """patch registry.call：按 URL 返回假 fetch 结果；fail_urls 模拟全链失败。"""
+    """patch registry.call：按 URL 返回假 fetch 结果；fail_urls 模拟全链失败。
+
+    批次26-E：快照层默认开——每个用例前清空快照目录、重置限速表并把同域
+    延迟压到 0，保证用例间隔离（前用例成功页不会被后"全败"用例命中缓存，
+    用例内多页抓取也不被礼貌限速拖慢）。"""
     def _call(cap, **kw):
         if cap != "fetch":
             return None, f"unexpected cap {cap}"
@@ -54,6 +58,12 @@ def _patch_registry(res_by_url, fail_urls=frozenset()):
         if r is None:
             return None, "no page"
         return dict(r), ""
+    ac._SNAP_DIR = Path(TMP) / "snaps"
+    if ac._SNAP_DIR.exists():
+        for _f in ac._SNAP_DIR.glob("*.json"):
+            _f.unlink()
+    ac._host_last_fetch.clear()
+    ac._snapshot_cfg = lambda: (True, 0.0, 0.0)   # 快照开/TTL 永久/延迟 0
     return mock.patch.object(cap_registry, "call", _call)
 
 

@@ -3572,6 +3572,28 @@ def admin_autocollect_llm_clear(authorization: str = Header(default="")):
     return {"ok": True}
 
 
+# ---------------- 批次26-E · 抓取快照库（下载与提取解耦，防题源站点风控） ----------------
+
+@app.get("/admin/autocollect/snapshots")
+def admin_autocollect_snapshots(url: str = "", limit: int = 100,
+                                authorization: str = Header(default="")):
+    """快照库视图：总量/磁盘占用/最近抓取列表（可按 URL 精确查）。
+    快照层保证同一 URL 只真实抓取一次，之后提取全部读本地。"""
+    _admin_user(authorization)
+    return autocollect_mod.snapshots_admin(url=url, limit=limit)
+
+
+@app.post("/admin/autocollect/snapshots/clear")
+def admin_autocollect_snapshots_clear(authorization: str = Header(default=""),
+                                      body: dict = Body(default_factory=dict)):
+    """清空快照库（body.urls 缺省）或删除指定 URL 快照，使其下次采集重新抓取。"""
+    _admin_user(authorization)
+    urls = body.get("urls") if isinstance(body, dict) else None
+    if urls is not None and not isinstance(urls, list):
+        raise HTTPException(status_code=400, detail="urls 需为数组")
+    return {"ok": True, **autocollect_mod.snapshots_clear(urls)}
+
+
 @app.post("/admin/autocollect/llm/models")
 def admin_autocollect_llm_models(authorization: str = Header(default="")):
     """用已配置的采集专用通道拉取远端模型列表（服务端持有完整 API Key，前端无需回传）。

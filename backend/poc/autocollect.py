@@ -3049,17 +3049,183 @@ def _search_cap_web(query: str, max_results: int = 5) -> tuple[list[dict], str]:
     return registry.call("search", query=query, max_results=max_results)
 
 
+# ============================================================
+# 抓取快照层（批次26-E · 下载与提取解耦，降低题源站点风控风险）
+# 原则：每个 URL 尽量只从网络真实抓取一次 → 落本地快照 → 之后所有
+# 提取 / 重试 / 续采 / 指纹比对全部读本地，零网络请求。
+# 此前痛点：搜索线与站点线每轮都重新抓同一页面再算指纹判断"内容没变
+# 就跳过"——先抓后判，同一 URL 在窗口内被反复请求，最易触发风控。
+# 配置（data/autocollect_config.json 或环境变量）：
+#   snapshot_enabled    默认开
+#   snapshot_ttl_hours  默认 0 = 快照永久（题库详情页内容稳定；
+#                       管理端清快照可强制重抓）
+#   fetch_delay_secs    默认 3.0，同域两次"真实"抓取最小间隔（±50% 抖动
+#                       模拟人工节奏）；快照命中不延迟，零网络零等待。
+# ============================================================
+
+_SNAP_DIR = Config.data_dir / "autocollect_snapshots"
+_host_last_fetch: dict[str, float] = {}
+
+
+def _snapshot_cfg() -> tuple[bool, float, float]:
+    """(快照是否启用, 快照 TTL 小时数(0=永久), 同域最小抓取间隔秒)。
+
+    快照默认启用（防风控的默认行为）；env/runtime 均可显式关闭。"""
+    rt = _load_runtime()
+    v = rt.get("snapshot_enabled")
+    enabled = v if isinstance(v, bool) else (
+        get("AUTOCOLLECT_SNAPSHOT_ENABLED", "1").strip().lower()
+        in ("1", "true", "yes", "on"))
+    return (enabled,
+            _float_cfg(rt, "snapshot_ttl_hours", "AUTOCOLLECT_SNAPSHOT_TTL_HOURS", 0.0),
+            _float_cfg(rt, "fetch_delay_secs", "AUTOCOLLECT_FETCH_DELAY_SECS", 3.0))
+
+
+def _snap_path(url: str) -> Path:
+    import hashlib
+    return _SNAP_DIR / (hashlib.sha1(url.encode("utf-8", "ignore")).hexdigest()
+                        + ".json")
+
+
+def _snapshot_load(url: str, ttl_hours: float) -> dict | None:
+    """读快照；缺失/损坏/正文为空/TTL 过期 返回 None。"""
+    try:
+        d = json.loads(_snap_path(url).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(d, dict) or not str(d.get("text") or "").strip():
+        return None
+    if ttl_hours > 0:
+        try:
+            ts = datetime.strptime(str(d.get("fetched_at"))[:19],
+                                   "%Y-%m-%dT%H:%M:%S").timestamp()
+            if (datetime.now(timezone.utc).timestamp() - ts) > ttl_hours * 3600:
+                return None
+        except Exception:  # noqa: BLE001  时间戳异常视为未过期，宁可不重抓
+            pass
+    return d
+
+
+def _snapshot_save(url: str, result: dict, text_override: str = "") -> None:
+    """落快照。text_override 供站点线回写"图片托管后"的最终文本。"""
+    try:
+        _SNAP_DIR.mkdir(parents=True, exist_ok=True)
+        d = {"url": url,
+             "final_url": str(result.get("final_url") or url),
+             "title": str(result.get("title") or ""),
+             "text": str(text_override or result.get("text") or ""),
+             "html": str(result.get("html") or "")[:2_000_000],  # 防 HTML 巨页撑爆磁盘
+             "fetched_at": _now_iso()}
+        _snap_path(url).write_text(json.dumps(d, ensure_ascii=False),
+                                   encoding="utf-8")
+    except Exception:  # noqa: BLE001  快照落盘失败不影响本次采集
+        pass
+
+
+def _snapshot_update_text(url: str, text: str) -> None:
+    """回写快照正文（首次真抓后站点线图片处理完的最终文本）。"""
+    try:
+        p = _snap_path(url)
+        d = json.loads(p.read_text(encoding="utf-8"))
+        d["text"] = str(text)
+        p.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _host_throttle(host: str, delay: float) -> None:
+    """同域礼貌限速：仅作用于"真实"网络抓取；快照命中不经过此函数。"""
+    if delay <= 0 or not host:
+        return
+    now = time.monotonic()
+    last = _host_last_fetch.get(host)
+    if last is not None:
+        wait = last + delay * (0.5 + random.random()) - now   # ±50% 抖动
+        if 0 < wait < 120:
+            time.sleep(wait)
+    _host_last_fetch[host] = time.monotonic()
+
+
+def _fetch_cached(url: str, timeout: int = 20, *,
+                  refresh: bool = False) -> dict:
+    """快照优先的统一抓取入口（下载与提取解耦）。
+
+    返回 {text, html, final_url, from_cache, title?}；网络失败抛 ValueError
+    （与原 _fetch_text 语义一致，调用方以异常感知失败）。"""
+    from urllib.parse import urlparse
+    from .capabilities import registry
+    snap_on, ttl_hours, delay = _snapshot_cfg()
+    if snap_on and not refresh:
+        d = _snapshot_load(url, ttl_hours)
+        if d is not None:
+            return {"text": d.get("text") or "", "html": d.get("html") or "",
+                    "final_url": d.get("final_url") or url,
+                    "title": d.get("title") or "", "from_cache": True}
+    _host_throttle((urlparse(url).netloc or "").lower(), delay)
+    result, warning = registry.call("fetch", url=url, timeout=timeout)
+    if warning:
+        raise ValueError(warning)
+    result = result or {}
+    if snap_on:
+        _snapshot_save(url, result)
+    return {"text": str(result.get("text") or ""),
+            "html": str(result.get("html") or ""),
+            "final_url": str(result.get("final_url") or url),
+            "title": str(result.get("title") or ""),
+            "from_cache": False}
+
+
+def snapshots_admin(url: str = "", limit: int = 100) -> dict:
+    """管理端：快照库视图（总量/磁盘占用/最近抓取列表，可按 URL 精确查）。"""
+    items: list[dict] = []
+    total_chars = 0
+    files = list(_SNAP_DIR.glob("*.json")) if _SNAP_DIR.exists() else []
+    for p in files:
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        total_chars += len(str(d.get("text") or ""))
+        items.append({"url": d.get("url") or "", "final_url": d.get("final_url") or "",
+                      "chars": len(str(d.get("text") or "")),
+                      "fetched_at": d.get("fetched_at") or ""})
+    items.sort(key=lambda x: x.get("fetched_at") or "", reverse=True)
+    if url:
+        items = [x for x in items if x.get("url") == url]
+    return {"total": len(items), "text_chars": total_chars,
+            "disk_bytes": sum(f.stat().st_size for f in files if f.exists()),
+            "items": items[:max(0, limit)]}
+
+
+def snapshots_clear(urls: list[str] | None = None) -> dict:
+    """管理端：清空快照库（urls=None）或删除指定 URL 快照，使其下次重抓。"""
+    removed = 0
+    if urls is None:
+        if _SNAP_DIR.exists():
+            removed = len(list(_SNAP_DIR.glob("*.json")))
+            for f in _SNAP_DIR.glob("*.json"):
+                try:
+                    f.unlink()
+                except Exception:  # noqa: BLE001
+                    pass
+    else:
+        for u in urls:
+            try:
+                _snap_path(str(u)).unlink(missing_ok=True)
+                removed += 1
+            except Exception:  # noqa: BLE001
+                pass
+    return {"removed": removed}
+
+
 def _fetch_text(url: str, timeout: int = 20) -> str:
     """抓取 URL 并粗提正文文本；HTML 去除脚本/标签，非 HTML 原文返回。
     能力层接入（说明书 §五）：经 capabilities.registry 调度 fetch 能力。
     默认/builtin 行为与原实现逐字节一致（httpx+UA+重定向+粗提正文）；
-    CAP_FETCH_PROVIDER=mcp/auto 且网关可用时走 MCP（JS 渲染/正文抽取更稳）。"""
-    from .capabilities import registry
-
-    result, warning = registry.call("fetch", url=url, timeout=timeout)
-    if warning:
-        # 保持旧语义：调用方以异常感知失败（搜索结果回退 snippet）
-        raise ValueError(warning)
+    CAP_FETCH_PROVIDER=mcp/auto 且网关可用时走 MCP（JS 渲染/正文抽取更稳）。
+    批次26-E：接入快照层——同一 URL 只真实抓取一次，之后读本地快照
+    （下载与提取解耦，避免每轮重复请求题源站点触发风控）。"""
+    result = _fetch_cached(url, timeout=timeout)
     return (result or {}).get("text", "")
 
 
@@ -3217,12 +3383,44 @@ def _crawl_site(start_url: str, max_pages: int = 30, timeout: int = 15) -> list[
         if u in visited:
             continue
         visited.add(u)
-        # 单页抓取：能力层全链失败（warning）→ 跳过该页（语义与原 httpx 直抓失败 continue 一致）
-        res, _warn = registry.call("fetch", url=u, timeout=timeout)
+        # 单页抓取：批次26-E 走快照层——同一 URL 只真实抓取一次，快照命中
+        # 直接复用首次处理完的文本（含图片托管结果），第二次起整站爬取零网络，
+        # 从根源上避免对题源站点的重复请求（防风控）。
+        try:
+            res = _fetch_cached(u, timeout=timeout)
+        except Exception:  # noqa: BLE001  能力层全链失败 → 跳过该页（语义同原 continue）
+            continue
         if not res or not (res.get("html") or res.get("text")):
             continue
         final_url = str(res.get("final_url") or u)
         html = str(res.get("html") or "")
+        if res.get("from_cache"):
+            # 快照命中：零网络零延迟。text 已是首次真抓时处理完的最终文本
+            text = str(res.get("text") or "")
+            if html:
+                if _is_detail_page(urlparse(final_url).path, rule, host):
+                    pages.append((final_url, str(res.get("title") or ""), text))
+                    if len(pages) >= cap:
+                        break
+                extracted = _extract_site_links(html, final_url)
+                if rule:
+                    detail_l = [l for l in extracted
+                                if _is_detail_page(urlparse(l).path, rule, host)]
+                    rest_l = [l for l in extracted if l not in detail_l]
+                else:
+                    detail_l, rest_l = [], extracted
+                for link in detail_l + rest_l:
+                    if len(visited) + len(queue) >= max_pages * 3:
+                        break
+                    lpath = urlparse(link).path
+                    if rule and _NOISE_PATH.search(lpath):
+                        continue
+                    if link not in visited and link not in queue:
+                        queue.append(link)
+            elif not rule:
+                pages.append((u, "", text))
+            continue
+        # 首次真实抓取：走原处理路径（详情页下载托管图片），完成后把最终文本回写快照
         if html:
             is_detail = _is_detail_page(urlparse(final_url).path, rule, host)
             decoded = html
@@ -3241,6 +3439,8 @@ def _crawl_site(start_url: str, max_pages: int = 30, timeout: int = 15) -> list[
                     text = _html_to_text(decoded)
             else:
                 text = _html_to_text(decoded)
+            # 批次26-E：把图片托管后的最终文本回写快照——此后该页提取零网络
+            _snapshot_update_text(u, text)
             # 精准规则：只收集详情页；导航/列表页仅用于发现更多链接
             if is_detail:
                 pages.append((final_url, str(res.get("title") or ""), text))
@@ -4002,6 +4202,10 @@ def _config_summary() -> dict:
         "schedule_start": _schedule_window()[1],
         "schedule_end": _schedule_window()[2],
         "retry_failed_auto": _retry_failed_auto(),
+        "snapshot_enabled": _snapshot_cfg()[0],
+        "snapshot_ttl_hours": _snapshot_cfg()[1],
+        "fetch_delay_secs": _snapshot_cfg()[2],
+        "snapshots": snapshots_admin(limit=0),
         "model": overrides.get("model") or "（默认模型）",
         "custom_model": bool(overrides.get("model")),
         "llm_channels": llm_channels_info(),
