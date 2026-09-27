@@ -327,14 +327,52 @@ document.addEventListener('DOMContentLoaded', function () {
   setTimeout(function () { renderSideVol(); }, 50);
 })();
 </script>
-<!-- 批次26/27-G · 移动端底部 Tab（App 化导航）：四 tab = 学习/题库/测考/我的 -->
+<!-- 批次26/27-G/27-H · 移动端底部 Tab（App 化导航）：四平级页面 = 学习/题库/测考/我的 -->
 <div class="ms-sheet-mask" id="msMask" onclick="TAB.closeMore()"></div>
 <nav class="tabbar" id="tabbar" aria-label="底部导航">
   <button data-tab="chat" class="on" onclick="TAB.go('chat')"><i class="ti">📖</i>学习</button>
-  <button data-tab="practice" onclick="TAB.go('practice')"><i class="ti">📚</i>题库</button>
+  <button data-tab="bank" onclick="TAB.go('bank')"><i class="ti">📚</i>题库</button>
   <button data-tab="exam" onclick="TAB.go('exam')"><i class="ti">📝</i>测考</button>
   <button data-tab="me" onclick="TAB.go('me')"><i class="ti">👤</i>我的</button>
 </nav>
+
+<!-- 批次27-H · 题库页面视图（粉笔练习页式：数据条+专项模块卡+快捷入口） -->
+<div class="tab-page" id="viewBank" aria-label="题库">
+  <div class="tp-head"><span class="ih-title-lg">题库</span></div>
+  <div class="bank-stats" id="bankStats">
+    <div class="bstat"><b id="bkSt0">—</b><span>已练题数</span></div>
+    <div class="bstat"><b id="bkSt1">—</b><span>正确率</span></div>
+    <div class="bstat"><b id="bkSt2">—</b><span>已判分</span></div>
+  </div>
+  <div class="ios-group-title" style="margin-top:20px">专项练习</div>
+  <div class="bank-grid" id="bankGrid">
+    <div class="skel skel-block"></div><div class="skel skel-block"></div>
+    <div class="skel skel-block"></div><div class="skel skel-block"></div>
+  </div>
+  <div class="ios-group-title">我的练习</div>
+  <div style="padding:0 14px">
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C4.openMistakes()})"><i class="ric">❌</i><span class="rtxt">错题本<span class="rdesc">练习判错的题，可导出打印</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openFavorites()})"><i class="ric">📌</i><span class="rtxt">我的收藏<span class="rdesc">收藏的题目</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openReport()})"><i class="ric">📊</i><span class="rtxt">练习统计<span class="rdesc">正确率与 7 天趋势</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openReview()})"><i class="ric">📅</i><span class="rtxt">今日巩固<span class="rdesc">按记忆曲线安排的复习题</span></span><i class="chev">›</i></button>
+    </div>
+  </div>
+  <div class="tp-note">专项练习按题库分类抽题，交卷后自动判分并记入错题本；「今日练习」由 AI 按你的薄弱点推荐。</div>
+</div>
+
+<!-- 批次27-H · 测考页面视图（模考中心） -->
+<div class="tab-page" id="viewExam" aria-label="测考">
+  <div class="tp-head"><span class="ih-title-lg">测考</span></div>
+  <div class="exam-hero">
+    <div class="eh-t">📝 真题模考</div>
+    <div class="eh-d">整卷限时作答 · 自动判分<br>交卷生成 AI 提升计划（含时间分配诊断）</div>
+    <button class="eh-btn" onclick="TAB.run(function(){C5.openMockExam()})">开始模考</button>
+  </div>
+  <button class="bigrow" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="bic">🧩</i><span class="bt"><span class="bnm">智能组卷</span><span class="bds">按考点 / 题量自定义组卷练习</span></span><i class="chev">›</i></button>
+  <button class="bigrow" onclick="TAB.run(function(){C10.openFenbi()})"><i class="bic">🎯</i><span class="bt"><span class="bnm">粉笔模考报告</span><span class="bds">绑定粉笔同步模考成绩与解答</span></span><i class="chev">›</i></button>
+  <div class="tp-note">模考计时结束自动交卷；未作答模块会按性价比给出取舍建议，考后请到「我的 → 学习报告」复盘。</div>
+</div>
 
 <!-- 批次27-G · 「我的」全屏视图（学员中心浓缩版；数据源与 student.html 同族） -->
 <div class="me-view" id="meView" aria-label="我的">
@@ -410,65 +448,50 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 </div>
 <script>
-// 批次26/27-G · Tab 导航：移动端 App 化（四 tab = 学习/题库/测考/我的；
-// 更多菜单由「我的」页内入口打开；仅 ≤720px 显示，桌面自动隐藏）
+// 批次26/27-G/27-H · Tab 导航：移动端 App 化——四 tab = 四个平级页面视图
+// （学习=对话 / 题库=专项练习页 / 测考=模考中心 / 我的=学员中心浓缩页；
+//   做题/模考流程仍开全屏面板，等价 App 推入做题页。仅 ≤720px 启用。）
 (function () {
   "use strict";
   var sheet = document.getElementById("moreSheet");
   var mask = document.getElementById("msMask");
   var tabs = document.querySelectorAll("#tabbar button");
-  // tab → 动作映射（复用既有面板函数，零后端改动）
-  var ACTIONS = {
-    chat: null,                                   // 回到对话：关面板+收起菜单+退我的视图
-    practice: function () { C4.openPractice(); },
-    exam: function () { C5.openMockExam(); },
-    me: null                                      // 打开「我的」全屏视图
-  };
+  var VIEWS = ["chat", "bank", "exam", "me"];
+
   function setOn(key) {
     tabs.forEach(function (b) { b.classList.toggle("on", b.dataset.tab === key); });
   }
+  function setView(key) {
+    VIEWS.forEach(function (v) { document.body.classList.remove("v-" + v); });
+    if (key !== "chat") document.body.classList.add("v-" + key);
+    setOn(key);
+  }
   window.TAB = {
     go: function (key) {
-      if (key === "me") {
-        TAB.closeMore();
-        setOn("me");
-        document.body.classList.add("me-open");
-        if (window.ME && ME.load) ME.load();
-        return;
-      }
-      if (key === "more") {
-        setOn("more");
-        sheet.classList.add("open");
-        mask.classList.add("show");
-        return;
-      }
-      // chat / practice / exam：先退出我的视图再动作
-      document.body.classList.remove("me-open");
       TAB.closeMore();
-      setOn(key);
-      var fn = ACTIONS[key];
+      // 批次27-H：切任何 tab 都视为离开做题/查看流程——统一关闭功能面板
+      document.querySelectorAll(".c-panel, #c4Panel").forEach(function (p) {
+        var btn = p.querySelector(".close, [data-close], .panel-close");
+        if (btn) btn.click();
+        else p.style.display = "none";
+      });
+      if (key === "me" && window.ME && ME.load) ME.load();
+      if (key === "bank" && window.BANK && BANK.load) BANK.load();
+      if (key === "exam" && window.EXAM && EXAM.load) EXAM.load();
+      setView(key);
       if (key === "chat") {
-        // 回对话：点遮罩式关闭所有面板（复用各面板关闭逻辑——ESC/遮罩等价路径）
-        document.querySelectorAll(".c-panel, #c4Panel").forEach(function (p) {
-          var btn = p.querySelector(".close, [data-close], .panel-close");
-          if (btn) btn.click();
-          else p.style.display = "none";
-        });
         var chatEl = document.getElementById("chat");
         if (chatEl) chatEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
       }
-      if (typeof fn === "function") fn();
     },
     openMore: function () {         // 「我的」页内的全部功能入口
       setOn("me");
       sheet.classList.add("open");
       mask.classList.add("show");
     },
-    run: function (fn) {          // 菜单/我的页功能项：先收起浮层再执行
+    run: function (fn) {          // 菜单/页内功能项：先收浮层回学习视图再执行
       TAB.closeMore();
-      document.body.classList.remove("me-open");
-      setOn("chat");
+      setView("chat");
       setTimeout(fn, 120);        // 等收起动画过半，避免面板与菜单动画打架
     },
     closeMore: function () {
@@ -477,16 +500,91 @@ document.addEventListener('DOMContentLoaded', function () {
       if (document.querySelector("#tabbar button.on[data-tab='more']")) setOn("chat");
     }
   };
-  // 仅移动端挂 body 标记（CSS 据此显示 tabbar + 预留底部空间）
+  // 仅移动端启用页面视图（桌面 tab 隐藏，v-* 类摘除恢复纯对话布局）
   function mount() {
     if (window.matchMedia("(max-width: 720px)").matches) {
       document.body.classList.add("has-tabbar");
     } else {
-      document.body.classList.remove("has-tabbar", "me-open");
+      document.body.classList.remove("has-tabbar", "v-chat", "v-bank", "v-exam", "v-me");
     }
   }
   mount();
   window.addEventListener("resize", mount);
+})();
+
+// 批次27-H · 题库页数据（/practice/stats 数据条 + /practice/categories 模块卡）
+window.BANK = (function () {
+  "use strict";
+  var loaded = false;
+  function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+  function iconOf(name) {
+    var n = String(name || "");
+    if (n.indexOf("言语") > -1) return "📖";
+    if (n.indexOf("判断") > -1 || n.indexOf("推理") > -1) return "🧭";
+    if (n.indexOf("数量") > -1 || n.indexOf("数学") > -1) return "🔢";
+    if (n.indexOf("资料") > -1 || n.indexOf("分析") > -1) return "📊";
+    if (n.indexOf("常识") > -1) return "🧠";
+    if (n.indexOf("政治") > -1 || n.indexOf("理论") > -1) return "🏛️";
+    if (n.indexOf("申论") > -1) return "✍️";
+    if (n.indexOf("面试") > -1) return "🎤";
+    return "📚";
+  }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function loadStats() {
+    GK.api("/practice/stats").then(function (r) {
+      set("bkSt0", r && r.total != null ? r.total : "0");
+      set("bkSt1", r && r.accuracy != null ? Math.round(r.accuracy * 100) + "%" : "—");
+      set("bkSt2", r && r.graded != null ? r.graded : "0");
+    }).catch(function () { set("bkSt0", "0"); });
+  }
+  function loadCats() {
+    var tid = (window.GK && GK.store && GK.store.teacherId) || "T001";
+    GK.api("/practice/categories?teacher_id=" + encodeURIComponent(tid)).then(function (d) {
+      var cats = (d && d.categories) || [];
+      var grid = document.getElementById("bankGrid");
+      if (!grid) return;
+      if (!cats.length) {
+        grid.innerHTML = '<div style="grid-column:1/-1;padding:26px 14px;text-align:center;color:var(--ink-3);font-size:13px;background:var(--card);border:1px dashed var(--line-2);border-radius:16px">题库编目中，先到「学习」页提问吧</div>';
+        return;
+      }
+      grid.innerHTML = cats.map(function (c) {
+        return '<button type="button" class="bcat" data-cat="' + esc(c.category) + '">' +
+          '<i class="bic">' + iconOf(c.category) + '</i>' +
+          '<span class="bnm">' + esc(c.category) + '</span>' +
+          '<span class="bds">' + (c.count != null ? c.count + " 题可练" : "点击开始") + '</span>' +
+          '<i class="bgo">›</i></button>';
+      }).join("");
+      grid.onclick = function (e) {
+        var t = e.target.closest(".bcat");
+        if (!t || !window.C4 || typeof C4.practiceCategory !== "function") return;
+        TAB.run(function () { C4.practiceCategory(t.getAttribute("data-cat")); });
+      };
+    }).catch(function () {
+      var grid = document.getElementById("bankGrid");
+      if (grid) grid.innerHTML = '<div style="grid-column:1/-1;padding:22px;text-align:center;color:var(--ink-3);font-size:12.5px">分类加载失败，下拉重试</div>';
+    });
+  }
+  function load() {
+    if (!window.GK || !GK.api) { setTimeout(load, 200); return; }
+    if (loaded) return;
+    loaded = true;
+    loadStats();
+    loadCats();
+  }
+  return { load: load };
+})();
+
+// 批次27-H · 测考页数据（粉笔绑定态 → 模考卡副行；暂无则静态）
+window.EXAM = (function () {
+  "use strict";
+  var loaded = false;
+  function load() {
+    if (!window.GK || !GK.api || loaded) return;
+    loaded = true;
+    // 预留：后续接入本站模考历史/最高分；当前展示静态说明即可
+  }
+  return { load: load };
 })();
 
 // 批次27-G · 「我的」视图数据加载（数据源与 student.html 同族：

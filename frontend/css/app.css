@@ -533,13 +533,10 @@ a:hover { color: var(--wood-deep); }
 .role-badge.member { background: var(--gold-soft); color: var(--wood-deep); }
 .role-badge.free { background: var(--paper-2); color: var(--ink-2); }
 
-/* ---------- 「我的」全屏视图（chat.html 四 tab 之 meView） ---------- */
-.me-view { position: fixed; inset: 0; z-index: var(--z-me);
-  background: var(--paper); overflow-y: auto; overscroll-behavior: contain;
-  transform: translateY(100%); visibility: hidden;
-  transition: transform var(--dur-slow) var(--spring), visibility 0s var(--dur-slow); }
-body.me-open .me-view { transform: none; visibility: visible;
-  transition: transform var(--dur-slow) var(--spring), visibility 0s 0s; }
+/* ---------- 「我的」页面视图（批次27-H 转正为 tab 平级页面） ---------- */
+.me-view { display: none; position: fixed; inset: 0; z-index: var(--z-me);
+  background: var(--paper); overflow-y: auto; overscroll-behavior: contain; }
+body.v-me .me-view { display: block; animation: fadeSlide var(--dur) var(--ease-out) both; }
 .me-hero { padding: calc(var(--safe-top) + 16px) 16px 4px; }
 .me-user { display: flex; align-items: center; gap: 14px; padding: 6px 2px 16px; }
 .me-avatar { width: 62px; height: 62px; border-radius: 50%; flex-shrink: 0;
@@ -576,11 +573,94 @@ body.me-open .me-view { transform: none; visibility: visible;
     background: var(--ios-blur);
     border-bottom-color: var(--hairline);
   }
-  /* 我的视图为底部 tabbar 让位 */
+  /* 页面视图为底部 tabbar 让位 */
   .me-view { padding-bottom: calc(66px + var(--safe-bottom)); }
+  .tab-page { padding-bottom: calc(66px + var(--safe-bottom)); }
   .me-stats { gap: 7px; }
   .mstat b { font-size: 17px; }
 }
 @media (min-width: 721px) {
   .me-view { display: none; }   /* 桌面无 tabbar 入口，防误触 */
+}
+
+/* =====================================================================
+ * 批次27-H · 移动端 tab 平级页面化（粉笔式信息架构）
+ * —— 四个 tab = 四个全屏页面视图：学习 / 题库 / 测考 / 我的
+ *    题库页：数据条 + 专项练习模块卡网格 + 我的练习快捷入口
+ *    测考页：真题模考大卡 CTA + 智能组卷 + 说明
+ *    做题/模考流程仍走全屏面板（等价 App 推入做题页）
+ * ===================================================================== */
+.tab-page { display: none; position: fixed; inset: 0; z-index: calc(var(--z-me) - 1);
+  background: var(--paper); overflow-y: auto; overscroll-behavior: contain; }
+body.v-bank #viewBank, body.v-exam #viewExam { display: block;
+  animation: fadeSlide var(--dur) var(--ease-out) both; }
+
+/* ---- 页面顶栏（大标题形态） ---- */
+.tp-head { position: sticky; top: 0; z-index: 5;
+  padding: calc(var(--safe-top) + 14px) 16px 10px;
+  background: var(--ios-blur);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--hairline); }
+.tp-head .ih-title-lg { display: block; }
+
+/* ---- 题库页：学习数据条 ---- */
+.bank-stats { display: flex; gap: 8px; margin: 14px 14px 0; }
+.bstat { flex: 1; background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow-1); padding: 11px 6px 9px; text-align: center; }
+.bstat b { display: block; font-size: 19px; font-weight: 800; color: var(--wood-deep);
+  font-variant-numeric: tabular-nums; line-height: 1.3; }
+.bstat span { font-size: 10.5px; color: var(--ink-3); }
+
+/* ---- 题库页：专项练习模块卡网格（粉笔式） ---- */
+.bank-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 0 14px; }
+.bcat { position: relative; background: var(--card); border: 1px solid var(--line);
+  border-radius: 16px; box-shadow: var(--shadow-1); padding: 15px 14px 13px;
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  font-family: inherit; cursor: pointer; border-width: 1px;
+  transition: transform var(--dur-fast) var(--spring), box-shadow var(--dur-fast) var(--ease-out); }
+.bcat:active { transform: scale(.96); }
+.bcat .bic { width: 38px; height: 38px; border-radius: 12px; margin-bottom: 5px;
+  display: grid; place-items: center; font-size: 19px; font-style: normal;
+  background: linear-gradient(135deg, var(--gold-soft), rgba(230,211,172,.4));
+  border: 1px solid var(--gold); }
+.bcat .bnm { font-size: 15px; font-weight: 800; color: var(--ink); }
+.bcat .bds { font-size: 11px; color: var(--ink-3); }
+.bcat .bgo { position: absolute; top: 14px; right: 13px; color: var(--gold);
+  font-size: 15px; font-style: normal; }
+
+/* ---- 测考页：模考大卡 CTA ---- */
+.exam-hero { margin: 14px 14px 0; background: linear-gradient(150deg, var(--wood), var(--wood-deep));
+  border-radius: 18px; padding: 22px 18px 20px; color: #fffaf0;
+  box-shadow: var(--shadow-2); position: relative; overflow: hidden; }
+.exam-hero::after { content: '📝'; position: absolute; right: -6px; bottom: -14px;
+  font-size: 92px; opacity: .14; transform: rotate(-12deg); }
+.exam-hero .eh-t { font-size: 20px; font-weight: 800; letter-spacing: .02em; }
+.exam-hero .eh-d { font-size: 12.5px; opacity: .88; margin: 6px 0 14px; line-height: 1.7; }
+.exam-hero .eh-btn { border: none; cursor: pointer; font-family: inherit;
+  background: #fffaf0; color: var(--wood-deep); font-size: 14.5px; font-weight: 800;
+  padding: 11px 26px; border-radius: 999px;
+  transition: transform var(--dur-fast) var(--spring); }
+.exam-hero .eh-btn:active { transform: scale(.95); }
+
+/* ---- 通用卡行 CTA（智能组卷等） ---- */
+.bigrow { display: flex; align-items: center; gap: 12px; width: calc(100% - 28px);
+  margin: 10px 14px 0; padding: 15px 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-1);
+  font-family: inherit; cursor: pointer; text-align: left;
+  transition: transform var(--dur-fast) var(--spring), background var(--dur-fast) var(--ease-out); }
+.bigrow:active { transform: scale(.97); background: var(--paper-2); }
+.bigrow .bic { width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 19px; font-style: normal;
+  background: var(--gold-050); border: 1px solid var(--gold-soft); }
+.bigrow .bt { flex: 1; min-width: 0; }
+.bigrow .bnm { display: block; font-size: 15px; font-weight: 700; color: var(--ink); }
+.bigrow .bds { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+.bigrow .chev { color: var(--ink-4); font-size: 15px; font-style: normal; }
+
+/* ---- 页内说明脚注 ---- */
+.tp-note { margin: 18px 20px 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.9; }
+
+@media (min-width: 721px) {
+  .tab-page { display: none !important; }   /* 桌面不启用页面视图 */
 }
