@@ -46,10 +46,13 @@ def _main():
     s1.set_state("need_code")
     mgr._sessions["sid-a"] = s1
     try:
-        mgr.start_sms("u1", "13800000001")
-        chk("同用户互斥", False)
+        v = mgr.start_sms("u1", "13800000001")
+        # 批次26-K：同用户新会话自动顶替旧会话（不再报「已有登录任务」）
+        chk("同用户顶替旧会话", s1.state == "cancelled"
+            and "sid-a" not in mgr._sessions and v["sid"] != "sid-a")
+        mgr.cancel(v["sid"], "u1")
     except ValueError as e:
-        chk("同用户互斥", "进行中" in str(e))
+        chk("同用户顶替旧会话", False)
 
     # ---- 全局并发上限 ----
     s2 = fl._Session("sid-b", "u2", "sms", "13800000002")
@@ -71,6 +74,7 @@ def _main():
         chk("status 越权拒绝", True)
 
     # ---- 事件流：submit_code/drag → worker 可取 ----
+    mgr._sessions["sid-a"] = s1   # 重新占位（顶替测试已 pop，供 manager 级用例）
     s1.submit_code("123456")
     chk("code 事件", s1._code_evt.is_set() and s1._code_val == "123456")
     s1.submit_drag(300.5)
@@ -132,16 +136,18 @@ def _main():
         except ValueError:
             chk(name, True)
 
-    # 造 password 活动会话 → 同用户再发起被互斥
+    # 批次26-K：password 活动会话同样可被顶替
     s5 = fl._Session("sid-p", "u10", "password", "13800000010")
     s5.set_state("submitting")
     s5._password = "secret!"
     mgr._sessions["sid-p"] = s5
     try:
-        mgr.start_password("u10", "13800000010", "pw1")
-        chk("password 同用户互斥", False)
+        v5b = mgr.start_password("u10", "13800000010", "pw-new")
+        chk("password 会话可顶替", s5.state == "cancelled"
+            and "sid-p" not in mgr._sessions)
+        mgr.cancel(v5b["sid"], "u10")
     except ValueError:
-        chk("password 同用户互斥", True)
+        chk("password 会话可顶替", False)
 
     # view 掩码 + 密码绝不外泄
     v5 = s5.view()

@@ -424,10 +424,26 @@
 
   function startSms() {
     _curMode = 'sms';
-    var phone = prompt('请输入粉笔绑定的手机号：');
-    if (!phone || !phone.trim()) return;
+    var body = document.getElementById('c10Body');
+    body.innerHTML =
+      '<div style="font-weight:700;font-size:14px;margin-bottom:8px">📱 手机验证码登录</div>' +
+      '<div id="c10LoginArea">' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+          '<input id="c10SmsPhone" type="tel" maxlength="11" inputmode="numeric" placeholder="请输入粉笔绑定的手机号" ' +
+            'style="padding:11px;border:1px solid var(--line-2);border-radius:8px;font-size:15px;letter-spacing:1px">' +
+          '<button onclick="C10.submitSmsStart()" style="padding:10px;border:none;border-radius:8px;background:var(--wood);color:#fff;font-size:13.5px;cursor:pointer">获取验证码</button>' +
+          '<div style="color:var(--ink-3);font-size:11px;line-height:1.6">短信验证码仅用于本次登录；若触发安全验证，系统会先尝试 AI 自动识别滑块。</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px">' + btn('← 返回', 'C10.refresh()', 'border-color:var(--line-2);color:var(--ink-2)') + '</div>';
+  }
+
+  function submitSmsStart() {
+    var el = document.getElementById('c10SmsPhone');
+    var phone = (el && el.value || '').trim();
+    if (!/^1\d{10}$/.test(phone)) { showToast('请输入 11 位手机号', 'error'); return; }
     renderLoginShell('📱 验证码登录', '<p style="color:var(--ink-3);text-align:center;padding:20px 0">正在打开登录会话…</p>');
-    global.GK.api('/me/fenbi/login/sms', { method: 'POST', body: { phone: phone.trim() } })
+    global.GK.api('/me/fenbi/login/sms', { method: 'POST', body: { phone: phone } })
       .then(function (r) {
         _curSid = r.sid;
         pollLogin();
@@ -527,7 +543,7 @@
       area.innerHTML =
         '<div style="text-align:center">' +
           '<img src="data:image/png;base64,' + r.shot + '" style="width:100%;max-width:320px;border:1px solid var(--line-2);border-radius:8px">' +
-          '<div style="color:var(--ink-2);font-size:12.5px;margin-top:8px">检测到安全验证：请拖动下方滑条到图中缺口位置</div>' +
+          '<div style="color:var(--ink-2);font-size:12.5px;margin-top:8px">AI 自动识别未成功，请手动拖动下方滑条到图中缺口位置</div>' +
           '<input id="c10Drag" type="range" min="40" max="560" value="260" style="width:100%;margin-top:8px">' +
           '<div style="color:var(--ink-3);font-size:11px" id="c10DragVal">滑动距离：260 px</div>' +
           '<button onclick="C10.submitDrag()" style="margin-top:8px;padding:8px 22px;border:none;border-radius:8px;background:var(--wood);color:#fff;font-size:13px;cursor:pointer">确认</button>' +
@@ -577,6 +593,7 @@
     startCookie: startCookie,
     submitCookie: submitCookie,
     startSms: startSms,
+    submitSmsStart: submitSmsStart,
     startQrcode: startQrcode,
     startPwd: startPwd,
     submitPwdStart: submitPwdStart,

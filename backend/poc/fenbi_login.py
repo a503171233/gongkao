@@ -80,6 +80,12 @@ class _Session:
     def set_state(self, state: str, shot: str = "", error: str = "",
                   hint: str = "", phone: str = "") -> None:
         with self.lock:
+            # 终态保护（批次26-L）：被顶替/取消/已成败的会话不再被
+            # worker 迟到的过程态覆盖（竞态窗口：_create 顶替后 worker
+            # 线程尚未执行到首个 cancelled 检查）
+            if self.state in ("success", "failed", "cancelled") \
+                    and state not in ("success", "failed", "cancelled"):
+                return
             self.state = state
             if shot:
                 self.shot = shot
@@ -195,10 +201,15 @@ class LoginSessionManager:
 
     def _create(self, user_id: str, mode: str, phone: str) -> _Session:
         with self._lock:
-            for s in self._sessions.values():
-                if s.user_id == user_id and not s.cancelled() \
-                        and s.state not in ("success", "failed", "cancelled"):
-                    raise ValueError("您已有登录会话进行中，请先完成或取消")
+            # 同用户顶替（批次26-K）：旧活动会话自动取消，不再互斥拦截
+            # （此前「已有登录任务」导致验证码失败后无法直接改用扫码）
+            for sid0, s0 in list(self._sessions.items()):
+                if s0.user_id == user_id and not s0.cancelled() \
+                        and s0.state not in ("success", "failed", "cancelled"):
+                    s0._cancel_evt.set()
+                    s0.set_state("cancelled", hint="已被新的登录请求取代")
+                    self._finish_nolock(s0)
+                    self._sessions.pop(sid0, None)
             active = [s for s in self._sessions.values()
                       if not s.cancelled()
                       and s.state not in ("success", "failed", "cancelled")]
@@ -218,7 +229,7 @@ class LoginSessionManager:
         return s
 
     def _finish(self, s: _Session) -> None:
-        """杀浏览器 + 清截图 + 移出注册表。"""
+        """杀浏览器 + 清截图 + 留痕终态。"""
         try:
             if s._browser:
                 s._browser.close()
@@ -226,9 +237,25 @@ class LoginSessionManager:
             pass
         s.shot = ""
         with self._lock:
-            # 成功/失败/取消的会话保留 60s 供前端取最终态，随后由 reaper 清
+            self._record_final(s)
+
+    def _finish_nolock(self, s: _Session) -> None:
+        """_finish 的无锁变体（调用方已持 self._lock，如 _create 顶替）。"""
+        try:
+            if s._browser:
+                s._browser.close()
+        except Exception:  # noqa: BLE001
+            pass
+        s.shot = ""
+        self._record_final(s)
+
+    def _record_final(self, s: _Session) -> None:
+        """终态留痕（成功/失败/取消保留 60s 供前端取最终态，随后 reaper 清）。"""
+        try:
             self._store.update_session(s.sid, state=s.state, error=s.error)
             self._store.clear_session_shot(s.sid)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _persist(self, s: _Session) -> None:
         try:
@@ -256,6 +283,27 @@ class LoginSessionManager:
                     self._sessions.pop(sid, None)
 
     # ---------------- worker：验证码流程 ----------------
+
+    def _auto_drag_attempts(self, page, s: _Session, tries: int = 3) -> bool:
+        """AI 自动识别缺口并拖动（≤tries 次），返回滑块是否通过。
+        每次失败后滑块可能刷新缺口，重新截图检测。全部失败回落人工。"""
+        for i in range(tries):
+            if s.cancelled():
+                return False
+            time.sleep(1.2)
+            shot = _shot_b64(page)
+            dist = detect_slider_dist(base64.b64decode(shot)) if shot else None
+            if dist is None or not (60 <= dist <= 240):
+                s.set_state("submitting",
+                            hint=f"滑块自动识别中（第 {i + 1}/{tries} 次）…")
+                continue
+            s.set_state("submitting",
+                        hint=f"AI 已定位缺口，正在自动拖动（第 {i + 1}/{tries} 次）…")
+            human_drag(page.mouse, 542, 477, float(dist))
+            time.sleep(2.5)
+            if _slider_gone(page):
+                return True
+        return False
 
     def _worker_sms(self, s: _Session) -> None:
         from playwright.sync_api import sync_playwright
@@ -305,17 +353,31 @@ class LoginSessionManager:
                         if _sent_ok(page):
                             sent = True
                             break
-                        if _slider_frame(page) is not None:
+                        if _slider_present(page):
                             break
+                        perr = _page_error(page)
+                        if "锁定" in perr or "频繁" in perr:
+                            s.set_state(
+                                "failed",
+                                error="触发粉笔风控锁定（操作过于频繁），"
+                                      "请约 30 分钟后重试，或改用扫码/"
+                                      "账号密码/Cookie 登录")
+                            self._finish(s)
+                            return
                     if sent:
                         break
-                    frame = _wait_slider(page, 10)
-                    if frame is None:
+                    if not _wait_slider(page, 10):
                         continue          # 无滑块无倒计时 → 重试
                     time.sleep(2.0)
+                    if self._auto_drag_attempts(page, s):
+                        if _sent_ok(page):
+                            sent = True
+                            break
+                        continue          # 滑块过了但未发码 → 外层重试
+                    # 自动识别失败 → 人工兜底（截图 + 滑条）
                     s.set_state("need_drag",
                                 shot=_shot_b64(page),
-                                hint="请完成滑块验证")
+                                hint="自动识别未成功，请手动完成滑块验证")
                     self._persist(s)
                     if not s._drag_evt.wait(_CODE_WAIT):
                         s.set_state("failed", error="滑块验证超时，请重新发起")
@@ -365,7 +427,8 @@ class LoginSessionManager:
                     self._persist(s)
                 self._finish(s)
         except Exception as e:  # noqa: BLE001
-            s.set_state("failed", error=f"登录会话异常：{str(e)[:120]}")
+            if not s.cancelled():   # 被顶替/取消的会话不覆盖终态
+                s.set_state("failed", error=f"登录会话异常：{str(e)[:120]}")
             self._finish(s)
         finally:
             self._sem.release()
@@ -441,7 +504,8 @@ class LoginSessionManager:
                 s.set_state("failed", error="扫码超时（二维码已过期），请重新发起")
                 self._finish(s)
         except Exception as e:  # noqa: BLE001
-            s.set_state("failed", error=f"扫码会话异常：{str(e)[:120]}")
+            if not s.cancelled():
+                s.set_state("failed", error=f"扫码会话异常：{str(e)[:120]}")
             self._finish(s)
         finally:
             self._sem.release()
@@ -522,7 +586,7 @@ class LoginSessionManager:
                         if _logged_in(ctx):
                             self._bound(s, _cookie_str(ctx))
                             return
-                        if _slider_frame(page) is not None:
+                        if _slider_present(page):
                             got_slider = True
                             break
                         err = _page_error(page)
@@ -530,8 +594,17 @@ class LoginSessionManager:
                             break
                     if got_slider:
                         time.sleep(2.0)
+                        if self._auto_drag_attempts(page, s):
+                            if _logged_in(ctx):
+                                self._bound(s, _cookie_str(ctx))
+                                return
+                            # 滑块过了但未自动登录 → 重新提交一次
+                            s.set_state("submitting",
+                                        hint="验证通过，正在重新提交…")
+                            _click_pwd_login(page)
+                            continue
                         s.set_state("need_drag", shot=_shot_b64(page),
-                                    hint="请完成滑块验证")
+                                    hint="自动识别未成功，请手动完成滑块验证")
                         self._persist(s)
                         if not s._drag_evt.wait(_CODE_WAIT):
                             s.set_state("failed",
@@ -564,12 +637,19 @@ class LoginSessionManager:
                     if err:
                         break
                     break
-                s.set_state("failed", error="登录未完成（"
-                                            f"{err or '页面无响应'}），"
-                                            "请稍后重试或改用验证码/扫码")
+                if "锁定" in err or "频繁" in err:
+                    s.set_state("failed",
+                                error="触发粉笔风控锁定（操作过于频繁），"
+                                      "请约 30 分钟后重试，或改用扫码/"
+                                      "Cookie 登录")
+                else:
+                    s.set_state("failed", error="登录未完成（"
+                                                f"{err or '页面无响应'}），"
+                                                "请稍后重试或改用验证码/扫码")
                 self._finish(s)
         except Exception as e:  # noqa: BLE001
-            s.set_state("failed", error=f"账密登录会话异常：{str(e)[:120]}")
+            if not s.cancelled():
+                s.set_state("failed", error=f"账密登录会话异常：{str(e)[:120]}")
             self._finish(s)
         finally:
             self._sem.release()
@@ -587,25 +667,32 @@ def _sent_ok(page) -> bool:
 
 
 def _slider_gone(page) -> bool:
-    return all("verification" not in (f.url or "")
-               for f in page.frames)
+    return not _slider_present(page)
 
 
-def _slider_frame(page):
-    for f in page.frames:
-        if "verification" in (f.url or ""):
-            return f
-    return None
+def _slider_present(page) -> bool:
+    """滑块验证是否在场上：旧版为 verification iframe；新版（26-L 实测）
+    为登录弹窗内的页内 DOM（「拖动下方滑块完成拼图」）。双通道兼容。"""
+    try:
+        for f in page.frames:
+            if "verification" in (f.url or ""):
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return page.locator("text=拖动下方滑块完成拼图").count() > 0
+    except Exception:  # noqa: BLE001
+        return False
 
 
-def _wait_slider(page, timeout_s: float):
+def _wait_slider(page, timeout_s: float) -> bool:
+    """等待滑块出现，返回是否出现（26-L 起不再返回 frame）。"""
     t0 = _now()
     while _now() - t0 < timeout_s:
-        f = _slider_frame(page)
-        if f is not None:
-            return f
+        if _slider_present(page):
+            return True
         time.sleep(0.5)
-    return None
+    return False
 
 
 def _click_send_code(page) -> None:
@@ -689,3 +776,64 @@ def human_drag(mouse, x0: float, y0: float, dist: float) -> None:
     mouse.move(x0 + dist, y0)
     time.sleep(random.uniform(0.1, 0.2))
     mouse.up()
+
+
+# ---------------- 滑块缺口自动识别（批次26-L v8：暗团积分最强团） ----------------
+# 原理：缺口=半透明黑遮罩实心块 → 变暗 ≥18 灰度级且成块（宽 18-60，
+#       缺口实测宽 29-48；>60 为长纹理带）。起点块 4 种样式特征各异无法
+#       稳定检测 → 用实测均值 522（样本 518/524/518/528，最大偏差 6px）。
+#       八边形亮描边样式（无暗缺口）检测不到 → 回落人工（可接受）。
+# 四样本联测：real2 177(期望173) / real3 182(期望184)
+#            / recon 208(期望200) / sample None(亮描边样式)
+_BG_WIN = 91                    # 背景估计窗（大于最大块宽 60）
+_BAND_Y0, _BAND_Y1 = 300, 460   # 拼图行带
+_SEARCH_X0, _SEARCH_X1 = 578, 776   # 缺口搜索域（避开起点块/边框/图右缘外）
+_SEG_W_MIN, _SEG_W_MAX = 18, 60     # 暗团宽度约束
+_DARK_TH = 18.0                     # 变暗绝对阈值（灰度级）
+_START_X = 522                      # 起点块左缘常数（实测均值）
+
+
+def detect_slider_dist(png_bytes: bytes):
+    """从整页截图检测滑块缺口，返回拖动距离 px；置信度不足返回 None。"""
+    try:
+        import io
+
+        import numpy as np
+        from PIL import Image
+        im = Image.open(io.BytesIO(png_bytes)).convert("L")
+        a = np.asarray(im, dtype=np.float32)
+        if a.shape[:2] != (720, 1280):
+            return None
+        # 积分图水平 box 均值做背景估计
+        c = np.cumsum(a, axis=1, dtype=np.float64)
+        c = np.concatenate([np.zeros((a.shape[0], 1)), c], axis=1)
+        h = _BG_WIN // 2
+        W = a.shape[1]
+        i0 = np.clip(np.arange(W) - h, 0, W)
+        i1 = np.clip(np.arange(W) + h + 1, 0, W)
+        bg = (c[:, i1] - c[:, i0]) / (i1 - i0)
+        dark = np.clip(bg - a, 0, None)          # 正=比周围暗
+        prof = np.convolve(
+            dark[_BAND_Y0:_BAND_Y1, _SEARCH_X0:_SEARCH_X1].mean(axis=0),
+            np.ones(3) / 3, mode="same")
+        segs = []
+        i, n = 0, len(prof)
+        while i < n:
+            if prof[i] < _DARK_TH:
+                i += 1
+                continue
+            j = i
+            while j < n and prof[j] >= _DARK_TH:
+                j += 1
+            if _SEG_W_MIN <= j - i <= _SEG_W_MAX:
+                segs.append((_SEARCH_X0 + i, float(prof[i:j].sum())))
+            i = j
+        if not segs:
+            return None
+        segs.sort(key=lambda t: -t[1])   # 暗度×宽度积分最强团 = 缺口
+        dist = round(segs[0][0] - _START_X)
+        if 56 <= dist <= 254:
+            return dist
+        return None
+    except Exception:  # noqa: BLE001
+        return None
