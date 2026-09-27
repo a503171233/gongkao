@@ -256,7 +256,9 @@ a:hover { color: var(--wood-deep); }
   #main header .side-toggle { display: inline-flex !important; order: 0; }
   #sessionList { max-height: none; }
   #main header { padding: 10px 12px; gap: 8px; }
-  #main header h1 { font-size: 15px; }
+  /* 批次27-G：iOS Large Title 感——移动端主标题放大加粗；官网入口收进「我的」页 */
+  #main header .home-link { display: none; }
+  #main header h1 { font-size: 20px; font-weight: 800; letter-spacing: .01em; }
   .teacher-tabs { width: 100%; order: 5; margin-left: 0; }
   #authArea { margin-left: 0; flex-wrap: wrap; }
   .head-btn { margin-left: 6px; padding: 6px 12px; font-size: 12.5px; }
