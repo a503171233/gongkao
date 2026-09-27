@@ -691,10 +691,10 @@
           if (!answer) { alert('请输入答案'); return; }
         }
         var btn = document.getElementById('submitPractice');
-        // 批次26-G：AI 解析 / 粉笔搜题 工具行（判分后展示）
+        // 批次26-G：AI 解析 / 粉笔搜题 工具行（判分后展示）；data-ans 供答案对照
         function aiToolsHtml() {
           if (d.id == null) return '';
-          return '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap" id="aiToolsRow">' +
+          return '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap" id="aiToolsRow" data-ans="' + escapeHtml(String(d.answer || '')) + '">' +
             '<button onclick="C4.aiAnalysis(' + d.id + ', this)" style="padding:6px 14px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🤖 AI 多角度解析</button>' +
             '<button onclick="C4.fenbiSearch(' + d.id + ', this)" style="padding:6px 14px;border:1px solid var(--line-2);color:var(--ink-2);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🔍 粉笔搜题</button>' +
             '</div><div id="aiAnalysisBox"></div><div id="fenbiSearchResult"></div>';
@@ -878,10 +878,29 @@
         var verdictHtml = (c.verdict === 'doubt')
           ? '<div style="margin:6px 0;padding:5px 8px;background:#fff8f0;border:1px solid var(--bad);border-radius:6px;font-size:12px;color:var(--bad)">⚠️ 答案交叉验证：AI 独立解题结论与给定答案不一致——' + escapeHtml(c.reason || '给定答案可能有误，请以老师讲解为准') + '</div>'
           : '<div style="margin:6px 0;font-size:12px;color:var(--good)">✅ 答案交叉验证：' + escapeHtml(c.reason || 'AI 独立解题结论与给定答案一致') + '</div>';
+        // 批次26-G+：两种答案共存对照——题库答案（采集来源官方） vs AI 独立解题
+        var rowEl = document.getElementById('aiToolsRow');
+        var bankAns = (rowEl && rowEl.getAttribute('data-ans')) || '';
+        var aiAns = String(c.ai_answer || '').trim();
+        var cmpHtml = '';
+        if (aiAns) {
+          var agree = !bankAns || aiAns === bankAns;
+          cmpHtml = '<div style="margin:8px 0 4px;padding:6px 9px;background:#fff;border:1px solid var(--line-2);border-radius:6px;font-size:12.5px;line-height:1.8">' +
+            '📚 <b>题库答案</b>：<span style="font-size:15px;font-weight:700;color:var(--wood)">' + escapeHtml(bankAns || '—') + '</span>' +
+            '<span style="color:var(--ink-3)">（采集来源官方答案，判分依据）</span><br>' +
+            '🤖 <b>AI 独立解题</b>：<span style="font-size:15px;font-weight:700;color:' + (agree ? 'var(--good)' : 'var(--bad)') + '">' + escapeHtml(aiAns) + '</span>' +
+            (bankAns ? (agree
+              ? ' <span style="color:var(--good)">✅ 两种解法结论一致，可放心按解析学习</span>'
+              : ' <span style="color:var(--bad)">⚠️ 与题库答案不一致，请对照下方解析甄别，欢迎向老师反馈</span>') : '') +
+            '</div>';
+        }
         box.innerHTML = '<div style="margin-top:8px;padding:10px;background:var(--gold-soft);border-radius:8px;animation:fadeSlide .3s var(--ease-out) both">' +
           '<div style="font-weight:600;font-size:13px">🤖 AI 多角度解析' +
+          (c.pipeline === 'moa'
+            ? ' <span style="font-size:11px;padding:1px 7px;border-radius:8px;background:var(--wood);color:#fff;vertical-align:1px">🔬 MoA 三模型协同</span>'
+            : '') +
           (r.cached ? ' <span style="font-size:11px;color:var(--ink-3)">(缓存)</span>' : '') + '</div>' +
-          verdictHtml + secs + '</div>';
+          cmpHtml + verdictHtml + secs + '</div>';
       })
       .catch(function (e) {
         _aiBtnReset(btn);

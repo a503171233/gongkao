@@ -1040,14 +1040,15 @@ def _ai_analysis_prompt(q: dict) -> list[dict]:
         "请严格按 JSON 输出，不要输出 JSON 以外内容。")
     user_p = (
         "请对下面的题目做多角度深度讲解。要求：先自己独立解题得出结论，"
-        "再对照给定答案——若独立解题结论与给定答案不一致，verdict 填 doubt 并在 reason 说明；"
-        "一致则填 agree。五个小节全部要写，content 面向学员、条理清晰、"
+        "再对照给定答案——ai_answer 填你独立解题得出的答案字母（多选如 ABD）；"
+        "若与给定答案不一致，verdict 填 doubt 并在 reason 说明；一致则填 agree。"
+        "五个小节全部要写，content 面向学员、条理清晰、"
         "每节 60-180 字（解题思路可分步），不要空话套话。\n"
         f"题目：{q.get('question')}\n"
         + (f"选项：\n{opts}\n" if opts else "")
         + f"给定答案：{q.get('answer') or '（无）'}\n"
         + (f"既有解析：{q.get('analysis')}\n" if q.get("analysis") else "")
-        + ('只返回一行 JSON：{"verdict":"agree|doubt","reason":"一句话核对结论",'
+        + ('只返回一行 JSON：{"ai_answer":"X","verdict":"agree|doubt","reason":"一句话核对结论",'
            '"sections":[{"title":"考点定位","content":"…"},'
            '{"title":"解题思路","content":"…"},{"title":"方法总结","content":"…"},'
            '{"title":"易错警示","content":"…"},{"title":"举一反三","content":"…"}]}'))
@@ -1075,6 +1076,95 @@ def _call_platform_llm(messages: list[dict], max_tokens: int = 2400) -> tuple[st
     return text, (kw.get("model") or "default")
 
 
+# ---------- 批次26-H · MoA（Mixture of Agents）多模型协同解析 ----------
+# 提案层：3 个异构模型并行独立出稿；聚合层：强模型取长补短合成定稿。
+# 失败自动降级单模型；结果带签名缓存跨用户复用，MoA 的 N+1 次调用每题只烧一次。
+
+_MOA_PROPOSERS = [_m.strip() for _m in _os.getenv(
+    "MOA_PROPOSER_MODELS",
+    "deepseek-v4-pro,glm-5.3,gpt-5.6-luna").split(",") if _m.strip()]
+_MOA_AGGREGATOR = _os.getenv("MOA_AGGREGATOR_MODEL", "grok-4.5")
+_MOA_PROPOSE_BUDGET = float(_os.getenv("MOA_PROPOSE_BUDGET_SECS", "150"))
+
+
+def _moa_enabled() -> bool:
+    return _os.getenv("MOA_ENABLED", "1") not in ("0", "false", "False")
+
+
+def _call_llm_by_id(model_id: str, messages: list[dict],
+                    max_tokens: int = 2400) -> str:
+    """按模型仓库 id 调用（MoA 提案/聚合共用）。模型不存在/未启用抛 ValueError。"""
+    from . import llm as llm_mod
+    from .models import get_ai_model_store
+    m = get_ai_model_store().get_model(model_id)
+    if not m or not m.get("enabled"):
+        raise ValueError(f"模型 {model_id} 不可用")
+    temp = m.get("temperature")
+    try:
+        temp = float(temp) if temp not in (None, "") else None
+    except (TypeError, ValueError):
+        temp = None
+    cfg = Config()
+    tcfg = cfg.get_teacher(cfg.teacher_id)
+    return llm_mod.call_llm(messages, tcfg, max_tokens=max_tokens,
+                            model=m["model_id"], temperature=temp,
+                            base_url=m.get("base_url"), api_key=m.get("api_key"))
+
+
+def _moa_propose(messages: list[dict]) -> list[tuple[str, str]]:
+    """并行收集各提案模型草稿，返回 [(model_id, text)]；单个失败/超时跳过
+    （≥1 稿即可聚合）。统一 deadline 总预算，慢模型不拖垮整体。"""
+    from concurrent.futures import ThreadPoolExecutor
+    out: list[tuple[str, str]] = []
+    ex = ThreadPoolExecutor(max_workers=max(1, len(_MOA_PROPOSERS)))
+    try:
+        futs = {mid: ex.submit(_call_llm_by_id, mid, messages)
+                for mid in _MOA_PROPOSERS}
+        deadline = _time.time() + max(30.0, _MOA_PROPOSE_BUDGET)
+        for mid, fut in futs.items():
+            try:
+                out.append((mid, fut.result(timeout=max(5.0, deadline - _time.time()))))
+            except Exception:  # noqa: BLE001  单模型失败/超时不拖垮整体
+                continue
+    finally:
+        # 不等待慢线程：未完成的提案被丢弃（uvicorn 常驻进程线程自然结束）
+        ex.shutdown(wait=False, cancel_futures=True)
+    return out
+
+
+def _moa_aggregate_prompt(q: dict, drafts: list[tuple[str, str]]) -> list[dict]:
+    """聚合层 prompt：教研主编合成各草稿之长，答案结论独立复核。"""
+    opts = "\n".join(str(o) for o in (q.get("options") or []))
+    body = "\n\n".join(f"【草稿{i + 1} · {mid}】\n{str(txt)[:4000]}"
+                       for i, (mid, txt) in enumerate(drafts))
+    sys_p = ("你是公务员考试教研主编，负责把多位 AI 讲师的解析草稿合成一份定稿。"
+             "只输出 JSON，不输出 JSON 以外内容。")
+    user_p = (
+        f"题目：{q.get('question')}\n"
+        + (f"选项：\n{opts}\n" if opts else "")
+        + f"给定答案：{q.get('answer') or '（无）'}\n\n"
+        + "以下是多位 AI 讲师的独立解析草稿，请合成一份优于所有草稿的定稿：\n"
+        "1. ai_answer 填你独立审题复核后的答案字母（多选如 ABD）；"
+        "verdict 按它与给定答案是否一致如实填写，reason 一句话说明；\n"
+        "2. 五节内容取各草稿之长：考点定位更准、解题思路更完整清晰、"
+        "方法总结更可迁移、易错警示更全面、举一反三更贴考情；\n"
+        "3. 草稿结论冲突时以多数派与更严谨者为准，不得含糊；\n"
+        "4. 保持与草稿相同的 JSON 结构，每节 60-180 字。\n\n" + body)
+    return [{"role": "system", "content": sys_p},
+            {"role": "user", "content": user_p}]
+
+
+def _moa_analysis_call(q: dict) -> tuple[str, str]:
+    """MoA 全链：提案层并行出稿 → 聚合层合成。返回 (聚合文本, 聚合模型 id)。
+    无可用提案/聚合失败抛异常，由端点层降级单模型。"""
+    messages = _ai_analysis_prompt(q)
+    drafts = _moa_propose(messages)
+    if not drafts:
+        raise RuntimeError("MoA 提案层无可用模型")
+    return _call_llm_by_id(_MOA_AGGREGATOR, _moa_aggregate_prompt(q, drafts)), \
+        _MOA_AGGREGATOR
+
+
 @app.post("/me/question/ai-analysis")
 def question_ai_analysis(
     question_id: int = Body(..., embed=True),
@@ -1097,27 +1187,41 @@ def question_ai_analysis(
         return {"cached": True, **cached, "answer_status": q.get("answer_status") or ""}
     if not _ai_tool_allow(user["user_id"], "ai", _AI_ANALYSIS_DAILY_LIMIT):
         raise HTTPException(status_code=429, detail="今日 AI 解析次数已达上限，明天再来")
-    # LLM 长 JSON 偶发截断/围栏污染：失败自动重试一次（频控只计一次）
-    data, model = None, ""
-    for _attempt in range(2):
+    # 批次26-H：MoA 多模型协同（提案层 3 模型并行出稿 → 聚合层合成），
+    # 失败自动降级单模型；LLM 长 JSON 偶发截断/围栏污染在单模型路径重试一次
+    data, model, pipeline = None, "", "single"
+    if _moa_enabled():
         try:
-            raw, model = _call_platform_llm(_ai_analysis_prompt(q))
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=f"AI 解析生成失败：{str(e)[:120]}")
-        try:
-            data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-        except Exception:  # noqa: BLE001
+            raw, model = _moa_analysis_call(q)
+            pipeline = "moa"
+            try:
+                data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+            except Exception:  # noqa: BLE001  聚合输出非法 → 降级单模型
+                data, model, pipeline = None, "", "single"
+        except Exception:  # noqa: BLE001  MoA 整体失败 → 降级单模型
+            data, model, pipeline = None, "", "single"
+    if not data:
+        for _attempt in range(2):
+            try:
+                raw, model = _call_platform_llm(_ai_analysis_prompt(q))
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(status_code=502, detail=f"AI 解析生成失败：{str(e)[:120]}")
+            try:
+                data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+            except Exception:  # noqa: BLE001
+                data = None
+            if data and [s for s in (data.get("sections") or [])
+                         if isinstance(s, dict) and str(s.get("content") or "").strip()]:
+                break
             data = None
-        if data and [s for s in (data.get("sections") or [])
-                     if isinstance(s, dict) and str(s.get("content") or "").strip()]:
-            break
-        data = None
     if not data:
         raise HTTPException(status_code=502, detail="AI 未产出有效解析，请重试")
     sections = [s for s in (data.get("sections") or [])
                 if isinstance(s, dict) and str(s.get("content") or "").strip()]
     content = {"verdict": str(data.get("verdict") or "agree"),
+               "ai_answer": str(data.get("ai_answer") or "")[:8].upper(),
                "reason": str(data.get("reason") or "")[:200],
+               "pipeline": pipeline,
                "sections": sections}
     study_store.save_ai_analysis(key, content, model)
     return {"cached": False, "content": content, "model": model,

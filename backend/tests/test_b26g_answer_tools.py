@@ -76,12 +76,13 @@ chk("去图片占位/空白/标点",
 print("== 4. AI 解析缓存读写 ==")
 key = _norm_question("下列关于行政许可的说法正确的是？")
 chk("无缓存返回 None", ss.get_ai_analysis(key) is None)
-fake = {"verdict": "agree", "reason": "独立解题与给定答案一致",
+fake = {"verdict": "agree", "ai_answer": "B", "reason": "独立解题与给定答案一致",
         "sections": [{"title": "考点定位", "content": "行政许可的生效规则"}]}
 ss.save_ai_analysis(key, fake, "test-model")
 got = ss.get_ai_analysis(key)
 chk("缓存命中", got is not None and got["model"] == "test-model")
-chk("缓存内容完整", got["content"]["sections"][0]["title"] == "考点定位")
+chk("缓存内容完整", got["content"]["sections"][0]["title"] == "考点定位"
+    and got["content"]["ai_answer"] == "B")
 ss.save_ai_analysis(key, {"verdict": "agree", "reason": "r2", "sections": fake["sections"]}, "m2")
 chk("同 key 覆盖（UNIQUE 冲突更新）", ss.get_ai_analysis(key)["model"] == "m2")
 
