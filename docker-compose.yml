@@ -25,6 +25,9 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_SECRET=${ADMIN_SECRET}
+      # 时区：自动采集时间窗（凌晨2-6点）等 time.localtime() 逻辑按北京时区判断，
+      # 缺省镜像为 UTC 时把窗口错位到北京上午10点-下午2点（访问高峰）
+      - TZ=Asia/Shanghai
       # C5 · LLM 重试降级（B7）：超时/重试次数/备用模型列表
       - LLM_TIMEOUT=${LLM_TIMEOUT:-180}
       - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-2}
