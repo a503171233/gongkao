@@ -285,21 +285,22 @@ class LoginSessionManager:
     # ---------------- worker：验证码流程 ----------------
 
     def _auto_drag_attempts(self, page, s: _Session, tries: int = 3) -> bool:
-        """AI 自动识别缺口并拖动（≤tries 次），返回滑块是否通过。
-        每次失败后滑块可能刷新缺口，重新截图检测。全部失败回落人工。"""
+        """AI 自动识别缺口并闭环拖动（≤tries 次），返回滑块是否通过。
+        每轮：截图→缺口定位→_smart_drag（两段位移自定标比例）→判定。
+        全部失败回落人工。"""
         for i in range(tries):
             if s.cancelled():
                 return False
             time.sleep(1.2)
             shot = _shot_b64(page)
-            dist = detect_slider_dist(base64.b64decode(shot)) if shot else None
-            if dist is None or not (60 <= dist <= 240):
+            gap = detect_slider_gap(base64.b64decode(shot)) if shot else None
+            if gap is None:
                 s.set_state("submitting",
                             hint=f"滑块自动识别中（第 {i + 1}/{tries} 次）…")
                 continue
             s.set_state("submitting",
                         hint=f"AI 已定位缺口，正在自动拖动（第 {i + 1}/{tries} 次）…")
-            human_drag(page.mouse, 542, 477, float(dist))
+            _smart_drag(page, page.mouse, 540.0, 475.0, float(gap))
             time.sleep(2.5)
             if _slider_gone(page):
                 return True
@@ -755,6 +756,59 @@ def _page_error(page) -> str:
         return ""
 
 
+def _drag_seg(mouse, x_cur: float, y: float, dx: float) -> float:
+    """按住状态下平滑拖动 dx px（真人节奏），返回新 x。"""
+    if dx <= 0:
+        return x_cur
+    n = max(6, min(30, int(dx / 6)))
+    weights = [math.sin(i / n * math.pi) ** 0.9 for i in range(1, n + 1)]
+    total = sum(weights)
+    x = x_cur
+    for w in weights:
+        x += dx * w / total
+        mouse.move(x, y + random.uniform(-1, 1))
+        time.sleep(random.uniform(0.006, 0.016))
+    return x
+
+
+def _smart_drag(page, mouse, hx: float, hy: float, gap_x: float) -> None:
+    """闭环拖动（批次26-L）：按住不松手，分三段拖。
+    第 1/2 段中途截图量块实际位移 → 自定标「手柄px→图上px」比例 k
+    （绕开手柄行程与图位移可能存在的缩放比）→ 第 3 段按剩余距离精确
+    到位。定标失败（粘连/识别不到）退化为 1:1 直拖（v8 原行为）。"""
+    h1, h2 = 90.0, 50.0
+    mouse.move(hx, hy)
+    time.sleep(random.uniform(0.1, 0.18))
+    mouse.down()
+    time.sleep(random.uniform(0.08, 0.14))
+    x = _drag_seg(mouse, hx, hy, h1)
+    time.sleep(0.45)
+    shot = _shot_b64(page)
+    b1 = detect_block_x(base64.b64decode(shot),
+                        _START_X + h1) if shot else None
+    x = _drag_seg(mouse, x, hy, h2)
+    time.sleep(0.45)
+    k_eff, cur_block = 1.0, None
+    if shot and b1 is not None:
+        shot2 = _shot_b64(page)
+        if shot2:
+            b2 = detect_block_x(base64.b64decode(shot2), b1 + h2)
+            if b2 is not None and b2 > b1:
+                k = (b2 - b1) / h2
+                if 0.5 <= k <= 2.0:
+                    k_eff = k
+                    cur_block = b2
+    if cur_block is None and b1 is not None:
+        cur_block = b1 + h2          # k 未知按 1:1 外推
+    if cur_block is None:
+        cur_block = _START_X + h1 + h2   # 全定标失败：1:1 估算
+    remain = (gap_x - cur_block) / k_eff
+    if remain > 2:
+        _drag_seg(mouse, x, hy, remain)
+    time.sleep(random.uniform(0.08, 0.15))
+    mouse.up()
+
+
 def human_drag(mouse, x0: float, y0: float, dist: float) -> None:
     """真人轨迹：正弦加减速 + y 抖动 + overshoot 回拉（批次15 实测可过）。"""
     mouse.move(x0, y0)
@@ -795,45 +849,72 @@ _START_X = 522                      # 起点块左缘常数（实测均值）
 
 def detect_slider_dist(png_bytes: bytes):
     """从整页截图检测滑块缺口，返回拖动距离 px；置信度不足返回 None。"""
-    try:
-        import io
+    g = detect_slider_gap(png_bytes)
+    if g is None:
+        return None
+    dist = g - _START_X
+    return dist if 56 <= dist <= 254 else None
 
-        import numpy as np
-        from PIL import Image
-        im = Image.open(io.BytesIO(png_bytes)).convert("L")
-        a = np.asarray(im, dtype=np.float32)
-        if a.shape[:2] != (720, 1280):
-            return None
-        # 积分图水平 box 均值做背景估计
-        c = np.cumsum(a, axis=1, dtype=np.float64)
-        c = np.concatenate([np.zeros((a.shape[0], 1)), c], axis=1)
-        h = _BG_WIN // 2
-        W = a.shape[1]
-        i0 = np.clip(np.arange(W) - h, 0, W)
-        i1 = np.clip(np.arange(W) + h + 1, 0, W)
-        bg = (c[:, i1] - c[:, i0]) / (i1 - i0)
-        dark = np.clip(bg - a, 0, None)          # 正=比周围暗
-        prof = np.convolve(
-            dark[_BAND_Y0:_BAND_Y1, _SEARCH_X0:_SEARCH_X1].mean(axis=0),
-            np.ones(3) / 3, mode="same")
-        segs = []
-        i, n = 0, len(prof)
-        while i < n:
-            if prof[i] < _DARK_TH:
-                i += 1
-                continue
-            j = i
-            while j < n and prof[j] >= _DARK_TH:
-                j += 1
-            if _SEG_W_MIN <= j - i <= _SEG_W_MAX:
-                segs.append((_SEARCH_X0 + i, float(prof[i:j].sum())))
-            i = j
+
+def detect_slider_gap(png_bytes: bytes):
+    """缺口左缘绝对坐标（页面 x）；置信度不足返回 None。"""
+    try:
+        segs = _dark_segs(png_bytes)
         if not segs:
             return None
-        segs.sort(key=lambda t: -t[1])   # 暗度×宽度积分最强团 = 缺口
-        dist = round(segs[0][0] - _START_X)
-        if 56 <= dist <= 254:
-            return dist
+        segs.sort(key=lambda t: -t[2])   # 暗度×宽度积分最强团 = 缺口
+        return segs[0][0]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def detect_block_x(png_bytes: bytes, expect_x: float):
+    """拖动中截图找块当前位置：最左合格暗团且接近 expect_x（k≈1 校验）。"""
+    try:
+        segs = [s for s in _dark_segs(png_bytes, x0=500)
+                if 540 <= s[0] <= 782]
+        if not segs:
+            return None
+        segs.sort(key=lambda t: t[0])
+        for s in segs:
+            if abs(s[0] - expect_x) <= 60:
+                return s[0]
         return None
     except Exception:  # noqa: BLE001
         return None
+
+
+def _dark_segs(png_bytes: bytes, x0: int = _SEARCH_X0):
+    """搜索域内全部合格暗团 [(abs_x0, abs_x1, score)]。"""
+    import io
+
+    import numpy as np
+    from PIL import Image
+    im = Image.open(io.BytesIO(png_bytes)).convert("L")
+    a = np.asarray(im, dtype=np.float32)
+    if a.shape[:2] != (720, 1280):
+        return []
+    c = np.cumsum(a, axis=1, dtype=np.float64)
+    c = np.concatenate([np.zeros((a.shape[0], 1)), c], axis=1)
+    h = _BG_WIN // 2
+    W = a.shape[1]
+    i0 = np.clip(np.arange(W) - h, 0, W)
+    i1 = np.clip(np.arange(W) + h + 1, 0, W)
+    bg = (c[:, i1] - c[:, i0]) / (i1 - i0)
+    dark = np.clip(bg - a, 0, None)
+    prof = np.convolve(
+        dark[_BAND_Y0:_BAND_Y1, x0:_SEARCH_X1].mean(axis=0),
+        np.ones(3) / 3, mode="same")
+    segs = []
+    i, n = 0, len(prof)
+    while i < n:
+        if prof[i] < _DARK_TH:
+            i += 1
+            continue
+        j = i
+        while j < n and prof[j] >= _DARK_TH:
+            j += 1
+        if _SEG_W_MIN <= j - i <= _SEG_W_MAX:
+            segs.append((x0 + i, x0 + j, float(prof[i:j].sum())))
+        i = j
+    return segs

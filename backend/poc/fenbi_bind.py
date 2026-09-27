@@ -27,6 +27,7 @@ import sqlite3
 import threading
 import time
 import traceback
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -38,8 +39,25 @@ _EXAMCATID = 1000183
 _KEYPOINT_TREE_URL = (
     "https://tiku.fenbi.com/api/xingce/errors/keypoint-tree"
     "?timeRange=0&order=desc&app=web&examcatid=%d" % _EXAMCATID)
+_COLLECT_TREE_URL = (
+    "https://tiku.fenbi.com/api/xingce/collects/keypoint-tree"
+    "?timeRange=0&order=desc&app=web&examcatid=%d" % _EXAMCATID)
 _SOLUTIONS_URL = ("https://tiku.fenbi.com/api/xingce/solutions"
                   "?app=web&kav=12&ver=3.88&ids={ids}")
+# 批次27 · 练习/模考（combine 域，无 /api/ 前缀；2026-10-03 实测）
+_HISTORY_URL = ("https://tiku.fenbi.com/combine/exercise"
+                "/getExerciseBriefHistory?categoryId={cat}&limit={limit}"
+                "&cursor={cursor}&routecs=xingce&app=web"
+                "&examcatid=%d" % _EXAMCATID)
+# getReport/getSolution 必须带 format=html + 全套 app 版本参数（缺则空 data）
+_COMBINE_Q = ("format=html&key={key}&routecs=xingce&kav=125&av=127&hav=125"
+              "&app=web&apcid=0&deviceId=&gav=2")
+_REPORT_URL = ("https://tiku.fenbi.com/combine/exercise/getReport?"
+               + _COMBINE_Q + "&no_toast")
+_GETSOLUTION_URL = ("https://tiku.fenbi.com/combine/exercise/getSolution?"
+                    + _COMBINE_Q)
+# userAnswers.status 语义（130 题 5/5/120 与报告页完全吻合）
+ANSWER_STATUS = {"right": 1, "wrong": -1, "unanswered": 10}
 
 ANALYSIS_COOLDOWN_SECS = 6 * 3600   # 生成冷却（防滥用 + LLM 成本）
 _BATCH = 50                          # solutions 单批题数上限（粉笔硬限）
@@ -135,6 +153,77 @@ class FenbiBindStore:
                 created_at TEXT,
                 updated_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS fenbi_collect_questions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                question_id TEXT NOT NULL,
+                module      TEXT NOT NULL DEFAULT '',
+                keypoint    TEXT NOT NULL DEFAULT '',
+                content     TEXT NOT NULL DEFAULT '',
+                options     TEXT NOT NULL DEFAULT '[]',
+                answer      TEXT NOT NULL DEFAULT '',
+                analysis    TEXT NOT NULL DEFAULT '',
+                difficulty  INTEGER NOT NULL DEFAULT 0,
+                source      TEXT NOT NULL DEFAULT '',
+                created_at  TEXT,
+                UNIQUE(user_id, question_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fcq_user
+                ON fenbi_collect_questions(user_id);
+            CREATE TABLE IF NOT EXISTS fenbi_mock_exams (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        TEXT NOT NULL,
+                exercise_key   TEXT NOT NULL,               -- 如 1_1_3oedvnf
+                name           TEXT NOT NULL DEFAULT '',
+                sheet_type     INTEGER NOT NULL DEFAULT 0,  -- 1=模考 3=专项
+                score          REAL,
+                fullmark       REAL,
+                question_count INTEGER NOT NULL DEFAULT 0,
+                correct_count  INTEGER NOT NULL DEFAULT 0,
+                wrong_count    INTEGER NOT NULL DEFAULT 0,
+                unanswered     INTEGER NOT NULL DEFAULT 0,
+                duration_sec   INTEGER NOT NULL DEFAULT 0,
+                submit_time    TEXT,
+                difficulty     REAL,
+                paper_id       TEXT NOT NULL DEFAULT '',
+                report_json    TEXT NOT NULL DEFAULT '{}',  -- getReport data 原样
+                synced_at      TEXT,
+                UNIQUE(user_id, exercise_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fme_user
+                ON fenbi_mock_exams(user_id);
+            CREATE TABLE IF NOT EXISTS fenbi_mock_answers (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        TEXT NOT NULL,
+                exam_row_id    INTEGER NOT NULL,            -- fenbi_mock_exams.id
+                question_id    TEXT NOT NULL,
+                global_key     TEXT NOT NULL DEFAULT '',
+                status         INTEGER NOT NULL DEFAULT 0,  -- 1对 -1错 10未答
+                user_answer    TEXT NOT NULL DEFAULT '',
+                correct_answer TEXT NOT NULL DEFAULT '',
+                content        TEXT NOT NULL DEFAULT '',
+                analysis       TEXT NOT NULL DEFAULT '',
+                keypoints      TEXT NOT NULL DEFAULT '[]',
+                UNIQUE(exam_row_id, question_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fma_exam
+                ON fenbi_mock_answers(exam_row_id);
+            CREATE TABLE IF NOT EXISTS fenbi_sync_log (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    TEXT NOT NULL,
+                kind       TEXT NOT NULL,                   -- wrong/collect/mock
+                status     TEXT NOT NULL DEFAULT 'running', -- running/done/failed
+                stage      TEXT NOT NULL DEFAULT '',
+                progress   INTEGER NOT NULL DEFAULT 0,
+                total      INTEGER NOT NULL DEFAULT 0,
+                new_count  INTEGER NOT NULL DEFAULT 0,
+                detail     TEXT NOT NULL DEFAULT '',
+                error      TEXT NOT NULL DEFAULT '',
+                created_at TEXT,
+                done_at    TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_fsl_user
+                ON fenbi_sync_log(user_id, created_at);
             """)
 
     # ---- bindings ----
@@ -238,6 +327,243 @@ class FenbiBindStore:
             return {str(r[0]) for r in conn.execute(
                 "SELECT question_id FROM fenbi_wrong_questions"
                 " WHERE user_id=?", (user_id,)).fetchall()}
+
+    # ---- 批次27 · 收藏快照 ----
+
+    def save_collect_questions(self, user_id: str,
+                               rows: list[dict]) -> int:
+        """INSERT OR IGNORE（同错题表结构）。"""
+        n = 0
+        with self._connect() as conn:
+            for r in rows:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO fenbi_collect_questions"
+                    "(user_id, question_id, module, keypoint, content,"
+                    " options, answer, analysis, difficulty, source,"
+                    " created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (user_id, str(r.get("question_id") or ""),
+                     str(r.get("module") or ""),
+                     str(r.get("keypoint") or ""),
+                     str(r.get("content") or ""),
+                     json.dumps(r.get("options") or [], ensure_ascii=False),
+                     str(r.get("answer") or ""),
+                     str(r.get("analysis") or ""),
+                     int(r.get("difficulty") or 0),
+                     str(r.get("source") or ""), _now()))
+                n += cur.rowcount
+        return n
+
+    def collect_count(self, user_id: str) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM fenbi_collect_questions WHERE user_id=?",
+                (user_id,)).fetchone()[0]
+
+    def collect_ids(self, user_id: str) -> set[str]:
+        with self._connect() as conn:
+            return {str(r[0]) for r in conn.execute(
+                "SELECT question_id FROM fenbi_collect_questions"
+                " WHERE user_id=?", (user_id,)).fetchall()}
+
+    def mock_exam_keys(self, user_id: str) -> set[str]:
+        with self._connect() as conn:
+            return {str(r[0]) for r in conn.execute(
+                "SELECT exercise_key FROM fenbi_mock_exams"
+                " WHERE user_id=?", (user_id,)).fetchall()}
+
+    # ---- 批次27 · 快照列表查询 ----
+
+    def wrong_list(self, user_id: str, limit: int = 20,
+                   offset: int = 0) -> tuple[list[dict], int]:
+        """错题快照分页列表 → (rows, total)。"""
+        with self._connect() as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM fenbi_wrong_questions WHERE user_id=?",
+                (user_id,)).fetchone()[0]
+            rows = conn.execute(
+                "SELECT id, question_id, module, keypoint, content, options,"
+                " answer, analysis, difficulty, source, created_at"
+                " FROM fenbi_wrong_questions WHERE user_id=?"
+                " ORDER BY id DESC LIMIT ? OFFSET ?",
+                (user_id, limit, offset)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["options"] = json.loads(d.get("options") or "[]")
+            except ValueError:
+                d["options"] = []
+            out.append(d)
+        return out, total
+
+    def collect_list(self, user_id: str, limit: int = 20,
+                     offset: int = 0) -> tuple[list[dict], int]:
+        """收藏快照分页列表 → (rows, total)。"""
+        with self._connect() as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM fenbi_collect_questions WHERE user_id=?",
+                (user_id,)).fetchone()[0]
+            rows = conn.execute(
+                "SELECT id, question_id, module, keypoint, content, options,"
+                " answer, analysis, difficulty, source, created_at"
+                " FROM fenbi_collect_questions WHERE user_id=?"
+                " ORDER BY id DESC LIMIT ? OFFSET ?",
+                (user_id, limit, offset)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["options"] = json.loads(d.get("options") or "[]")
+            except ValueError:
+                d["options"] = []
+            out.append(d)
+        return out, total
+
+    # ---- 批次27 · 模考试卷 + 作答 ----
+
+    def save_mock_exam(self, user_id: str, exam: dict,
+                       answers: list[dict]) -> int:
+        """UPSERT 试卷 + 整卷替换作答明细。exam 含 exercise_key/name/...；
+        answers: {question_id, global_key, status, user_answer,
+        correct_answer, content, analysis, keypoints}。返回试卷行 id。"""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO fenbi_mock_exams(user_id, exercise_key, name,"
+                " sheet_type, score, fullmark, question_count, correct_count,"
+                " wrong_count, unanswered, duration_sec, submit_time,"
+                " difficulty, paper_id, report_json, synced_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(user_id, exercise_key) DO UPDATE SET"
+                " name=excluded.name, sheet_type=excluded.sheet_type,"
+                " score=excluded.score, fullmark=excluded.fullmark,"
+                " question_count=excluded.question_count,"
+                " correct_count=excluded.correct_count,"
+                " wrong_count=excluded.wrong_count,"
+                " unanswered=excluded.unanswered,"
+                " duration_sec=excluded.duration_sec,"
+                " submit_time=excluded.submit_time,"
+                " difficulty=excluded.difficulty,"
+                " paper_id=excluded.paper_id,"
+                " report_json=excluded.report_json,"
+                " synced_at=excluded.synced_at",
+                (user_id, exam.get("exercise_key") or "",
+                 exam.get("name") or "", int(exam.get("sheet_type") or 0),
+                 exam.get("score"), exam.get("fullmark"),
+                 int(exam.get("question_count") or 0),
+                 int(exam.get("correct_count") or 0),
+                 int(exam.get("wrong_count") or 0),
+                 int(exam.get("unanswered") or 0),
+                 int(exam.get("duration_sec") or 0),
+                 exam.get("submit_time") or "",
+                 exam.get("difficulty"),
+                 str(exam.get("paper_id") or ""),
+                 json.dumps(exam.get("report") or {}, ensure_ascii=False),
+                 _now()))
+            row = conn.execute(
+                "SELECT id FROM fenbi_mock_exams WHERE user_id=? AND"
+                " exercise_key=?", (user_id, exam.get("exercise_key"))
+            ).fetchone()
+            eid = int(row[0])
+            conn.execute("DELETE FROM fenbi_mock_answers WHERE exam_row_id=?",
+                         (eid,))
+            for a in answers:
+                conn.execute(
+                    "INSERT OR IGNORE INTO fenbi_mock_answers"
+                    "(user_id, exam_row_id, question_id, global_key, status,"
+                    " user_answer, correct_answer, content, analysis,"
+                    " keypoints) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (user_id, eid, str(a.get("question_id") or ""),
+                     str(a.get("global_key") or ""),
+                     int(a.get("status") or 0),
+                     str(a.get("user_answer") or ""),
+                     str(a.get("correct_answer") or ""),
+                     str(a.get("content") or ""),
+                     str(a.get("analysis") or ""),
+                     json.dumps(a.get("keypoints") or [], ensure_ascii=False)))
+        return eid
+
+    def mock_exam_list(self, user_id: str) -> list[dict]:
+        """试卷列表（不含 report_json 大字段）。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, exercise_key, name, sheet_type, score, fullmark,"
+                " question_count, correct_count, wrong_count, unanswered,"
+                " duration_sec, submit_time, difficulty, paper_id, synced_at"
+                " FROM fenbi_mock_exams WHERE user_id=?"
+                " ORDER BY synced_at DESC", (user_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def mock_exam_detail(self, user_id: str, exam_row_id: int) -> dict | None:
+        """试卷详情：基础信息 + 整卷分析（report 解析）+ 全部作答明细。"""
+        with self._connect() as conn:
+            r = conn.execute(
+                "SELECT * FROM fenbi_mock_exams WHERE user_id=? AND id=?",
+                (user_id, exam_row_id)).fetchone()
+            if not r:
+                return None
+            d = dict(r)
+            ans = conn.execute(
+                "SELECT question_id, global_key, status, user_answer,"
+                " correct_answer, content, analysis, keypoints"
+                " FROM fenbi_mock_answers WHERE exam_row_id=?",
+                (exam_row_id,)).fetchall()
+        for jk in ("report_json",):
+            try:
+                d["report"] = json.loads(d.pop(jk) or "{}")
+            except ValueError:
+                d["report"] = {}
+        for a in ans:
+            a = dict(a)
+            try:
+                a["keypoints"] = json.loads(a.get("keypoints") or "[]")
+            except ValueError:
+                a["keypoints"] = []
+            d.setdefault("answers", []).append(a)
+        return d
+
+    # ---- 批次27 · 同步任务留痕 ----
+
+    def start_sync(self, user_id: str, kind: str) -> tuple[int, str]:
+        """新建同步任务；同 kind 有 running 则拒绝（防并发重复拉取）。"""
+        with self._connect() as conn:
+            r = conn.execute(
+                "SELECT id FROM fenbi_sync_log WHERE user_id=? AND kind=?"
+                " AND status='running'", (user_id, kind)).fetchone()
+            if r:
+                return 0, "该同步正在进行中，请稍候"
+            cur = conn.execute(
+                "INSERT INTO fenbi_sync_log(user_id, kind, status,"
+                " stage, created_at) VALUES(?,?,'running','准备',?)",
+                (user_id, kind, _now()))
+        return int(cur.lastrowid), ""
+
+    def update_sync(self, sid: int, **kw) -> None:
+        cols, vals = [], []
+        for k in ("status", "stage", "progress", "total", "new_count",
+                  "detail", "error", "done_at"):
+            if k in kw:
+                cols.append(f"{k}=?")
+                vals.append(kw[k])
+        if cols:
+            vals.append(sid)
+            with self._connect() as conn:
+                conn.execute(
+                    f"UPDATE fenbi_sync_log SET {','.join(cols)} WHERE id=?",
+                    vals)
+
+    def latest_sync(self, user_id: str, kind: str) -> dict | None:
+        with self._connect() as conn:
+            r = conn.execute(
+                "SELECT * FROM fenbi_sync_log WHERE user_id=? AND kind=?"
+                " ORDER BY id DESC LIMIT 1", (user_id, kind)).fetchone()
+        return dict(r) if r else None
+
+    def sync_history(self, user_id: str, limit: int = 10) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM fenbi_sync_log WHERE user_id=?"
+                " ORDER BY id DESC LIMIT ?", (user_id, limit)).fetchall()
+        return [dict(r) for r in rows]
 
     # ---- analyses ----
 
@@ -363,6 +689,62 @@ def fetch_solutions_batch(cookie: str, ids: list[str],
     if isinstance(d, list):
         return d
     return d.get("solutions") or []
+
+
+# ---------------- 批次27 · 收藏 / 练习历史 / 模考报告 ----------------
+
+def fetch_collect_tree(cookie: str) -> list:
+    """收藏知识点两级树（与错题树同构）：[{name, questionIds[], children}]。"""
+    d = fenbi._get_json(_COLLECT_TREE_URL, cookie, 2.0, None,
+                        referer="https://spa.fenbi.com/")
+    return d if isinstance(d, list) else []
+
+
+def fetch_exercise_history(cookie: str, category_id: int = 1,
+                           limit: int = 30, cursor: str = "",
+                           interval: float = 1.5) -> dict:
+    """练习/试卷历史。categoryId：1=试卷（模考/真题）、3=练习（专项）。
+    返回 {cursor, items[]}；items 含 exerciseKey/sheetName/sheetType/
+    difficulty/status/questionCount/correctCount/score/fullScore/updatedTime。"""
+    url = _HISTORY_URL.format(cat=category_id, limit=limit,
+                              cursor=urllib.parse.quote(cursor or ""))
+    d = fenbi._get_json(url, cookie, interval, None,
+                        referer="https://spa.fenbi.com/")
+    data = d.get("data") if isinstance(d, dict) else None
+    return {"cursor": (data or {}).get("cursor") or "",
+            "items": (data or {}).get("historyItems") or []}
+
+
+def fetch_mock_report(cookie: str, exercise_key: str,
+                      interval: float = 1.5) -> dict:
+    """已提交练习/模考的整卷分析：score/fullmark/difficulty/paperId/
+    subReports（basic + courseReports 分模块统计）/userAnswers(status 语义)。"""
+    d = fenbi._get_json(_REPORT_URL.format(key=exercise_key), cookie,
+                        interval, None, referer="https://spa.fenbi.com/")
+    if isinstance(d, dict) and d.get("code") == 1:
+        return d.get("data") or {}
+    raise ValueError(
+        f"getReport 失败：{str((d or {}).get('msg') or d)[:80]}")
+
+
+def fetch_mock_solution(cookie: str, exercise_key: str,
+                        interval: float = 1.5) -> dict:
+    """已提交练习/模考的题目与作答：materials + solutions[]（含
+    correctAnswer/solution 解析/keypoints）+ userAnswers + card。"""
+    d = fenbi._get_json(_GETSOLUTION_URL.format(key=exercise_key), cookie,
+                        interval, None, referer="https://spa.fenbi.com/")
+    data = d.get("data") if isinstance(d, dict) else None
+    urls = ((data or {}).get("staticUrl") or {}).get("urls") or []
+    if not urls:
+        raise ValueError("getSolution 未返回 staticUrl（练习可能未提交）")
+    st = fenbi._get_json(urls[0] + fenbi._STATIC_QUERY, cookie, interval,
+                         None, referer="https://spa.fenbi.com/")
+    top = st.get("data") if isinstance(st.get("data"), dict) else st
+    return {"materials": top.get("materials") or [],
+            "solutions": top.get("solutions") or [],
+            "userAnswers": data.get("userAnswers") or {},
+            "name": data.get("name") or "",
+            "sheetType": data.get("sheetType") or 0}
 
 
 # ---------------- 批次26-G · 粉笔搜题（答案核对） ----------------
@@ -698,3 +1080,179 @@ def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
 
 def new_session_id() -> str:
     return secrets.token_hex(16)
+
+
+# ---------------- 批次27 · 三大同步（错题/收藏/模考） ----------------
+
+def _ms_to_dt(ms) -> str:
+    try:
+        return datetime.fromtimestamp(int(ms) / 1000).strftime(
+            "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+
+
+def _tree_qid_paths(tree: list) -> dict[str, tuple[str, str]]:
+    """两级树 → {qid: (模块名, 知点名)}（首见优先，避免重复计）。"""
+    out: dict[str, tuple[str, str]] = {}
+    for n in tree or []:
+        mod = str(n.get("name") or "")
+        for q in (n.get("questionIds") or []):
+            out.setdefault(str(q), (mod, ""))
+        for ch in n.get("children") or []:
+            pt = str(ch.get("name") or "")
+            for q in (ch.get("questionIds") or []):
+                out.setdefault(str(q), (mod, pt))
+    return out
+
+
+def _sol_row(sol: dict, qid: str, qid_paths: dict) -> dict:
+    """粉笔 solution → 快照行（复用 17 号管线字段规整）。"""
+    mod, pt = qid_paths.get(qid, ("", ""))
+    kps = ",".join(str(k.get("name") or "")
+                   for k in (sol.get("keypoints") or [])[:2])
+    try:
+        d10 = int(sol.get("difficulty") or 0)
+    except (TypeError, ValueError):
+        d10 = 0
+    return {
+        "question_id": qid, "module": mod,
+        "keypoint": pt or kps,
+        "content": fenbi._strip_html(str(sol.get("content") or "")),
+        "options": [fenbi._strip_html(o) for o in fenbi._options_of(sol)],
+        "answer": fenbi._answer_letters(sol),
+        "analysis": fenbi._strip_html(str(sol.get("solution") or "")),
+        "difficulty": (d10 + 1) // 2 or 2,
+        "source": str(sol.get("source") or sol.get("shortSource") or "")}
+
+
+def _sync_snapshot(store: FenbiBindStore, user_id: str, cookie: str,
+                   tree: list, existing: set[str], save_fn,
+                   progress=None) -> tuple[int, int]:
+    """树 + 增量 qids → 拉详情 → save_fn 落库；返回 (总题数, 新增数)。
+    save_fn(user_id, rows) 由调用方注入（错题/收藏表）。"""
+    qid_paths = _tree_qid_paths(tree)
+    qids = sorted(qid_paths.keys())
+    todo = [q for q in qids if q not in existing]
+    if progress:
+        progress(f"拉取题目详情（新增 {len(todo)}/{len(qids)}）", 30)
+    rows: list[dict] = []
+    for i in range(0, len(todo), _BATCH):
+        chunk = todo[i:i + _BATCH]
+        for sol in fetch_solutions_batch(cookie, chunk):
+            if isinstance(sol, dict) and sol.get("id"):
+                rows.append(_sol_row(sol, str(sol["id"]), qid_paths))
+        if progress:
+            done = min(i + _BATCH, len(todo))
+            pct = 30 + int(60 * done / max(len(todo), 1))
+            progress(f"拉取题目详情 {done}/{len(todo)}", pct)
+    saved = save_fn(user_id, rows) if rows else 0
+    return len(qids), saved
+
+
+def sync_wrong(store: FenbiBindStore, user_id: str,
+               progress=None) -> tuple[int, int]:
+    """错题同步（增量）。返回 (总错题数, 新增快照数)。"""
+    cookie = store.get_cookie(user_id)
+    tree = fetch_error_tree(cookie)              # 失效抛 FenbiAuthError
+    total, saved = _sync_snapshot(store, user_id, cookie, tree,
+                                  store.wrong_ids(user_id),
+                                  store.save_wrong_questions, progress)
+    return total, saved
+
+
+def sync_collect(store: FenbiBindStore, user_id: str,
+                 progress=None) -> tuple[int, int]:
+    """收藏同步（增量）。返回 (总收藏数, 新增快照数)。"""
+    cookie = store.get_cookie(user_id)
+    tree = fetch_collect_tree(cookie)
+    total, saved = _sync_snapshot(store, user_id, cookie, tree,
+                                  store.collect_ids(user_id),
+                                  store.save_collect_questions, progress)
+    return total, saved
+
+
+def _extract_basic(report: dict) -> dict:
+    """getReport.subReports → {basic, courseReports}。"""
+    basic, courses = {}, []
+    for sub in report.get("subReports") or []:
+        if isinstance(sub, dict) and sub.get("score") is not None \
+                and sub.get("fullmark") is not None and not basic:
+            basic = sub
+        if isinstance(sub, dict) and sub.get("courseReports"):
+            courses = sub["courseReports"]
+    return {"basic": basic, "courses": courses}
+
+
+def sync_mock(store: FenbiBindStore, user_id: str, progress=None,
+              max_exams: int = 20, interval: float = 1.2) -> tuple[int, int]:
+    """模考/练习同步（增量）：试卷+练习历史 → 每份已提交卷
+    getReport（整卷分析）+ getSolution（题目+作答）落库。
+    返回 (历史已完成份数, 新同步份数)。"""
+    cookie = store.get_cookie(user_id)
+    have = store.mock_exam_keys(user_id)
+    todo: list[dict] = []
+    done_total = 0
+    for cat in (1, 3):                            # 1=试卷(模考/真题) 3=练习
+        h = fetch_exercise_history(cookie, cat, 30)
+        for it in h.get("items") or []:
+            key = str(it.get("exerciseKey") or "")
+            if not key:
+                continue
+            if int(it.get("status") or 0) != 1:
+                continue                          # 仅已提交（有报告）的
+            done_total += 1
+            if key not in have:
+                todo.append({"key": key, "name": it.get("sheetName") or "",
+                             "sheetType": it.get("sheetType") or 0})
+    todo = todo[:max_exams]
+    n_synced = 0
+    for idx, item in enumerate(todo):
+        if progress:
+            progress(f"同步试卷 {idx + 1}/{len(todo)}：{item['name'][:16]}",
+                     20 + int(70 * idx / max(len(todo), 1)))
+        report = fetch_mock_report(cookie, item["key"], interval)
+        sol = fetch_mock_solution(cookie, item["key"], interval)
+        basic = _extract_basic(report).get("basic") or {}
+        sol_by_id = {str(s.get("id")): s for s in sol.get("solutions") or []
+                     if s.get("id")}
+        answers, n_right, n_wrong, n_un = [], 0, 0, 0
+        for gk, ua in (sol.get("userAnswers") or {}).items():
+            qid = str(ua.get("id") or "")
+            st = int(ua.get("status") or 0)
+            if st == ANSWER_STATUS["right"]:
+                n_right += 1
+            elif st == ANSWER_STATUS["wrong"]:
+                n_wrong += 1
+            else:
+                n_un += 1
+            raw = sol_by_id.get(qid) or {}
+            answers.append({
+                "question_id": qid, "global_key": str(ua.get("key") or gk),
+                "status": st,
+                "user_answer": json.dumps(ua.get("answer") or "",
+                                          ensure_ascii=False),
+                "correct_answer": json.dumps(raw.get("correctAnswer") or "",
+                                             ensure_ascii=False),
+                "content": fenbi._strip_html(str(raw.get("content") or "")),
+                "analysis": fenbi._strip_html(
+                    str(raw.get("solution") or "")),
+                "keypoints": [str(k.get("name") or "")
+                              for k in (raw.get("keypoints") or [])[:3]]})
+        exam = {
+            "exercise_key": item["key"],
+            "name": report.get("name") or item["name"],
+            "sheet_type": report.get("sheetType") or item["sheetType"],
+            "score": basic.get("score"),
+            "fullmark": basic.get("fullmark"),
+            "question_count": len(answers),
+            "correct_count": n_right, "wrong_count": n_wrong,
+            "unanswered": n_un,
+            "duration_sec": int(basic.get("time") or 0),
+            "submit_time": _ms_to_dt(basic.get("submitTime")),
+            "difficulty": basic.get("difficulty"),
+            "paper_id": basic.get("paperId") or "",
+            "report": report}
+        store.save_mock_exam(user_id, exam, answers)
+        n_synced += 1
+    return done_total, n_synced

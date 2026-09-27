@@ -16,6 +16,7 @@
 
   var _pollTimer = null;   // 分析进度轮询
   var _loginTimer = null;  // 登录会话轮询
+  var _syncTimer = null;   // 三同步进度轮询（批次27）
   var _curSid = null;      // 当前登录会话
   var _curMode = null;     // sms / qrcode / cookie
 
@@ -60,6 +61,7 @@
   function stopTimers() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
     if (_loginTimer) { clearInterval(_loginTimer); _loginTimer = null; }
+    if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
   }
 
   function close() {
@@ -201,7 +203,8 @@
       (latest && latest.status === 'failed'
         ? '<div style="background:#fff5f5;border:1px solid #ffc9c9;border-radius:8px;padding:10px 12px;margin-top:10px;font-size:12.5px;color:#c92a2a">上次生成失败：' + escapeHtml(latest.error || '未知错误') + '</div>'
         : '') +
-      '<div style="text-align:center;margin-top:18px">' +
+      renderSyncCards(b) +
+      '<div style="text-align:center;margin-top:16px">' +
         '<button onclick="C10.analyze()" style="padding:12px 34px;border:none;border-radius:10px;background:var(--wood);color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(139,94,60,.35)">🚀 生成我的提升计划</button>' +
         '<div style="color:var(--ink-3);font-size:11.5px;margin-top:8px">采集错题 → AI 诊断 → 定制 4 周任务书，约需 1~3 分钟</div>' +
       '</div>';
@@ -211,6 +214,268 @@
     } else {
       showExport(false);
     }
+  }
+
+  // ---------------- 批次27 · 三大数据同步 ----------------
+  var SYNC_DEFS = {
+    wrong:   { icon: '📕', name: '错题同步', desc: '粉笔错题本 → 本系统错题库' },
+    collect: { icon: '⭐', name: '收藏同步', desc: '粉笔收藏题 → 本系统收藏夹' },
+    mock:    { icon: '📝', name: '模考同步', desc: '试卷题目 + 错题 + 整卷分析' }
+  };
+
+  function syncCount(b, kind) {
+    if (!b) return 0;
+    if (kind === 'wrong') return b.wrong_count || 0;
+    if (kind === 'collect') return b.collect_count || 0;
+    return b.mock_count || 0;
+  }
+
+  function renderSyncCards(b) {
+    var h = '<div style="font-size:13px;font-weight:700;color:var(--ink);margin:16px 0 8px">🔄 数据同步中心</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:8px" id="c10SyncCards">';
+    Object.keys(SYNC_DEFS).forEach(function (kind) {
+      var def = SYNC_DEFS[kind];
+      var n = syncCount(b, kind);
+      h +=
+        '<div style="border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px">' +
+          '<span style="font-size:20px">' + def.icon + '</span>' +
+          '<div style="flex:1;cursor:pointer" onclick="C10.syncCenter(\'' + kind + '\')">' +
+            '<div style="font-weight:700;font-size:13px">' + def.name +
+              '<span style="margin-left:6px;color:var(--wood);font-size:12px">' + n + ' 条</span></div>' +
+            '<div style="color:var(--ink-3);font-size:11.5px;margin-top:2px">' + def.desc + '</div>' +
+          '</div>' +
+          '<div id="c10SyncBtn_' + kind + '">' +
+            '<button onclick="C10.startSync(\'' + kind + '\')" style="padding:5px 12px;border:none;border-radius:7px;background:var(--wood);color:#fff;font-size:12px;cursor:pointer">同步</button>' +
+          '</div>' +
+        '</div>';
+    });
+    h += '</div>';
+    h += '<div id="c10SyncMsg" style="font-size:12px;color:var(--ink-3);margin-top:6px">增量同步：只拉取上次之后的新数据，随时可中断离开</div>';
+    return h;
+  }
+
+  function setSyncBtn(kind, html) {
+    var el = document.getElementById('c10SyncBtn_' + kind);
+    if (el) el.innerHTML = html;
+  }
+
+  function startSync(kind) {
+    var def = SYNC_DEFS[kind];
+    setSyncBtn(kind, '<span style="color:var(--ink-3);font-size:12px">同步中…</span>');
+    global.GK.api('/me/fenbi/sync', { method: 'POST', body: { kind: kind } })
+      .then(function () { pollSync(kind, null); })
+      .catch(function (e) {
+        showToast((e && e.message) || '触发失败', 'error');
+        setSyncBtn(kind, '<button onclick="C10.startSync(\'' + kind + '\')" style="padding:5px 12px;border:none;border-radius:7px;background:var(--wood);color:#fff;font-size:12px;cursor:pointer">重试</button>');
+      });
+  }
+
+  function pollSync(kind, prev) {
+    if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+    global.GK.api('/me/fenbi/sync/status?kind=' + kind).then(function (d) {
+      var lat = d.latest;
+      if (!lat || lat.status === 'running' || lat.status !== prev) {
+        var el = document.getElementById('c10SyncBtn_' + kind);
+        if (el && lat) {
+          el.innerHTML = '<div style="text-align:right"><div style="color:var(--wood);font-size:11px;font-weight:700">' +
+            (lat.progress || 0) + '%</div><div style="color:var(--ink-3);font-size:10.5px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+            escapeHtml(lat.stage || '') + '</div></div>';
+        }
+        _syncTimer = setTimeout(function () { pollSync(kind, lat ? lat.status : null); }, 2000);
+        return;
+      }
+      if (lat.status === 'done') {
+        var def = SYNC_DEFS[kind];
+        showToast(def.name + '完成：共 ' + (lat.total || 0) + '，新增 ' + (lat.new_count || 0), 'success');
+        setSyncBtn(kind, '<button onclick="C10.startSync(\'' + kind + '\')" style="padding:5px 12px;border:none;border-radius:7px;background:var(--wood);color:#fff;font-size:12px;cursor:pointer">再同步</button>');
+        refresh();
+      } else {
+        showToast(def.name + '失败：' + (lat.error || '未知错误'), 'error');
+        setSyncBtn(kind, '<button onclick="C10.startSync(\'' + kind + '\')" style="padding:5px 12px;border:1px solid var(--bad);border-radius:7px;background:#fff;color:var(--bad);font-size:12px;cursor:pointer">重试</button>');
+      }
+    }).catch(function () {
+      _syncTimer = setTimeout(function () { pollSync(kind, prev); }, 3000);
+    });
+  }
+
+  function syncCenter(tab) {
+    tab = tab || 'mock';
+    var body = document.getElementById('c10Body');
+    if (!body) return;
+    var tabs = [
+      ['wrong', '📕 错题本'], ['collect', '⭐ 收藏'], ['mock', '📝 模考报告']
+    ];
+    var h = '<div onclick="C10.refresh()" style="color:var(--wood);font-size:12.5px;cursor:pointer;margin-bottom:10px">← 返回</div>';
+    h += '<div style="display:flex;gap:6px;margin-bottom:12px">';
+    tabs.forEach(function (t) {
+      var on = t[0] === tab;
+      h += '<div onclick="C10.syncCenter(\'' + t[0] + '\')" style="flex:1;text-align:center;padding:7px 0;border-radius:8px;font-size:12.5px;cursor:pointer;' +
+        (on ? 'background:var(--wood);color:#fff;font-weight:700' : 'background:var(--paper-2);color:var(--ink-2)') + '">' + t[1] + '</div>';
+    });
+    h += '</div><div id="c10SyncList"><p style="color:var(--ink-3);text-align:center">加载中…</p></div>';
+    body.innerHTML = h;
+    if (tab === 'mock') { loadMockList(); return; }
+    var url = tab === 'wrong' ? '/me/fenbi/wrongs?limit=30' : '/me/fenbi/collects?limit=30';
+    global.GK.api(url).then(function (d) {
+      var el = document.getElementById('c10SyncList');
+      if (!el) return;
+      if (!d.items || !d.items.length) {
+        el.innerHTML = '<p style="color:var(--ink-3);text-align:center;padding:30px 0">还没有数据，请先返回点击「同步」</p>';
+        return;
+      }
+      var hh = '<div style="color:var(--ink-3);font-size:12px;margin-bottom:8px">共 ' + d.total + ' 条</div>';
+      hh += '<div style="display:flex;flex-direction:column;gap:8px">';
+      d.items.forEach(function (it) {
+        hh +=
+          '<div style="border:1px solid var(--line-2);border-radius:9px;padding:10px 12px">' +
+            '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">' +
+              (it.module ? '<span style="background:var(--paper-2);color:var(--ink-2);border-radius:5px;padding:1px 7px;font-size:10.5px">' + escapeHtml(it.module) + '</span>' : '') +
+              (it.keypoint ? '<span style="color:var(--wood);font-size:10.5px">' + escapeHtml(it.keypoint) + '</span>' : '') +
+              '<span style="flex:1"></span><span style="color:var(--ink-3);font-size:10.5px">难度 ' + (it.difficulty || '-') + '</span>' +
+            '</div>' +
+            '<div style="font-size:12.5px;line-height:1.55;color:var(--ink)">' + escapeHtml(String(it.content || '').slice(0, 90)) + '…</div>' +
+            '<div style="color:var(--good);font-size:11.5px;margin-top:5px">答案：' + escapeHtml(it.answer || '-') + '</div>' +
+            (it.analysis ? '<details style="margin-top:5px"><summary style="cursor:pointer;color:var(--wood);font-size:11.5px">查看解析</summary>' +
+              '<div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:4px">' + escapeHtml(String(it.analysis).slice(0, 300)) + '…</div></details>' : '') +
+          '</div>';
+      });
+      hh += '</div>';
+      el.innerHTML = hh;
+    }).catch(function (e) {
+      var el = document.getElementById('c10SyncList');
+      if (el) el.innerHTML = '<p style="color:var(--bad);text-align:center">加载失败：' + escapeHtml(e && e.message ? e.message : e) + '</p>';
+    });
+  }
+
+  function loadMockList() {
+    global.GK.api('/me/fenbi/mock/exams').then(function (d) {
+      var el = document.getElementById('c10SyncList');
+      if (!el) return;
+      var exams = d.exams || [];
+      if (!exams.length) {
+        el.innerHTML = '<p style="color:var(--ink-3);text-align:center;padding:30px 0">还没有模考数据，请先返回点击「模考同步」</p>';
+        return;
+      }
+      var h = '<div style="color:var(--ink-3);font-size:12px;margin-bottom:8px">共 ' + exams.length + ' 份</div>';
+      h += '<div style="display:flex;flex-direction:column;gap:8px">';
+      exams.forEach(function (e) {
+        var isMock = e.sheet_type === 1;
+        var scoreTxt = isMock && e.fullmark
+          ? '<span style="color:var(--wood);font-weight:700;font-size:15px">' + e.score + '</span><span style="color:var(--ink-3);font-size:11px">/' + e.fullmark + ' 分</span>'
+          : '<span style="color:var(--ink-3);font-size:11.5px">练习</span>';
+        h +=
+          '<div onclick="C10.mockDetail(' + e.id + ')" style="border:1px solid var(--line-2);border-radius:9px;padding:10px 12px;cursor:pointer">' +
+            '<div style="display:flex;align-items:center;gap:8px">' +
+              '<span style="font-size:12.5px;font-weight:700;color:var(--ink);flex:1">' + escapeHtml(e.name) + '</span>' + scoreTxt +
+            '</div>' +
+            '<div style="color:var(--ink-3);font-size:11.5px;margin-top:4px">' +
+              '共 ' + e.question_count + ' 题 · ' +
+              '<span style="color:var(--good)">对 ' + e.correct_count + '</span> · ' +
+              '<span style="color:var(--bad)">错 ' + e.wrong_count + '</span> · 未答 ' + e.unanswered +
+              (e.submit_time ? ' · ' + escapeHtml(String(e.submit_time).slice(0, 16)) : '') +
+            '</div>' +
+          '</div>';
+      });
+      h += '</div>';
+      el.innerHTML = h;
+    }).catch(function (e) {
+      var el = document.getElementById('c10SyncList');
+      if (el) el.innerHTML = '<p style="color:var(--bad);text-align:center">加载失败：' + escapeHtml(e && e.message ? e.message : e) + '</p>';
+    });
+  }
+
+  function mockDetail(eid) {
+    global.GK.api('/me/fenbi/mock/exams/' + eid).then(function (d) {
+      var body = document.getElementById('c10Body');
+      if (!body) return;
+      var rep = d.report || {};
+      var basic = {};
+      var courses = [];
+      (rep.subReports || []).forEach(function (s) {
+        if (s && s.score != null && s.fullmark != null && !basic.name) basic = s;
+        if (s && s.courseReports) courses = s.courseReports;
+      });
+      var answers = d.answers || [];
+      var wrongs = answers.filter(function (a) { return a.status === -1; });
+      var h = '<div onclick="C10.syncCenter(\'mock\')" style="color:var(--wood);font-size:12.5px;cursor:pointer;margin-bottom:10px">← 返回列表</div>';
+      h += '<div style="background:linear-gradient(135deg,var(--wood),var(--gold));color:#fff;border-radius:10px;padding:14px 16px">' +
+        '<div style="font-size:14.5px;font-weight:700">' + escapeHtml(d.name || '') + '</div>';
+      if (d.fullmark) {
+        h += '<div style="margin-top:6px;font-size:13px">得分 <span style="font-size:22px;font-weight:800">' + d.score + '</span> / ' + d.fullmark +
+          '<span style="opacity:.85;font-size:12px;margin-left:10px">难度 ' + (d.difficulty || '-') + '</span></div>';
+      }
+      if (d.submit_time) h += '<div style="opacity:.85;font-size:11.5px;margin-top:4px">提交于 ' + escapeHtml(String(d.submit_time).slice(0, 16)) + '</div>';
+      h += '</div>';
+      // 总览
+      h += '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<div style="flex:1;text-align:center;background:#f0f7ec;border-radius:8px;padding:8px 0"><div style="color:var(--good);font-weight:800;font-size:16px">' + d.correct_count + '</div><div style="color:var(--ink-3);font-size:10.5px">答对</div></div>' +
+        '<div style="flex:1;text-align:center;background:#fdf0f0;border-radius:8px;padding:8px 0"><div style="color:var(--bad);font-weight:800;font-size:16px">' + d.wrong_count + '</div><div style="color:var(--ink-3);font-size:10.5px">答错</div></div>' +
+        '<div style="flex:1;text-align:center;background:var(--paper-2);border-radius:8px;padding:8px 0"><div style="color:var(--ink-2);font-weight:800;font-size:16px">' + d.unanswered + '</div><div style="color:var(--ink-3);font-size:10.5px">未答</div></div>' +
+        '</div>';
+      // 分模块统计（整卷分析）
+      if (courses.length) {
+        h += '<div style="font-size:13px;font-weight:700;margin:14px 0 8px">📊 整卷分析</div>';
+        courses.forEach(function (c) {
+          var cs = c.courseStat || {};
+          var rate = cs.questionCount ? Math.round((cs.correctCount || 0) * 100 / cs.questionCount) : 0;
+          h += '<div style="margin-bottom:8px">' +
+            '<div style="display:flex;font-size:12px;align-items:center;gap:8px">' +
+              '<span style="width:70px;color:var(--ink-2)">' + escapeHtml(c.courseName || '') + '</span>' +
+              '<div style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden">' +
+                '<div style="height:100%;width:' + rate + '%;background:' + (rate >= 60 ? 'var(--good)' : 'var(--bad)') + ';border-radius:4px"></div></div>' +
+              '<span style="color:var(--ink-3);font-size:11px;width:88px;text-align:right">对 ' + (cs.correctCount || 0) + '/' + (cs.questionCount || 0) + ' · ' + rate + '%</span>' +
+            '</div></div>';
+        });
+      }
+      // 错题列表
+      h += '<div style="font-size:13px;font-weight:700;margin:14px 0 8px">❌ 错题（' + wrongs.length + '）</div>';
+      if (!wrongs.length) {
+        h += '<p style="color:var(--ink-3);font-size:12px">本次没有错题（或未作答）</p>';
+      }
+      wrongs.forEach(function (a, i) {
+        h +=
+          '<div style="border:1px solid #ffc9c9;background:#fffafa;border-radius:9px;padding:10px 12px;margin-bottom:8px">' +
+            '<div style="font-size:10.5px;color:var(--bad);font-weight:700;margin-bottom:3px">错题 ' + (i + 1) + '（ID ' + escapeHtml(a.question_id) + '）</div>' +
+            '<div style="font-size:12.5px;line-height:1.55">' + escapeHtml(String(a.content || '').slice(0, 120)) + '…</div>' +
+            (a.user_answer && a.user_answer !== 'null' ? '<div style="font-size:11.5px;color:var(--bad);margin-top:4px">我的答案：' + escapeHtml(fmtAnswer(a.user_answer)) + '</div>' : '') +
+            '<div style="font-size:11.5px;color:var(--good);margin-top:2px">正确答案：' + escapeHtml(fmtAnswer(a.correct_answer)) + '</div>' +
+            (a.analysis ? '<details style="margin-top:5px"><summary style="cursor:pointer;color:var(--wood);font-size:11.5px">查看解析</summary>' +
+              '<div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:4px">' + escapeHtml(String(a.analysis).slice(0, 300)) + '…</div></details>' : '') +
+          '</div>';
+      });
+      // 全部题目（折叠）
+      h += '<details style="margin-top:10px"><summary style="cursor:pointer;color:var(--wood);font-size:12.5px;font-weight:700">📄 全部 ' + answers.length + ' 题作答明细</summary><div style="margin-top:8px">';
+      answers.forEach(function (a) {
+        var mark = a.status === 1 ? '<span style="color:var(--good)">✔</span>'
+          : (a.status === -1 ? '<span style="color:var(--bad)">✘</span>' : '<span style="color:var(--ink-3)">—</span>');
+        h += '<div style="display:flex;gap:6px;font-size:11.5px;color:var(--ink-2);padding:3px 0;border-bottom:1px dashed var(--line)">' +
+          '<span style="width:16px">' + mark + '</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(String(a.content || '').slice(0, 50)) + '</span></div>';
+      });
+      h += '</div></details>';
+      body.innerHTML = h;
+      body.scrollTop = 0;
+    }).catch(function (e) {
+      showToast((e && e.message) || '加载失败', 'error');
+    });
+  }
+
+  function fmtAnswer(jsonStr) {
+    try {
+      var o = JSON.parse(jsonStr);
+      if (o == null) return '-';
+      if (typeof o.choice === 'string') {
+        return o.choice.split('').map(function (c) {
+          return String.fromCharCode(65 + parseInt(c, 10));
+        }).join(' ');
+      }
+      if (Array.isArray(o.choice)) {
+        return o.choice.map(function (c) {
+          return String.fromCharCode(65 + parseInt(c, 10));
+        }).join(' ');
+      }
+      return JSON.stringify(o);
+    } catch (e) { return String(jsonStr); }
   }
 
   function renderExpired(b) {
@@ -603,7 +868,10 @@
     regen: regen,
     unbind: unbind,
     printPlan: printPlan,
-    docxPlan: docxPlan
+    docxPlan: docxPlan,
+    startSync: startSync,
+    syncCenter: syncCenter,
+    mockDetail: mockDetail
   };
   global.GK.c10Ready = true;
 

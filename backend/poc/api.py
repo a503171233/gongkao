@@ -5841,14 +5841,19 @@ def _analysis_view(a: dict | None) -> dict | None:
 
 @app.get("/me/fenbi/binding")
 def me_fenbi_binding(authorization: str = Header(default="")):
-    """绑定状态 + 最近一次分析（进度/任务书）。"""
+    """绑定状态 + 最近一次分析（进度/任务书）+ 三同步计数（批次27）。"""
     user = _resolve_user(authorization)
     if user is None:
         raise HTTPException(401, "请先登录")
-    b = fenbi_bind_store.get_binding(user["user_id"])
-    latest = _analysis_view(fenbi_bind_store.latest_analysis(user["user_id"]))
+    uid = user["user_id"]
+    b = fenbi_bind_store.get_binding(uid)
+    if b:
+        b["wrong_count"] = fenbi_bind_store.wrong_count(uid)
+        b["collect_count"] = fenbi_bind_store.collect_count(uid)
+        b["mock_count"] = len(fenbi_bind_store.mock_exam_keys(uid))
+    latest = _analysis_view(fenbi_bind_store.latest_analysis(uid))
     if latest and latest["status"] == "done" and latest.get("report"):
-        latest["wrong_count"] = fenbi_bind_store.wrong_count(user["user_id"])
+        latest["wrong_count"] = fenbi_bind_store.wrong_count(uid)
     return {"binding": b, "latest": latest}
 
 
@@ -6056,6 +6061,128 @@ def admin_fenbi_bindings(authorization: str = Header(default="")):
     if not admin:
         raise HTTPException(403, "需要管理员权限")
     return {"bindings": fenbi_bind_store.list_bindings()}
+
+
+# ---------- 批次27 · 粉笔三大同步（错题/收藏/模考） ----------
+
+_FENBI_SYNC_KINDS = ("wrong", "collect", "mock")
+
+
+def _run_fenbi_sync(store: FenbiBindStore, uid: str, kind: str,
+                    sid: int) -> None:
+    """同步后台线程：拉取+落库+留痕（进度经 fenbi_sync_log 轮询）。"""
+    def _p(stage: str, pct) -> None:
+        store.update_sync(sid, stage=stage, progress=int(pct))
+
+    try:
+        if kind == "wrong":
+            total, saved = fenbi_bind.sync_wrong(store, uid, _p)
+        elif kind == "collect":
+            total, saved = fenbi_bind.sync_collect(store, uid, _p)
+        else:
+            total, saved = fenbi_bind.sync_mock(store, uid, _p)
+        store.update_sync(sid, status="done", stage="完成", progress=100,
+                          total=total, new_count=saved,
+                          done_at=fenbi_bind._now())
+        print(f"[fenbi-sync] {kind} user={uid} total={total} new={saved}",
+              flush=True)
+    except fenbi_bind.fenbi.FenbiAuthError:
+        store.set_binding_status(uid, "expired", check_ok=0)
+        store.update_sync(sid, status="failed", stage="登录态失效",
+                          error="粉笔登录态已失效，请重新绑定",
+                          done_at=fenbi_bind._now())
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        store.update_sync(sid, status="failed", stage="异常",
+                          error=str(e)[:200], done_at=fenbi_bind._now())
+
+
+class FenbiSyncReq(BaseModel):
+    kind: str                     # wrong / collect / mock
+
+
+@app.post("/me/fenbi/sync")
+def me_fenbi_sync(req: FenbiSyncReq,
+                  authorization: str = Header(default="")):
+    """触发三大同步之一（后台线程；同 kind running 去重 429）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    if req.kind not in _FENBI_SYNC_KINDS:
+        raise HTTPException(400, "未知同步类型（wrong/collect/mock）")
+    uid = user["user_id"]
+    b = fenbi_bind_store.get_binding(uid)
+    if not b or b.get("status") != "bound":
+        raise HTTPException(400, "请先绑定粉笔账号")
+    sid, err = fenbi_bind_store.start_sync(uid, req.kind)
+    if err:
+        raise HTTPException(429, err)
+    threading.Thread(target=_run_fenbi_sync, daemon=True,
+                     args=(fenbi_bind_store, uid, req.kind, sid)).start()
+    return {"ok": True, "sync_id": sid}
+
+
+@app.get("/me/fenbi/sync/status")
+def me_fenbi_sync_status(kind: str = "",
+                         authorization: str = Header(default="")):
+    """同步进度轮询：kind 指定看最新一条，否则返回最近 10 条留痕。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    uid = user["user_id"]
+    if kind:
+        return {"latest": fenbi_bind_store.latest_sync(uid, kind)}
+    return {"items": fenbi_bind_store.sync_history(uid, 10)}
+
+
+@app.get("/me/fenbi/wrongs")
+def me_fenbi_wrongs(limit: int = Query(20, ge=1, le=100),
+                    offset: int = Query(0, ge=0),
+                    authorization: str = Header(default="")):
+    """错题快照分页列表。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    rows, total = fenbi_bind_store.wrong_list(user["user_id"], limit, offset)
+    return {"items": rows, "total": total}
+
+
+@app.get("/me/fenbi/collects")
+def me_fenbi_collects(limit: int = Query(20, ge=1, le=100),
+                      offset: int = Query(0, ge=0),
+                      authorization: str = Header(default="")):
+    """收藏快照分页列表。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    rows, total = fenbi_bind_store.collect_list(user["user_id"], limit,
+                                                offset)
+    return {"items": rows, "total": total}
+
+
+@app.get("/me/fenbi/mock/exams")
+def me_fenbi_mock_exams(authorization: str = Header(default="")):
+    """已同步试卷/练习列表（含得分与对错统计）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    return {"exams": fenbi_bind_store.mock_exam_list(user["user_id"])}
+
+
+@app.get("/me/fenbi/mock/exams/{eid}")
+def me_fenbi_mock_exam_detail(eid: int,
+                              authorization: str = Header(default="")):
+    """试卷详情：基础统计 + 整卷分析（subReports）+ 全部题目作答明细。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    d = fenbi_bind_store.mock_exam_detail(user["user_id"], eid)
+    if not d:
+        raise HTTPException(404, "试卷不存在")
+    rep = d.get("report") or {}
+    rep.pop("userAnswers", None)      # 与 answers 表重复，瘦身
+    rep.pop("switchVO", None)
+    return d
 
 # =====================================================================
 # 批次18 · 申论批改 + 面试练习（学员自助训练模块）
