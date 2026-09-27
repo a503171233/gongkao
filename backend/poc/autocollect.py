@@ -1975,6 +1975,16 @@ def _gongkao_real_question_shape(q: dict) -> tuple[bool, str]:
         if (len(question) < 12 and not any(k in question for k in _REAL_Q_ASK)
                 and not re.search(r"[：:]", question)):
             return False, "选择题题干过短且无设问"
+        # 批次26-F 答案可信度门禁：答案字母必须都落在选项字母集合内
+        # （防 LLM 幻觉：answer='E' 而选项仅 A-D；兼容多选「ABD」与「（A）」「A.」等形态）
+        # 从源头拒收，比入库打 pending 更省——脏题根本不进题库。
+        from .study import _ans_letters, _option_keys as _opt_keys
+        ans_ls = _ans_letters(answer)
+        if not ans_ls:
+            return False, "选择题答案无法识别字母"
+        opt_ks = _opt_keys(opts)
+        if opt_ks and not set(ans_ls) <= opt_ks:
+            return False, "选择题答案超出选项范围"
 
     # 7) 判断题：题干过短、无设问、又非完整法条/常识陈述 → 疑似残缺伪题
     if qtype == "judge":

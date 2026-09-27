@@ -184,6 +184,69 @@ def normalize_source_type(raw) -> str:
     return ""
 
 
+# ============================================================
+# 批次26-F · 答案可信度门禁（防 LLM 幻觉答案入判分链路）
+# 两道校验，命中任一 → answer_status='pending'（待核，不参与判分）：
+#   a) 选项范围：choice 答案字母必须都 ∈ 选项字母集合（防 answer='E' 而选项只有 A-D）
+#   b) 解析一致性：解析中的"结论性字母"（故选X/正确答案为X…）必须与答案一致
+# 判分层 _answer_trusted 已有 pending 拦截；本函数负责入库时自动打标。
+# 设计取向：宽松防误伤——只认明确"结论模式"，排除式引用（A错误/B正确）不参与。
+# ============================================================
+
+_ANS_CONCL_PAT = re.compile(
+    r"(?:故本题选|故选|因此选|所以选|本题选|应选|答案为|答案是|答案[:：]|"
+    r"正确答案为|正确答案是|正确答案[:：])\s*([A-Ha-h])")
+_ANS_CONCL_JUDGE_PAT = re.compile(
+    r"(?:答案为|答案是|答案[:：]|正确答案为|正确答案是|正确答案[:：]|故选)\s*"
+    r"(对|错|正确|错误|√|×)")
+
+
+def _ans_letters(raw: str) -> list[str]:
+    """提取答案中的选项字母（支持单选 A、多选 ABD，容忍括号/标点/空格）。"""
+    return sorted({m.upper() for m in re.findall(r"[A-Ha-h]", str(raw or ""))})
+
+
+def _option_keys(options) -> set[str]:
+    """从选项列表解析字母键（"A. xxx"/"A、xxx"/["A xxx"] → {'A','B',...}）。"""
+    keys: set[str] = set()
+    for o in options or []:
+        m = re.match(r"\s*（?([A-Ha-h])）?\s*[.、．:：)）]?", str(o or "").strip())
+        if m:
+            keys.add(m.group(1).upper())
+    return keys
+
+
+def answer_consistency(qtype: str, answer: str,
+                       options=None, analysis: str = "") -> str:
+    """判定答案可信度：'' = 可信；'pending' = 待核（答案与选项/解析矛盾）。
+
+    仅 choice/judge 校验；essay 的 answer 是参考答案文本，不校验。
+    answer 为空不在此处理（入库层已拒空答案）。"""
+    if (qtype or "").strip() != "choice":
+        if (qtype or "").strip() == "judge":
+            m = _ANS_CONCL_JUDGE_PAT.search(str(analysis or ""))
+            if m:
+                concl = {"对": "对", "正确": "对", "√": "对",
+                         "错": "错", "错误": "错", "×": "错"}.get(m.group(1), "")
+                ans = {"对": "对", "正确": "对", "√": "对", "T": "对", "TRUE": "对",
+                       "错": "错", "错误": "错", "×": "错", "F": "错", "FALSE": "错",
+                       "X": "错"}.get(str(answer or "").strip(), "")
+                if concl and ans and concl != ans:
+                    return "pending"
+        return ""
+    ans_letters = _ans_letters(answer)
+    if not ans_letters:
+        return "pending"          # choice 无可识别答案字母 → 待核
+    opt_keys = _option_keys(options)
+    if opt_keys and not set(ans_letters) <= opt_keys:
+        return "pending"          # 答案字母超出选项范围（如 answer=E 而选项仅 A-D）
+    concl = {m.upper() for m in _ANS_CONCL_PAT.findall(str(analysis or ""))}
+    concl = {c for c in concl if c in (opt_keys or set(concl))}  # 解析引用不存在的选项不计
+    if concl and (set(ans_letters) != concl or len(concl) > 1):
+        return "pending"          # 解析结论与答案矛盾 / 解析自身结论互斥
+    return ""
+
+
 class StudyStore:
     """学习数据存储（收藏/错题/练习）。"""
 
@@ -692,17 +755,23 @@ class StudyStore:
                      source_type: str = "", source: str = "",
                      source_url: str = "",
                      ext_id: str = "",
+                     answer_status: str | None = None,
                      sensitive_check: bool = False) -> dict:
         """新增题库题目（管理端/CLI 用）。category_id 关联题型树节点（#24 R2）；
         images 为题干配图 URL 列表（#33 R2，白名单外 URL 自动剔除）；
         category 为课程大类（#35 R1，8 枚举，非法值兜底"综合"）；
         source_type/source 为题目来源（枚举类型 + 可选出处）；
+        answer_status：批次26-F 答案可信度标记——None=自动判定（选项范围+
+        解析一致性校验，矛盾打 'pending' 待核不参与判分）；显式传 ''/'pending'
+        则尊重调用方（可信来源如粉笔官方 API 可强制置可信）；
         sensitive_check=True 时启用 #10 入库敏感词守卫：题干/答案/解析任一
         命中敏感词即抛 ValueError（调用方决定拦截或标记，避免脏题入库）。"""
         if qtype not in ("choice", "judge", "essay"):
             raise ValueError("qtype 必须是 choice/judge/essay")
         if not question or not answer:
             raise ValueError("题目和答案必填")
+        if answer_status is None:
+            answer_status = answer_consistency(qtype, answer, options, analysis)
         if sensitive_check:
             from .sensitive import check_sensitive
             for field in (question, answer, analysis or ""):
@@ -721,17 +790,18 @@ class StudyStore:
                 """INSERT INTO question_bank
                    (teacher_id, qtype, question, options, answer, analysis, difficulty,
                     knowledge_point, category_id, images, enabled, created_at, category,
-                    source_type, source, source_url, ext_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)""",
+                    source_type, source, source_url, ext_id, answer_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)""",
                 (teacher_id, qtype, question, opts_json, answer, analysis,
                  max(1, min(5, int(difficulty))), knowledge_point or "",
                  (category_id or "").strip(), _imgs_json(images), now, n_cat,
                  n_source_type, (source or "").strip(), (source_url or "").strip(),
-                 (ext_id or "").strip()),
+                 (ext_id or "").strip(), (answer_status or "").strip()),
             )
             qid = cur.lastrowid
         return {"id": qid, "teacher_id": teacher_id, "qtype": qtype,
                 "question": question, "answer": answer,
+                "answer_status": (answer_status or "").strip(),
                 "knowledge_point": knowledge_point or "",
                 "category_id": (category_id or "").strip(),
                 "category": n_cat,
@@ -855,6 +925,9 @@ class StudyStore:
                     source_url=(it.get("source_url") or "").strip(),
                     # 批次12a：外部题源 ID（粉笔题 id 等），解析图重采/按源回查对齐键
                     ext_id=(it.get("ext_id") or "").strip(),
+                    # 批次26-F：答案可信度（缺省 None=入库时自动判定，矛盾打 pending）
+                    answer_status=(it.get("answer_status")
+                                   if isinstance(it.get("answer_status"), str) else None),
                     sensitive_check=sensitive_check,
                 )
             except ValueError:
