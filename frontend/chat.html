@@ -414,6 +414,12 @@ document.addEventListener('DOMContentLoaded', function () {
       <button class="row" onclick="TAB.run(function(){C12.openInterview()})"><i class="ric">🎤</i><span class="rtxt">面试练习<span class="rdesc">AI 模拟问答</span></span><i class="chev">›</i></button>
       <button class="row" onclick="TAB.run(function(){C7.openMessages()})"><i class="ric">🔔</i><span class="rtxt">消息中心<span class="rdesc">系统与互动消息</span></span><i class="chev">›</i></button>
     </div>
+    <div class="ios-group-title">账号</div>
+    <div class="ios-list">
+      <button class="row" id="meVipRow" onclick="TAB.run(function(){GK.openMembershipModal()})"><i class="ric">💎</i><span class="rtxt" id="meVipTxt">开通会员<span class="rdesc">AI 问答不限次 · 全功能畅用</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){GK.openSecuritySetup()})"><i class="ric">🔐</i><span class="rtxt">密保设置<span class="rdesc">用于找回密码</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){logout();setTimeout(function(){location.reload();},300);})"><i class="ric">🚪</i><span class="rtxt" style="color:var(--bad)">退出登录</span><i class="chev">›</i></button>
+    </div>
     <div class="ios-group-title">更多</div>
     <div class="ios-list">
       <button class="row" onclick="location.href='/student.html'"><i class="ric">🎓</i><span class="rtxt">学员中心<span class="rdesc">完整版功能门户</span></span><i class="chev">›</i></button>
@@ -587,6 +593,102 @@ window.EXAM = (function () {
   return { load: load };
 })();
 
+// 批次27-I · 功能面板「推入页面化」补丁（仅移动端生效，CSS 断点同款 720px）
+// 统一给功能面板（#c4Panel/.c-panel/id 以 Panel 结尾）加 iOS 式推入页壳：
+// 右侧滑入动画 + 顶部毛玻璃返回栏（标题取面板 h3 / 预置映射），点返回关闭面板。
+// 中央 hook：面板多为 JS 动态创建（c5/c6 复用 c4Panel、c7~c12 各自创建），
+// 用 MutationObserver 监听新增节点与 style 显隐切换，零侵入各功能模块。
+window.PGPAGE = (function () {
+  "use strict";
+  var TITLES = {
+    c4Panel: "练习", c5Panel: "模拟考试", c6Panel: "智能组卷",
+    c7Panel: "消息中心", c8Panel: "激励中心", c9Panel: "学习报告",
+    c10Panel: "粉笔提升计划", c11Panel: "申论批改", c12Panel: "面试练习"
+  };
+  function isMobile() {
+    return window.matchMedia("(max-width: 720px)").matches;
+  }
+  function pageTitle(p) {
+    var preset = TITLES[p.id];
+    var h3 = p.querySelector("h3");
+    var t = (h3 && h3.textContent || "").replace(/[✏️📝🧩📊📈🎯✍️🎤🔔🏆❌📌📅📖📚🧭🚪💎🔐]/g, "").trim();
+    if (!t && preset) t = preset;
+    return t || "详情";
+  }
+  function closePanel(p) {
+    var btn = p.querySelector(".close, [data-close], .panel-close");
+    if (btn) { btn.click(); return; }
+    if (p.parentNode) p.parentNode.removeChild(p);
+    else p.style.display = "none";
+  }
+  function insertNav(p, animate) {
+    var nav = document.createElement("div");
+    nav.className = "pg-nav";
+    nav.innerHTML = '<button class="pg-back" aria-label="返回">‹</button>' +
+      '<span class="pg-title"></span><i class="pg-dot"></i>';
+    nav.querySelector(".pg-title").textContent = pageTitle(p);
+    nav.querySelector(".pg-back").onclick = function () { closePanel(p); };
+    p.insertBefore(nav, p.firstChild);
+    // 推入动画：先落位屏外（armed），双 rAF 后滑入（in）
+    if (animate && !p.classList.contains("pg-in")) {
+      p.classList.add("pg-armed");
+      requestAnimationFrame(function () { requestAnimationFrame(function () {
+        p.classList.remove("pg-armed");
+        p.classList.add("pg-in");
+      }); });
+    }
+  }
+  function pageify(p) {
+    if (!isMobile()) return;
+    var nav = p.querySelector(".pg-nav");
+    if (nav) {
+      // 已有 nav：仅同步标题（c5/c6 复用 c4Panel 重写 innerHTML 时 h3 会变）
+      var t = pageTitle(p);
+      var el = nav.querySelector(".pg-title");
+      if (t && el.textContent !== t) el.textContent = t;
+      return;
+    }
+    // 无 nav：首次 或 innerHTML 重写把 nav 删了（c11/c12 模式）——重插
+    insertNav(p, true);
+  }
+  function isVisible(p) {
+    if (!p || !p.parentNode) return false;
+    var r = p.getBoundingClientRect();
+    return p.style.display !== "none" && r.width > 50 && r.height > 50;
+  }
+  function maybe(el) {
+    if (el && (el.id === "c4Panel" || /Panel$/.test(el.id || "") ||
+        (el.classList && el.classList.contains("c-panel")))) {
+      if (isVisible(el)) pageify(el);
+    }
+  }
+  var mo = new MutationObserver(function (muts) {
+    if (!isMobile()) return;
+    muts.forEach(function (m) {
+      // 新增节点：动态创建的面板
+      if (m.type === "childList" && m.addedNodes && m.addedNodes.length) {
+        m.addedNodes.forEach(function (n) {
+          if (n.nodeType !== 1) return;
+          maybe(n);
+          if (n.querySelectorAll) {
+            n.querySelectorAll('[id$="Panel"], .c-panel').forEach(maybe);
+          }
+        });
+      }
+      // 面板 innerHTML 重写（c5/c6 复用 c4Panel 的场景）：target 即面板
+      if (m.type === "childList") maybe(m.target);
+      // style 显隐切换：display 由 none → 可见
+      if (m.type === "attributes") maybe(m.target);
+    });
+  });
+  function boot() {
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+  return { pageify: pageify };
+})();
+
 // 批次27-G · 「我的」视图数据加载（数据源与 student.html 同族：
 // /me 头像身份 + /practice/stats + /me/incentive + /me/fenbi/binding 四卡）
 window.ME = (function () {
@@ -633,6 +735,17 @@ window.ME = (function () {
       var m = map[r.role] || map.free;
       var rb = document.getElementById("meRole");
       if (rb) { rb.textContent = m[0]; rb.className = "role-badge " + m[1]; rb.style.display = ""; }
+      // 账号组会员行：free=开通会员 / member=会员权益 / admin=隐藏
+      var vipRow = document.getElementById("meVipRow");
+      var vipTxt = document.getElementById("meVipTxt");
+      if (vipRow && vipTxt) {
+        if (r.role === "member") {
+          var days = r.days_remaining != null ? " · 剩余 " + r.days_remaining + " 天" : "";
+          vipTxt.innerHTML = "会员权益" + days + '<span class="rdesc">会员有效期与续费管理</span>';
+        } else if (r.role === "admin") {
+          vipRow.style.display = "none";
+        }
+      }
       document.getElementById("meLoginBtn").style.display = "none";
       document.getElementById("meStats").style.display = "";
       loadStats();
