@@ -1349,7 +1349,6 @@ def admin_moa_analysis_batch(
                     f"SELECT * FROM question_bank WHERE id IN ({marks})",
                     qids[:50]).fetchall()
             else:
-                limit_n = max(1, min(30, int(limit or 10)))
                 rows = conn.execute(
                     "SELECT * FROM question_bank WHERE qtype IN ('choice','judge') "
                     "AND TRIM(COALESCE(answer,''))<>'' "

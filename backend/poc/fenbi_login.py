@@ -380,10 +380,14 @@ class LoginSessionManager:
                 page.click('button:has-text("登录")')
                 page.wait_for_selector('input[placeholder="手机号"]',
                                        timeout=15000)
-                # 切扫码 tab：多候选文案（未实测，实弹后校准）
+                # 切扫码视图：2026-09-27 实测——弹窗右上角 54px 切换图标为
+                # .fenbi-login-modal-qr-code-wrap（注意 qr-code 带连字符），
+                # 点击后弹窗内出现 180x180 canvas 二维码
                 switched = False
-                for sel in ('text=扫码登录', 'text=扫一扫', 'text=APP 扫码',
-                            '[class*="qrcode"]'):
+                for sel in ('.fenbi-login-modal-qr-code-wrap',
+                            '.fenbi-login-modal-wrapper [class*="qr-code"]',
+                            'text=扫码登录', 'text=扫一扫', 'text=APP 扫码',
+                            '[class*="qr-code"], [class*="qrcode"]'):
                     try:
                         page.locator(sel).first.click(timeout=2500)
                         switched = True
@@ -396,8 +400,10 @@ class LoginSessionManager:
                     self._finish(s)
                     return
                 time.sleep(2.0)
-                qimg = page.locator('img[src*="qrcode"], img[class*="qr"],'
-                                    ' canvas').first
+                qimg = page.locator(
+                    '.fenbi-login-modal-wrapper canvas,'
+                    ' .fenbi-login-modal-wrapper img[src*="qr"],'
+                    ' img[src*="qrcode"], img[class*="qr"], canvas').first
                 try:
                     buf = qimg.screenshot(timeout=8000)
                     shot = base64.b64encode(buf).decode()
