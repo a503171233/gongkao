@@ -1077,7 +1077,7 @@ def _call_platform_llm(messages: list[dict], max_tokens: int = 2400) -> tuple[st
 
 @app.post("/me/question/ai-analysis")
 def question_ai_analysis(
-    question_id: int = Body(...),
+    question_id: int = Body(..., embed=True),
     authorization: str = Header(default=""),
 ):
     """AI 多角度解析：考点定位/解题思路/方法总结/易错警示/举一反三 + 答案交叉验证。
@@ -1097,18 +1097,25 @@ def question_ai_analysis(
         return {"cached": True, **cached, "answer_status": q.get("answer_status") or ""}
     if not _ai_tool_allow(user["user_id"], "ai", _AI_ANALYSIS_DAILY_LIMIT):
         raise HTTPException(status_code=429, detail="今日 AI 解析次数已达上限，明天再来")
-    try:
-        raw, model = _call_platform_llm(_ai_analysis_prompt(q))
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"AI 解析生成失败：{str(e)[:120]}")
-    try:
-        data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-    except Exception:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail="AI 输出无法解析，请重试")
+    # LLM 长 JSON 偶发截断/围栏污染：失败自动重试一次（频控只计一次）
+    data, model = None, ""
+    for _attempt in range(2):
+        try:
+            raw, model = _call_platform_llm(_ai_analysis_prompt(q))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"AI 解析生成失败：{str(e)[:120]}")
+        try:
+            data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+        except Exception:  # noqa: BLE001
+            data = None
+        if data and [s for s in (data.get("sections") or [])
+                     if isinstance(s, dict) and str(s.get("content") or "").strip()]:
+            break
+        data = None
+    if not data:
+        raise HTTPException(status_code=502, detail="AI 未产出有效解析，请重试")
     sections = [s for s in (data.get("sections") or [])
                 if isinstance(s, dict) and str(s.get("content") or "").strip()]
-    if not sections:
-        raise HTTPException(status_code=502, detail="AI 未产出有效解析，请重试")
     content = {"verdict": str(data.get("verdict") or "agree"),
                "reason": str(data.get("reason") or "")[:200],
                "sections": sections}
@@ -1119,7 +1126,7 @@ def question_ai_analysis(
 
 @app.post("/me/question/fenbi-search")
 def question_fenbi_search(
-    question_id: int = Body(...),
+    question_id: int = Body(..., embed=True),
     authorization: str = Header(default=""),
 ):
     """粉笔搜题核对答案：路径1 精确（题源为粉笔 → solutions 官方答案）+
@@ -1142,7 +1149,9 @@ def question_fenbi_search(
             "last_check_ok=1 ORDER BY bound_at DESC LIMIT 1").fetchone()
         if row:
             cookie = row["cookie"]
-    if cookie and str(q.get("ext_id") or "").strip().isdigit():
+    _ext = str(q.get("ext_id") or "").strip()
+    _fid = _ext.split(":", 1)[1] if _ext.startswith("fenbi:") else _ext
+    if cookie and _fid.isdigit():
         try:
             sols = fenbi_bind.fetch_solutions_batch(
                 cookie, [str(q["ext_id"]).strip()])
@@ -1178,7 +1187,7 @@ def question_fenbi_search(
 
 @app.post("/admin/answer-verify/fenbi")
 def admin_answer_verify_fenbi(
-    limit: int = Body(50),
+    limit: int = Body(50, embed=True),
     authorization: str = Header(default=""),
     x_admin_secret: str = Header(default=""),
 ):
