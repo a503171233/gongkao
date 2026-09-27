@@ -77,7 +77,9 @@
   .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
   .bar-row .name { width: 110px; text-align: right; color: var(--ink-2); flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bar-row .bar { flex: 1; background: var(--paper-2); border-radius: 6px; height: 22px; position: relative; overflow: hidden; }
-  .bar-row .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--wood), var(--gold)); border-radius: 6px; min-width: 2px; }
+  .bar-row .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--wood), var(--gold)); border-radius: 6px; min-width: 2px; transform-origin: left; animation: barGrow .7s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes barGrow { from { transform: scaleX(0); } }
+  .card .value { font-variant-numeric: tabular-nums; }
   .bar-row .bar i.warn { background: linear-gradient(90deg, var(--bad), #d98a7c); }
   .bar-row .val { width: 96px; font-weight: 600; color: var(--ink); flex-shrink: 0; font-size: 12.5px; }
   .error-banner { background: rgba(180,90,74,.10); color: var(--bad); border: 1px solid rgba(180,90,74,.30); border-radius: var(--radius-s); padding: 12px 16px; margin-bottom: 16px; font-size: 13.5px; display: none; }
@@ -133,7 +135,12 @@
   </div>
 
   <div class="error-banner" id="errBanner"></div>
-  <div class="cards" id="cards"></div>
+  <div class="cards" id="cards">
+    <div class="card"><div class="skel skel-line w70"></div><div class="skel skel-block"></div></div>
+    <div class="card"><div class="skel skel-line w50"></div><div class="skel skel-block"></div></div>
+    <div class="card"><div class="skel skel-line w85"></div><div class="skel skel-block"></div></div>
+    <div class="card"><div class="skel skel-line w60" style="width:60%"></div><div class="skel skel-block"></div></div>
+  </div>
 
   <div class="panel" style="margin-bottom:16px">
     <h3>🩺 系统健康（LLM 被动可用度窗口，最近 20 次 ask）</h3>
@@ -621,6 +628,42 @@ initCredential();
 initAutoRefresh();
 loadHealth();
 loadAll();
+</script>
+<script>
+// 批次26 · 统计卡数字滚动（MutationObserver 覆盖刷新/全部面板渲染）
+(function () {
+  "use strict";
+  function countUp(el) {
+    if (el.dataset.counted) return;
+    var raw = (el.textContent || "").trim().replace(/,/g, "");
+    var n = parseInt(raw, 10);
+    if (isNaN(n) || n <= 0 || n > 1e12 || !/^\d+$/.test(raw)) return;
+    el.dataset.counted = "1";
+    var t0 = performance.now(), dur = 900;
+    function step(ts) {
+      var p = Math.min((ts - t0) / dur, 1);
+      el.textContent = Math.round(n * (1 - Math.pow(1 - p, 3))).toLocaleString();
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  function scan(root) {
+    (root || document).querySelectorAll(".card .value").forEach(countUp);
+  }
+  var mo = new MutationObserver(function (muts) {
+    muts.forEach(function (m) {
+      m.addedNodes && m.addedNodes.forEach(function (nd) {
+        if (nd.nodeType === 1) scan(nd);
+      });
+    });
+  });
+  function boot() {
+    scan(document);
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
 </script>
 </body>
 </html>
