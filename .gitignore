@@ -68,6 +68,7 @@ scripts/regression.py
 backend/scripts/*
 !backend/scripts/seed_knowledge_tree.py
 !backend/scripts/annotate_knowledge_points.py
+!backend/scripts/moa_batch_run.py
 backend/tests/archive/
 backend/tests/_*.py
 backend/tests/probe_*.py
