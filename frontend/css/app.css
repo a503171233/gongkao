@@ -445,6 +445,9 @@ a:hover { color: var(--wood-deep); }
   transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
 .ms-grid .ms-item:active { transform: scale(.94); background: var(--gold-050); }
 .ms-grid .ms-item .mi { font-size: 22px; font-style: normal; }
+/* 批次27-D：学员中心入口置顶高亮 */
+.ms-grid .ms-item.ms-focus { background: linear-gradient(160deg, var(--gold-soft), rgba(230,211,172,.45));
+  border-color: var(--gold); color: var(--wood-deep); font-weight: 700; }
 .ms-sheet-mask { position: fixed; inset: 0; z-index: var(--z-tabbar);
   background: rgba(61,58,51,.32); opacity: 0; pointer-events: none;
   transition: opacity var(--dur) var(--ease-out); }
