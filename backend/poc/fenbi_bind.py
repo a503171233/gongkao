@@ -961,18 +961,160 @@ def _pick_samples(tree: list, raw_by_id: dict[str, dict],
     return samples
 
 
-def _build_prompt(dist: list[dict], samples: list[dict],
-                  total: int) -> str:
+def _shrink_dist(dist: list, max_chars: int = 12000) -> list:
+    """批次27-F 防御：知识点分布超长时按模块保留 total、每模块知识点截 top12
+    （万题级错题只是计数变大、知识点种类有限，正常不会触发；纯保险）。"""
     pts = json.dumps(dist, ensure_ascii=False)
+    if len(pts) <= max_chars:
+        return dist
+    out = []
+    for m in dist:
+        m = dict(m)
+        p = sorted(m.get("points") or [],
+                   key=lambda x: int(x.get("count") or 0), reverse=True)[:12]
+        m["points"] = p
+        out.append(m)
+    return out
+
+
+def _parse_mock_report(report_json: str) -> tuple[dict, list[dict]]:
+    """批次27-F：解析一份模考 getReport 原样 JSON → (整卷信息, 模块级行)。
+    basic 取 subReports 中 type=0（time=计划秒数/score/fullmark）与
+    courseStat（elapseTime 实际用时/answerCount/questionCount）；
+    模块行取 type=1 → courseReports[0].details[] 顶层
+    （name/time 秒/questionCount/correctCount；time=0 且对 0 = 整场未作答）。
+    结构不符返回 (None, [])。"""
+    try:
+        obj = json.loads(report_json) if report_json else {}
+        if isinstance(obj, str):          # 兼容被二次 dumps 的存量数据
+            obj = json.loads(obj)
+    except ValueError:
+        return None, []
+    if not isinstance(obj, dict):
+        return None, []
+    srs = obj.get("subReports") or []
+    if not isinstance(srs, list):
+        return None, []
+    basic = None
+    mod_rows: list[dict] = []
+    for s in srs:
+        if not isinstance(s, dict):
+            continue
+        if s.get("type") == 0 and basic is None:
+            basic = {"plan_sec": int(s.get("time") or 0),
+                     "score": s.get("score"), "fullmark": s.get("fullmark")}
+        elif s.get("type") == 1 and not mod_rows:
+            crs = s.get("courseReports") or []
+            if crs and isinstance(crs[0], dict):
+                cs = crs[0].get("courseStat") or {}
+                basic = dict(basic or {})
+                basic.update({
+                    "elapsed_sec": int(cs.get("elapseTime") or 0),
+                    "answered": int(cs.get("answerCount") or 0),
+                    "total": int(cs.get("questionCount") or 0)})
+                for d in crs[0].get("details") or []:
+                    if isinstance(d, dict) and d.get("type") == 1:
+                        mod_rows.append({
+                            "module": str(d.get("name") or ""),
+                            "time": int(d.get("time") or 0),
+                            "qc": int(d.get("questionCount") or 0),
+                            "cc": int(d.get("correctCount") or 0)})
+    return basic, mod_rows
+
+
+def _extract_mock_time(store, user_id: str, limit: int = 3) -> dict | None:
+    """批次27-F：最近模考的时间分配画像（供任务书时间分配建议）。
+    exams=最近场次整卷数据；modules=跨场聚合（含「整场未作答」计数）。
+    无任何可用模考数据返回 None——调用方据此跳过时间段。"""
+    try:
+        with store._connect() as conn:
+            rows = conn.execute(
+                "SELECT name, score, fullmark, question_count, correct_count,"
+                " duration_sec, submit_time, report_json FROM fenbi_mock_exams"
+                " WHERE user_id=? ORDER BY submit_time DESC LIMIT ?",
+                (user_id, limit)).fetchall()
+    except Exception:  # noqa: BLE001  表缺失等一律降级为无画像
+        return None
+    exams: list[dict] = []
+    agg: dict[str, dict] = {}
+    for r in rows:
+        basic, mod_rows = _parse_mock_report(r["report_json"])
+        if basic is None:
+            continue
+        if basic.get("score") is not None:
+            exams.append({
+                "name": str(r["name"] or "")[:40],
+                "score": basic.get("score"), "fullmark": basic.get("fullmark"),
+                "plan_sec": basic.get("plan_sec"),
+                "elapsed_sec": basic.get("elapsed_sec"),
+                "answered": basic.get("answered"), "total": basic.get("total"),
+                "submit_time": str(r["submit_time"] or "")[:10]})
+        for m in mod_rows:
+            name = m["module"] or "未知模块"
+            a = agg.setdefault(name, {
+                "module": name, "attempted_qc": 0, "correct": 0,
+                "total_sec": 0, "unanswered_exams": 0})
+            if m["qc"] > 0 and (m["time"] > 0 or m["cc"] > 0):
+                a["attempted_qc"] += m["qc"]
+                a["correct"] += m["cc"]
+                a["total_sec"] += m["time"]
+            else:
+                a["unanswered_exams"] += 1
+    if not exams and not agg:
+        return None
+    modules = []
+    for a in agg.values():
+        a["avg_sec_per_q"] = (round(a["total_sec"] / a["attempted_qc"], 1)
+                              if a["attempted_qc"] else 0)
+        a["correct_rate"] = (round(a["correct"] / a["attempted_qc"], 2)
+                             if a["attempted_qc"] else 0)
+        modules.append(a)
+    modules.sort(key=lambda x: (x["attempted_qc"], x["total_sec"]),
+                 reverse=True)
+    return {"exams": exams, "modules": modules}
+
+
+def _build_prompt(dist: list[dict], samples: list[dict],
+                  total: int, time_profile: dict | None = None) -> str:
+    """构建任务书生成 prompt。time_profile 非空时追加模考时间数据段，
+    并要求输出 time_plan（模考时间分配建议）键。"""
+    pts = json.dumps(_shrink_dist(dist), ensure_ascii=False)
     smp = json.dumps(samples[:24], ensure_ascii=False)
+    has_tp = bool(time_profile
+                  and (time_profile.get("exams") or time_profile.get("modules")))
+    time_seg = ""
+    time_rule = ""
+    time_schema = ""
+    time_ask = ""
+    if has_tp:
+        tp = json.dumps(time_profile, ensure_ascii=False)
+        time_seg = (
+            "\n【模考作答与时间分配】（exams=最近场次整卷：plan_sec=计划时长秒/"
+            "elapsed_sec=实际用时/answered·total=作答题数；modules=分模块跨场聚合："
+            "attempted_qc=有作答题次累计/avg_sec_per_q=作答题平均每题秒数"
+            "（行测基准约 55 秒/题）/correct_rate=累计正确率/"
+            "unanswered_exams=该模块整场未作答（放弃）的次数）\n" + tp + "\n")
+        time_rule = ("- 必须结合模考时间数据分析：耗时远超基准且正确率低→提速策略；"
+                     "耗时合理正确率高→保持；unanswered_exams>0 的模块给出"
+                     "「攻坚还是策略性放弃」的明确取舍（资料分析/判断推理/言语性价比高"
+                     "不建议放弃；数量关系可后置但需保底）\n")
+        time_schema = (
+            ',\n  "time_plan": [\n'
+            '    {"module": "模块名", "issue": "时间分配问题30字内", '
+            '"suggestion": "具体分配建议50字内（含秒数/题量）"}\n  ]')
+        time_ask = ("- time_plan 给 4~8 条，按模块组织：issue 指出时间分配问题"
+                    "（耗时超标/整场放弃/提速空间），suggestion 给出具体到秒数或题量的建议"
+                    "（如「资料分析保持 80 秒/题，整卷预留 30 分钟」）\n")
+    else:
+        time_rule = ("- 若学员错题显示某模块占比过高，在 advice 中给出针对性的"
+                     "时间投入建议\n")
     return f"""你是公务员考试备考规划专家。请基于学员的粉笔行测错题数据，生成一份专属提升计划任务书。
 
 【学员错题分布】（module=模块, total=该模块错题数, points=知识点级分布；总错题 {total} 道）
 {pts}
 
 【代表错题样本】（每模块抽高/低难度代表题，difficulty10 为粉笔 1-10 难度，solution_excerpt 为解析节选）
-{smp}
-
+{smp}{time_seg}
 请严格按以下 JSON 格式输出，不要输出 JSON 以外的任何内容：
 {{
   "summary": "总体诊断（错题结构、强弱模块格局、备考建议方向），220字以内",
@@ -985,23 +1127,73 @@ def _build_prompt(dist: list[dict], samples: list[dict],
       "tasks": [
         {{"slot": "周一晚/周三晚/周末上午 等时间槽", "title": "任务名", "detail": "具体做法与目标，60字内", "minutes": 60}}
       ]}}
-  ]
+  ]{time_schema}
 }}
 
 要求：
 - weak_points 给 5~8 个，按严重程度排序，必须来自分布中的真实知识点
 - advice 给 3~5 条，针对性回应错题结构（如某模块占比高给出专项策略）
-- weeks 恰好 4 周，从基础巩固到冲刺递进；每周 3~5 个任务；任务要具体可执行（含题量/时长）
-- 全文使用中文"""
+{time_rule}- weeks 恰好 4 周，从基础巩固到冲刺递进；每周 3~5 个任务；任务要具体可执行（含题量/时长）
+{time_ask}- 全文使用中文"""
 
 
-_DEFAULT_REPORT = {"summary": "", "weak_points": [], "advice": [], "weeks": []}
+_DEFAULT_REPORT = {"summary": "", "weak_points": [], "advice": [],
+                   "weeks": [], "time_plan": []}
 
 
-def _fallback_report(dist: list, raw_by_id: dict, total: int) -> dict:
+def _local_time_plan(time_profile: dict | None) -> list[dict]:
+    """批次27-F：本地规则生成模考时间分配建议（零 LLM，供降级版任务书）。
+    规则：每题耗时 >90s=提速；50-90s 且正确率<60%=基础优先；正确率>=70%=保持；
+    整场未作答模块给取舍建议（性价比高的劝攻、数量关系允许后置）。"""
+    if not time_profile:
+        return []
+    out = []
+    for m in time_profile.get("modules") or []:
+        spq = float(m.get("avg_sec_per_q") or 0)
+        cr = float(m.get("correct_rate") or 0)
+        name = str(m.get("module") or "")
+        una = int(m.get("unanswered_exams") or 0)
+        qc = int(m.get("attempted_qc") or 0)
+        if qc and spq > 90:
+            out.append({"module": name,
+                        "issue": f"每题 {int(spq)} 秒远超 55 秒基准"
+                                 + (f"，正确率 {int(cr*100)}%" if cr else ""),
+                        "suggestion": "先练速度：该模块限时 "
+                                      f"{max(60, int(spq*0.6))} 秒/题，"
+                                      "简单题先做难题后置，超 90 秒果断标记跳过"})
+        elif qc and 50 <= spq <= 90 and cr < 0.6:
+            out.append({"module": name,
+                        "issue": f"速度尚可（{int(spq)} 秒/题）但正确率仅 "
+                                 f"{int(cr*100)}%",
+                        "suggestion": "时间先投基础：错误题型回炉讲义与错题本，"
+                                      "正确率到 70% 前不追求提速"})
+        elif qc and spq < 40 and cr < 0.6:
+            out.append({"module": name,
+                        "issue": f"答题过快（{int(spq)} 秒/题）但正确率仅 "
+                                 f"{int(cr*100)}%，疑似仓促作答",
+                        "suggestion": "刻意放慢：读题圈关键信息再作答，"
+                                      "目标 50-60 秒/题，正确率优先于速度"})
+        elif qc and cr >= 0.7:
+            out.append({"module": name,
+                        "issue": f"节奏健康（{int(spq)} 秒/题，正确率 "
+                                 f"{int(cr*100)}%）",
+                        "suggestion": "保持当前节奏，每周 1 次限时整段练习维持手感"})
+        if una >= 1 and not qc:
+            give_up_ok = name in ("数量关系", "常识判断")
+            out.append({"module": name,
+                        "issue": f"最近 {una} 场整场未作答（放弃）",
+                        "suggestion": ("性价比低可策略性后置：最后 10 分钟凭直觉全选"
+                                       "同一选项保底" if give_up_ok else
+                                       "性价比高不建议放弃：先保底完成前 60% 简单题"
+                                       "（正确率可达 70%），难题放弃")})
+    return out[:8]
+
+
+def _fallback_report(dist: list, raw_by_id: dict, total: int,
+                     time_profile: dict | None = None) -> dict:
     """批次27-E 极端兜底：AI 全败时的本地统计报告（零 LLM 依赖）。
-    结构与 LLM 报告一致（summary/weak_points/advice/weeks），前端零改动可渲染；
-    数据全部来自本轮已拉取的分布树与错题快照。"""
+    结构与 LLM 报告一致（summary/weak_points/advice/weeks/time_plan），前端零改动可渲染；
+    数据全部来自本轮已拉取的分布树与错题快照（批次27-F 起含模考时间画像）。"""
     mods = sorted(dist or [], key=lambda m: int(m.get("total") or 0),
                   reverse=True)
     total_eff = sum(int(m.get("total") or 0) for m in mods) or total or 1
@@ -1051,8 +1243,14 @@ def _fallback_report(dist: list, raw_by_id: dict, total: int) -> dict:
     if len(weeks) < 3:
         weeks.append({"theme": "综合模拟检验", "goal": "整卷体验与查漏",
                       "tasks": [{"time": "本周", "desc": "完成一次完整模考，对照分布检查薄弱模块是否改善"}]})
+    time_plan = _local_time_plan(time_profile)
+    if time_plan:
+        slow = [t for t in time_plan if "秒" in t.get("issue", "")]
+        head = ("时间分配上，" + "；".join(t["module"] for t in slow[:2]) + " 需重点调整。"
+                if slow else "时间分配建议见 time_plan 区块。")
+        summary += head
     return {"summary": summary, "weak_points": weak_points,
-            "advice": advice, "weeks": weeks}
+            "advice": advice, "weeks": weeks, "time_plan": time_plan}
 
 
 def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
@@ -1121,7 +1319,8 @@ def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
 
         _p("AI 生成提升计划", 70)
         samples = _pick_samples(tree, raw_by_id)
-        prompt = _build_prompt(dist, samples, len(qids))
+        time_profile = _extract_mock_time(store, user_id)  # 批次27-F 模考时间画像
+        prompt = _build_prompt(dist, samples, len(qids), time_profile)
         report = dict(_DEFAULT_REPORT)
         degraded = False
         llm_err = ""
@@ -1163,7 +1362,8 @@ def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
                           f"{llm_err}", flush=True)
             if not report.get("summary"):
                 degraded = True
-                report = _fallback_report(dist, raw_by_id, len(qids))
+                report = _fallback_report(dist, raw_by_id, len(qids),
+                                          time_profile)
 
         if degraded:
             store.update_analysis(

@@ -615,6 +615,19 @@
         adv.map(function (a) { return '<li>' + escapeHtml(a) + '</li>'; }).join('') + '</ol>';
     }
 
+    // 批次27-F：模考时间分配建议（time_plan 为可选键，旧报告/无模考数据不渲染）
+    var tpn = rep.time_plan || [];
+    if (tpn.length) {
+      h += card('⏱', '模考时间分配');
+      h += tpn.map(function (t) {
+        return '<div style="margin:9px 0;padding:9px 11px;background:var(--paper-2);border-radius:8px;border-left:3px solid var(--gold)">' +
+          '<div style="font-size:12.5px;font-weight:700">' + escapeHtml(t.module || '') + '</div>' +
+          '<div style="font-size:11.5px;color:#a05a1f;margin-top:2px">⚠ ' + escapeHtml(t.issue || '') + '</div>' +
+          '<div style="font-size:12px;line-height:1.7;margin-top:3px">' + escapeHtml(t.suggestion || '') + '</div>' +
+          '</div>';
+      }).join('');
+    }
+
     // 4 周计划
     var weeks = rep.weeks || [];
     if (weeks.length) {

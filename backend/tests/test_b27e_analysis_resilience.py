@@ -206,12 +206,25 @@ def _main():
         return "全局通道正常输出"
     llm_biz.call_llm = fake_call_llm
     try:
+        # 27-F 语义：全局有凭据时才回退全局
+        api.store._GLOBAL.api_key = "sk-global"
         out = api._grade_llm_call([{"role": "user", "content": "hi"}],
                                   api.cfg.get_teacher("T001"), max_tokens=100)
         chk("eff 空输出回退全局", out == "全局通道正常输出"
             and [s["model"] for s in seen] == ["flash-x", None])
+        # 27-F 语义：全局无凭据时不白跑，直报「空内容」而非「Key 未配置」
+        api.store._GLOBAL.api_key = ""
+        seen.clear()
+        try:
+            api._grade_llm_call([{"role": "user", "content": "hi"}],
+                                api.cfg.get_teacher("T001"), max_tokens=100)
+            chk("全局无凭据 报空内容语义", False)
+        except ValueError as ve:
+            chk("全局无凭据 报空内容语义", "空内容" in str(ve)
+                and len(seen) == 1)  # 只调了 eff，未白跑全局
     finally:
         api._get_aimodel = orig_eff
+        api.store._GLOBAL.api_key = ""
         llm_biz.call_llm = orig_call
 
     # 5b. 全局通道 key 未配置 → 快速失败清晰文案

@@ -1721,10 +1721,15 @@ def _grade_llm_call(messages, tcfg, max_tokens: int = 1500) -> str:
     场景会返回 HTTP 200 但 content 为空串（实测 deepseek-v4-flash），若接受空串
     会让上层把「空报告」当成功。"""
     from . import llm as llm_biz
+    from . import store as _store
     try:
         eff = _get_aimodel().effective_default()
-    except Exception:  # noqa: BLE001  注册表异常不阻断
+    except Exception as _eff_err:  # noqa: BLE001  注册表异常不阻断
+        print(f"[grade_llm] effective_default 异常：{type(_eff_err).__name__}: {str(_eff_err)[:80]}", flush=True)
         eff = {}
+    print(f"[grade_llm] eff通道 model={eff.get('model_id')} key_len={len((eff.get('api_key') or ''))} base_url={eff.get('base_url')}", flush=True)
+    eff_err: Exception | None = None
+    eff_empty = False   # eff 通道被调用但返回空（区别于「无 eff 通道可调」）
     if eff:
         try:
             out = llm_biz.call_llm(
@@ -1733,11 +1738,28 @@ def _grade_llm_call(messages, tcfg, max_tokens: int = 1500) -> str:
                 api_key=eff.get("api_key"), temperature=0.2)
             if out and out.strip():
                 return out
+            eff_empty = True
             print("[grade_llm] 默认模型返回空输出，回退全局通道", flush=True)
         except ValueError:
             raise
-        except Exception:  # noqa: BLE001  eff 通道失败 → 回退全局
-            pass
+        except Exception as e:  # noqa: BLE001  eff 通道失败 → 回退全局，但异常必须留痕
+            eff_err = e
+            print(f"[grade_llm] eff 通道调用失败：{type(e).__name__}: {str(e)[:150]}", flush=True)
+    # 批次27-F：全局通道仅在确有凭据时尝试——否则白跑且用「Key 未配置」
+    # 掩盖 eff 通道真实异常（生产实锤：eff 超时被静默吞掉，报错却是全局 key 缺失）
+    if not (_store._GLOBAL.api_key or "").strip():
+        if eff_err is not None:
+            raise ValueError(
+                f"AI 默认模型调用失败（{type(eff_err).__name__}: {str(eff_err)[:100]}）；"
+                "全局通道亦未配置 API Key，请在管理后台「AI 模型管理」检查模型连通性")
+        if eff_empty:
+            # eff key 有效但输出为空 + 全局无凭据：报「空内容」而非误导性的 Key 未配置
+            raise ValueError(
+                "AI 服务返回了空内容（模型可能过载或长文不稳），请稍后重试；"
+                "也可在管理后台「AI 模型管理」更换默认模型")
+        raise ValueError(
+            "LLM API Key 未配置：请在管理后台「AI 模型管理」设置可用默认模型，"
+            "或在 .env 配置全局 API_KEY 后重启服务")
     try:
         out = llm_biz.call_llm(messages, tcfg, max_tokens=max_tokens, temperature=0.2)
         if out and out.strip():
@@ -5881,8 +5903,30 @@ _fenbi_trigger_lock = threading.Lock()
 
 
 def _fenbi_llm_call(messages):
-    """任务书 LLM 通道：注册表默认模型优先（复用批改链路），输出长文 4000。"""
+    """任务书 LLM 通道（批次27-F 增强）：注册表强模型优先——生产实锤 flash 级
+    模型在「2233 错题长文 + JSON 输出」场景极不稳定（空输出/缺字段/截断混合），
+    任务书属低频高价值场景（6h 冷却），优先用 pro 级模型；全部不可用再回退
+    默认模型链（_grade_llm_call，含降级兜底）。输出长文 4000。"""
+    prefer_ids = ("deepseek-v4-pro", "claude-opus-4-8", "gpt-5.6-luna")
     tcfg = cfg.get_teacher("T001")
+    for mid in prefer_ids:
+        try:
+            m = _get_aimodel().get_model(mid)
+        except Exception:  # noqa: BLE001
+            m = None
+        if not (m and m.get("enabled") and (m.get("api_key") or "").strip()):
+            continue
+        try:
+            from . import llm as llm_biz
+            out = llm_biz.call_llm(
+                messages, tcfg, max_tokens=4000, model=m["model_id"],
+                base_url=m.get("base_url"), api_key=m.get("api_key"),
+                temperature=0.2)
+            if out and out.strip():
+                print(f"[fenbi_llm] 强模型 {mid} 生成成功（{len(out)} 字符）", flush=True)
+                return out
+        except Exception as e:  # noqa: BLE001  逐个尝试下一个
+            print(f"[fenbi_llm] 强模型 {mid} 失败：{type(e).__name__}: {str(e)[:100]}", flush=True)
     return _grade_llm_call(messages, tcfg, max_tokens=4000)
 
 
