@@ -249,7 +249,9 @@ function toggleNavGroup(id) {
   if (p) p.classList.toggle('open', !open);
 }
 
+let _tabSeq = 0;   // 切页时序令牌：慢渲染/慢 catch 不得覆盖新页面（修「登录后快速切用户管理报加载失败」竞态）
 async function switchTab(tab) {
+  const seq = ++_tabSeq;
   if (NAV_IDS[tab] && ('#/' + tab) !== (location.hash || '') && tab !== 'autocollect') {
     try { history.pushState(null, '', '#/' + tab); } catch (e) { location.hash = '#/' + tab; }
   }
@@ -288,7 +290,8 @@ async function switchTab(tab) {
     else if (tab === 'ac-content')   await renderAcContent();
     else if (tab === 'ac-logs')      await renderAcLogs();
   } catch (e) {
-    c.innerHTML = `<p class="err-tip">加载失败：${esc(e.message)}</p>`;
+    // 仅当本次切换仍是最新时才展示错误——旧页面的迟到崩溃不得覆盖新页面
+    if (seq === _tabSeq) c.innerHTML = `<p class="err-tip">加载失败：${esc(e.message)}</p>`;
   }
 }
 
@@ -329,6 +332,7 @@ async function loadDashboard() {
     admin('/admin/stats/teachers').catch(() => null),
     admin('/admin/questions/stats').catch(() => null),
   ]);
+  if (currentTab !== 'dashboard') return;   // 已切走：放弃渲染（元素已被新页替换，写回会 null 崩 + 覆盖新页）
 
   // 统计卡片
   const s = stats || { users: {}, teachers: {}, knowledge: {} };
@@ -343,6 +347,7 @@ async function loadDashboard() {
 
   // 图表：需要 Chart.js
   await ensureChartJs();
+  if (currentTab !== 'dashboard') return;   // Chart.js 网络加载期间可能已切页
   const chartData = [];
 
   // 1) 今日新增用户：用 overview 的今日数值 + 额度 by_day 做近似趋势
@@ -1266,16 +1271,29 @@ async function showUserDetail(userId) {
   openModal('u-modal', `<h3>用户详情</h3><div class="loading">加载中…</div>`);
   try {
     const u = await admin(`/admin/users/${userId}`);
+    const fb = u.fenbi;
+    const st = u.study || {};
+    const acc = st.graded_count ? Math.round((st.correct_count || 0) * 100 / st.graded_count) : null;
     const box = $('#u-modal .modal-box');
     box.innerHTML = `
       <h3>用户详情 · ${esc(u.username)}</h3>
       <div class="detail-row"><span class="k">用户 ID</span><span class="v"><code>${esc(u.user_id)}</code></span></div>
       <div class="detail-row"><span class="k">用户名</span><span class="v">${esc(u.username)}</span></div>
       <div class="detail-row"><span class="k">角色</span><span class="v">${u.role === 'admin' ? '<span class="badge purple">管理员</span>' : u.role === 'member' ? '<span class="badge green">会员</span>' : '<span class="badge gray">免费</span>'}</span></div>
-      <div class="detail-row"><span class="k">今日已用</span><span class="v">${u.today_count ?? 0} 次</span></div>
-      <div class="detail-row"><span class="k">会员到期</span><span class="v">${u.member_expire_at ? fmtTime(u.member_expire_at) : '—'}</span></div>
-      <div class="detail-row"><span class="k">剩余天数</span><span class="v">${u.days_remaining ?? 0} 天</span></div>
+      <div class="detail-row"><span class="k">状态</span><span class="v">${(u.status || 'active') === 'active' ? '<span class="badge green">正常</span>' : '<span class="badge red">已禁用</span>'}</span></div>
+      <div class="detail-row"><span class="k">今日已用</span><span class="v">${u.today_count ?? 0} / ${u.daily_limit ?? 20} 次</span></div>
+      <div class="detail-row"><span class="k">会员到期</span><span class="v">${u.member_expire_at ? fmtTime(u.member_expire_at) : '—'}${u.days_remaining ? ` <span class="badge green">剩${u.days_remaining}天</span>` : ''}</span></div>
       <div class="detail-row"><span class="k">创建时间</span><span class="v">${fmtTime(u.created_at)}</span></div>
+      <div style="border-top:1px solid var(--line);margin:12px 0 8px;padding-top:10px;font-weight:700;font-size:13px">📚 学习数据</div>
+      <div class="detail-row"><span class="k">练习次数</span><span class="v">${st.practice_count ?? 0} 次</span></div>
+      <div class="detail-row"><span class="k">判分正确率</span><span class="v">${acc == null ? '—（暂无判分记录）' : acc + '%（对 ' + (st.correct_count ?? 0) + ' / 判 ' + st.graded_count + '）'}</span></div>
+      <div class="detail-row"><span class="k">错题本</span><span class="v">${st.mistake_count ?? 0} 题</span></div>
+      <div style="border-top:1px solid var(--line);margin:12px 0 8px;padding-top:10px;font-weight:700;font-size:13px">🎯 粉笔账号</div>
+      ${fb ? `
+      <div class="detail-row"><span class="k">绑定状态</span><span class="v">${fb.status === 'bound' ? '<span class="badge green">已绑定</span>' : fb.status === 'expired' ? '<span class="badge red">已失效</span>' : '<span class="badge gray">未绑定</span>'}${fb.phone ? ' <span class="mono">' + esc(fb.phone) + '</span>' : ''}</span></div>
+      ${fb.status === 'bound' ? `
+      <div class="detail-row"><span class="k">绑定时间</span><span class="v">${fb.bound_at ? fmtTime(fb.bound_at) : '—'}</span></div>
+      <div class="detail-row"><span class="k">同步数据</span><span class="v">错题 ${fb.wrong_count} · 收藏 ${fb.collect_count} · 模考卷 ${fb.mock_count} 份</span></div>` : ''}` : '<div class="detail-row"><span class="k">绑定状态</span><span class="v"><span class="badge gray">未绑定</span></span></div>'}
       <div class="modal-actions"><button class="btn ghost sm" onclick="closeModal('u-modal')">关闭</button></div>
     `;
   } catch (e) {

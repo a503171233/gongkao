@@ -303,6 +303,47 @@ def list_users_admin(limit: int = 200, offset: int = 0, q: str = "") -> list[dic
     return [dict(r) for r in rows]
 
 
+def _fenbi_brief(user_id: str) -> dict | None:
+    """粉笔绑定简报（绑定状态+三同步计数，fenbi_bind.db）。未绑定/异常 → None。"""
+    try:
+        from .fenbi_bind import FenbiBindStore
+        fbs = FenbiBindStore()
+        b = fbs.get_binding(user_id)
+        if not b:
+            return None
+        return {"status": b.get("status") or "none",
+                "phone": b.get("phone") or "",
+                "bound_at": b.get("bound_at") or "",
+                "wrong_count": fbs.wrong_count(user_id),
+                "collect_count": fbs.collect_count(user_id),
+                "mock_count": len(fbs.mock_exam_keys(user_id))}
+    except Exception:   # noqa: BLE001 — 简报失败不影响详情主数据
+        return None
+
+
+def _study_brief(user_id: str) -> dict:
+    """学习数据简报（练习/判分/错题，study.db）。表缺失容错归零。"""
+    try:
+        from .study import StudyStore
+        st = StudyStore()
+        with st._connect() as conn:
+            prac = conn.execute(
+                "SELECT COUNT(*) n,"
+                " SUM(CASE WHEN score>0 THEN 1 ELSE 0 END) ok,"
+                " SUM(CASE WHEN score>=0 THEN 1 ELSE 0 END) graded"
+                " FROM practice_logs WHERE user_id=?", (user_id,)).fetchone()
+            wrong = conn.execute(
+                "SELECT COUNT(*) n FROM mistakes WHERE user_id=?",
+                (user_id,)).fetchone()["n"]
+        return {"practice_count": int(prac["n"] or 0),
+                "graded_count": int(prac["graded"] or 0),
+                "correct_count": int(prac["ok"] or 0),
+                "mistake_count": int(wrong or 0)}
+    except Exception:   # noqa: BLE001
+        return {"practice_count": 0, "graded_count": 0,
+                "correct_count": 0, "mistake_count": 0}
+
+
 def get_user_admin(user_id: str) -> dict | None:
     auth = AuthStore()
     u = auth.get_user(user_id)
@@ -321,6 +362,8 @@ def get_user_admin(user_id: str) -> dict | None:
         "is_member": info.get("is_member", False),
         "days_remaining": info.get("days_remaining", 0),
         "daily_limit": info.get("daily_limit", 20),
+        "fenbi": _fenbi_brief(user_id),
+        "study": _study_brief(user_id),
     }
 
 
