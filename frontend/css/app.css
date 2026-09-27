@@ -159,9 +159,9 @@ a:hover { color: var(--wood-deep); }
 #sideVol .sv-empty { padding: 8px 2px; color: var(--ink-3); font-size: 12px; }
 
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); backdrop-filter: saturate(180%) blur(18px); -webkit-backdrop-filter: saturate(180%) blur(18px); background: rgba(246,241,231,.8); }
-header .logo { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, var(--wood), var(--gold)); color: #fffaf0; display: grid; place-items: center; font-weight: 800; font-size: 15px; flex-shrink: 0; }
-header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
+#main header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); backdrop-filter: saturate(180%) blur(18px); -webkit-backdrop-filter: saturate(180%) blur(18px); background: rgba(246,241,231,.8); }
+#main header .logo { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, var(--wood), var(--gold)); color: #fffaf0; display: grid; place-items: center; font-weight: 800; font-size: 15px; flex-shrink: 0; }
+#main header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
 .home-link { color: var(--ink-2); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 9px; transition: background .2s var(--spring); }
 .home-link:hover { background: rgba(139,94,60,.1); color: var(--wood-deep); }
 .teacher-tabs { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
@@ -176,7 +176,7 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
 .auth-btn:hover { border-color: var(--gold); color: var(--wood-deep); }
 .auth-btn.primary { background: var(--wood); color: #fffaf0; border-color: var(--wood); font-weight: 600; }
 .auth-btn.primary:hover { background: var(--wood-deep); }
-.head-btn { margin-left: 8px; padding: 7px 15px; border: 1px solid var(--gold-soft); border-radius: 999px; background: var(--card); color: var(--wood); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .25s var(--spring); white-space: nowrap; }
+.head-btn { margin-left: 8px; padding: 7px 15px; border: 1px solid var(--gold-soft); border-radius: 999px; background: var(--card); color: var(--wood); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .25s var(--spring); white-space: nowrap; display: inline-flex; align-items: center; min-height: 36px; }
 /* 批次25：功能按钮容器——桌面透明化（按钮仍直接参与 header flex），移动端变横滑工具条 */
 .tool-strip { display: contents; }
 .head-btn:hover { background: var(--gold-soft); transform: translateY(-1px); }
@@ -242,8 +242,8 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
   .layout { flex-direction: column; height: 100dvh; }
   #sidebar { width: 100%; height: auto; max-height: 30vh; border-right: none; border-bottom: 1px solid var(--line); }
   #sessionList { max-height: 18vh; }
-  header { padding: 10px 12px; gap: 8px; }
-  header h1 { font-size: 15px; }
+  #main header { padding: 10px 12px; gap: 8px; }
+  #main header h1 { font-size: 15px; }
   .teacher-tabs { width: 100%; order: 5; margin-left: 0; }
   #authArea { margin-left: 0; flex-wrap: wrap; }
   .head-btn { margin-left: 6px; padding: 6px 12px; font-size: 12.5px; }
@@ -263,9 +263,9 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
     background: var(--card) !important;
   }
   /* header 允许换行；按钮不压缩、保持触控尺寸 */
-  header { flex-wrap: wrap; row-gap: 6px; }
-  header .home-link { order: 1; }
-  header .logo, header h1 { order: 2; }
+  #main header { flex-wrap: wrap; row-gap: 6px; }
+  #main header .home-link { order: 1; }
+  #main header .logo, #main header h1 { order: 2; }
   .teacher-tabs { order: 3; width: auto; flex: 1 1 auto; min-width: 0; margin-left: 0;
     overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
   .teacher-tabs::-webkit-scrollbar { display: none; }
@@ -283,7 +283,7 @@ header h1 { font-size: 16px; white-space: nowrap; color: var(--ink); }
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
-  .glass-nav, header { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--paper); }
+  .glass-nav, #main header { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--paper); }
 }
 
 /* ============================================================
