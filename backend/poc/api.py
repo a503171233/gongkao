@@ -990,6 +990,203 @@ def delete_mistake(
     return {"deleted": mist_id, "success": ok}
 
 
+# ---------- 批次26-G · AI 多角度解析 + 粉笔搜题核对 ----------
+
+_ai_tool_usage: dict[str, tuple[str, int]] = {}
+_ai_tool_lock = threading.Lock()
+_AI_ANALYSIS_DAILY_LIMIT = 30     # 每用户每日 AI 解析生成上限（缓存命中不计）
+_FENBI_SEARCH_DAILY_LIMIT = 30    # 每用户每日粉笔搜题上限
+
+
+def _ai_tool_allow(user_id: str, kind: str, limit: int) -> bool:
+    """轻量每日频控（内存态，重启重置无害）：kind 区分 ai/search。"""
+    today = _dt.datetime.now().strftime("%Y-%m-%d")
+    key = f"{kind}:{user_id}"
+    with _ai_tool_lock:
+        d, n = _ai_tool_usage.get(key, ("", 0))
+        if d != today:
+            d, n = today, 0
+        if n >= limit:
+            return False
+        _ai_tool_usage[key] = (d, n + 1)
+        return True
+
+
+def _qbank_row(question_id: int) -> dict | None:
+    """取题库题（选项/答案/解析/图片），供解析与搜题端点共用。"""
+    with study_store._connect() as conn:
+        r = conn.execute(
+            "SELECT id, qtype, question, options, answer, analysis, "
+            "knowledge_point, category, answer_status, ext_id "
+            "FROM question_bank WHERE id=?", (question_id,)).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    try:
+        d["options"] = json.loads(d["options"]) if d["options"] else []
+    except Exception:  # noqa: BLE001
+        d["options"] = []
+    return d
+
+
+_AI_ANALYSIS_SECTIONS = ("考点定位", "解题思路", "方法总结", "易错警示", "举一反三")
+
+
+def _ai_analysis_prompt(q: dict) -> list[dict]:
+    """多角度解析 prompt：先独立解题再对照给定答案（答案交叉验证内建于生成）。"""
+    opts = "\n".join(str(o) for o in (q.get("options") or []))
+    sys_p = (
+        "你是公务员考试资深讲师，擅长把一道题讲透，让学员学会解法并能举一反三。"
+        "请严格按 JSON 输出，不要输出 JSON 以外内容。")
+    user_p = (
+        "请对下面的题目做多角度深度讲解。要求：先自己独立解题得出结论，"
+        "再对照给定答案——若独立解题结论与给定答案不一致，verdict 填 doubt 并在 reason 说明；"
+        "一致则填 agree。五个小节全部要写，content 面向学员、条理清晰、"
+        "每节 60-180 字（解题思路可分步），不要空话套话。\n"
+        f"题目：{q.get('question')}\n"
+        + (f"选项：\n{opts}\n" if opts else "")
+        + f"给定答案：{q.get('answer') or '（无）'}\n"
+        + (f"既有解析：{q.get('analysis')}\n" if q.get("analysis") else "")
+        + ('只返回一行 JSON：{"verdict":"agree|doubt","reason":"一句话核对结论",'
+           '"sections":[{"title":"考点定位","content":"…"},'
+           '{"title":"解题思路","content":"…"},{"title":"方法总结","content":"…"},'
+           '{"title":"易错警示","content":"…"},{"title":"举一反三","content":"…"}]}'))
+    return [{"role": "system", "content": sys_p},
+            {"role": "user", "content": user_p}]
+
+
+def _call_platform_llm(messages: list[dict], max_tokens: int = 2400) -> tuple[str, str]:
+    """平台默认模型调用（解析/搜题共用）。返回 (text, model_id)；失败抛异常。"""
+    from . import llm as llm_mod
+    cfg = Config()
+    tcfg = cfg.get_teacher(cfg.teacher_id)
+    eff = None
+    try:
+        from .models import get_ai_model_store
+        eff = get_ai_model_store().effective_default()
+    except Exception:  # noqa: BLE001
+        eff = None
+    kw = dict(max_tokens=max_tokens,
+              model=(eff or {}).get("model_id"),
+              temperature=(eff or {}).get("temperature"),
+              base_url=(eff or {}).get("base_url"),
+              api_key=(eff or {}).get("api_key"))
+    text = llm_mod.call_llm(messages, tcfg, **kw)
+    return text, (kw.get("model") or "default")
+
+
+@app.post("/me/question/ai-analysis")
+def question_ai_analysis(
+    question_id: int = Body(...),
+    authorization: str = Header(default=""),
+):
+    """AI 多角度解析：考点定位/解题思路/方法总结/易错警示/举一反三 + 答案交叉验证。
+    结果按题干签名缓存（同题跨用户复用，不重复烧 token）。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    q = _qbank_row(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    from .study import _norm_question
+    key = _norm_question(q["question"])
+    if not key:
+        raise HTTPException(status_code=400, detail="题干为空")
+    cached = study_store.get_ai_analysis(key)
+    if cached:
+        return {"cached": True, **cached, "answer_status": q.get("answer_status") or ""}
+    if not _ai_tool_allow(user["user_id"], "ai", _AI_ANALYSIS_DAILY_LIMIT):
+        raise HTTPException(status_code=429, detail="今日 AI 解析次数已达上限，明天再来")
+    try:
+        raw, model = _call_platform_llm(_ai_analysis_prompt(q))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"AI 解析生成失败：{str(e)[:120]}")
+    try:
+        data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="AI 输出无法解析，请重试")
+    sections = [s for s in (data.get("sections") or [])
+                if isinstance(s, dict) and str(s.get("content") or "").strip()]
+    if not sections:
+        raise HTTPException(status_code=502, detail="AI 未产出有效解析，请重试")
+    content = {"verdict": str(data.get("verdict") or "agree"),
+               "reason": str(data.get("reason") or "")[:200],
+               "sections": sections}
+    study_store.save_ai_analysis(key, content, model)
+    return {"cached": False, "content": content, "model": model,
+            "answer_status": q.get("answer_status") or ""}
+
+
+@app.post("/me/question/fenbi-search")
+def question_fenbi_search(
+    question_id: int = Body(...),
+    authorization: str = Header(default=""),
+):
+    """粉笔搜题核对答案：路径1 精确（题源为粉笔 → solutions 官方答案）+
+    路径2 本地相似（全库粉笔错题快照 difflib 匹配）。返回官方答案与解析候选。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    q = _qbank_row(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    if not _ai_tool_allow(user["user_id"], "search", _FENBI_SEARCH_DAILY_LIMIT):
+        raise HTTPException(status_code=429, detail="今日搜题次数已达上限，明天再来")
+    store = fenbi_bind_store
+    hits: list[dict] = []
+    via_solutions = False
+    cookie = ""
+    with store._connect() as conn:
+        row = conn.execute(
+            "SELECT cookie FROM fenbi_bindings WHERE status='bound' AND "
+            "last_check_ok=1 ORDER BY bound_at DESC LIMIT 1").fetchone()
+        if row:
+            cookie = row["cookie"]
+    if cookie and str(q.get("ext_id") or "").strip().isdigit():
+        try:
+            sols = fenbi_bind.fetch_solutions_batch(
+                cookie, [str(q["ext_id"]).strip()])
+            if sols:
+                s = sols[0]
+                from . import fenbi as fb
+                hits.append({
+                    "origin": "粉笔官方", "similarity": 1.0,
+                    "answer": fb._answer_letters(s),
+                    "analysis": fb._strip_html(str(s.get("solution") or ""))[:2000],
+                    "content": fb._strip_html(str(s.get("content") or ""))[:500],
+                    "source": str(s.get("source") or "")[:80],
+                    "keypoints": [str(k.get("name") or "") for k in
+                                  (s.get("keypoints") or [])[:5]]})
+                via_solutions = True
+        except Exception:  # noqa: BLE001  网络失败降级本地匹配
+            pass
+    local_hits = fenbi_bind.search_similar_local(store, q["question"], top=3)
+    for h in local_hits:
+        if via_solutions and str(h["question_id"]) == str(q.get("ext_id") or "").strip():
+            continue
+        hits.append({"origin": "粉笔题库（相似匹配）",
+                     "similarity": float(h["similarity"]),
+                     "answer": str(h["answer"] or ""),
+                     "analysis": str(h["analysis"] or "")[:2000],
+                     "content": str(h["content"] or "")[:500],
+                     "source": str(h["source"] or ""),
+                     "keypoints": []})
+    hits.sort(key=lambda x: (x.get("similarity") or 0), reverse=True)
+    return {"bound": bool(cookie), "hits": hits[:5],
+            "answer_status": q.get("answer_status") or ""}
+
+
+@app.post("/admin/answer-verify/fenbi")
+def admin_answer_verify_fenbi(
+    limit: int = Body(50),
+    authorization: str = Header(default=""),
+    x_admin_secret: str = Header(default=""),
+):
+    """管理端：pending 答案批量粉笔核对（一致清标记恢复判分，官方解析可回填）。"""
+    _require_admin(authorization, x_admin_secret)
+    return fenbi_bind.verify_answer_with_fenbi(fenbi_bind_store, limit=limit)
+
+
 # ---------- #16 错题强化重练：艾宾浩斯复习节奏 ----------
 @app.get("/review/due")
 def list_review_due(

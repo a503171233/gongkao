@@ -364,6 +364,145 @@ def fetch_solutions_batch(cookie: str, ids: list[str],
     return d.get("solutions") or []
 
 
+# ---------------- 批次26-G · 粉笔搜题（答案核对） ----------------
+
+def _norm_stem(text: str) -> str:
+    """题干匹配归一化：去图片占位/残留选项标记/空白/标点，只留可比对核心字符。"""
+    import re
+    t = re.sub(r"\[[^\]]{0,6}\]", "", text or "")      # [图] 等占位
+    # 独立选项标记（" A. " 行首/空格后的字母+明确标点），正文普通字母不受影响
+    t = re.sub(r"(?:^|\s)[A-DＡ-Ｄ][.、．:：]\s*", "", t)
+    t = re.sub(r"[\s\u3000]+", "", t)
+    t = re.sub(r"[，。；：、,. ;:;（）()\"'‘’“”？！?~～!！【】\[\]「」『』…·-]+", "", t)
+    return t
+
+
+def search_similar_local(store: "FenbiBindStore", stem: str,
+                         top: int = 3, min_sim: float = 0.45) -> list[dict]:
+    """本地粉笔题库相似题匹配（零网络零风控）：全库错题快照按归一化题干
+    difflib 相似度排序取 top。两段式加速：前 12 字签名预筛 → 精算相似度。
+    返回 [{question_id, content, options, answer, analysis, source,
+           difficulty, similarity}]，按相似度降序。"""
+    import difflib
+    q = _norm_stem(stem)
+    if len(q) < 8:
+        return []
+    pre = q[:12]
+    cands: list[tuple[str, sqlite3.Row]] = []
+    with store._connect() as conn:
+        rows = conn.execute(
+            "SELECT question_id, content, options, answer, analysis, source, "
+            "difficulty FROM fenbi_wrong_questions").fetchall()
+    for r in rows:
+        n = _norm_stem(r["content"])
+        if not n:
+            continue
+        # 预筛：签名重合（前 12 字任一子串命中）才进精算，全库 2233 行毫秒级
+        if pre[:6] not in n and n[:6] not in q and pre not in n and n[:12] not in q:
+            common = len(set(pre) & set(n[:24]))
+            if common < max(3, len(set(pre)) // 2):
+                continue
+        cands.append((n, r))
+    out: list[dict] = []
+    for n, r in cands[:400]:          # 精算上限：防极端长文本拖慢
+        sim = difflib.SequenceMatcher(None, q, n).ratio()
+        if sim >= min_sim:
+            out.append({"question_id": r["question_id"],
+                        "content": r["content"], "options": r["options"],
+                        "answer": r["answer"], "analysis": r["analysis"],
+                        "source": r["source"], "difficulty": r["difficulty"],
+                        "similarity": round(sim, 3)})
+    out.sort(key=lambda x: x["similarity"], reverse=True)
+    return out[:max(1, top)]
+
+
+def verify_answer_with_fenbi(store: "FenbiBindStore", limit: int = 50,
+                             interval: float = 2.0,
+                             local_min_sim: float = 0.80) -> dict:
+    """答案核对（管理端）：pending/待核题逐题核对。
+    路径1 精确：question_bank.ext_id 为粉笔题号 → solutions 端点取官方答案
+    （需任一有效绑定 Cookie）；路径2 相似：本地粉笔题库匹配 ≥local_min_sim。
+    一致 → answer_status 清空（恢复判分）；粉笔解析可回填原空解析。
+    返回核对报告 {checked, cleared, mismatched, unmatched, details}。"""
+    from . import fenbi as fb
+    from .study import get_study_store
+    ss = get_study_store()
+    cookie = ""
+    with store._connect() as conn:
+        row = conn.execute(
+            "SELECT cookie FROM fenbi_bindings WHERE status='bound' AND "
+            "last_check_ok=1 ORDER BY bound_at DESC LIMIT 1").fetchone()
+        if row:
+            cookie = row["cookie"]
+    details: list[dict] = []
+    cleared = mismatched = unmatched = 0
+    with ss._connect() as conn:
+        rows = conn.execute(
+            "SELECT id, qtype, question, options, answer, analysis, ext_id, "
+            "answer_status FROM question_bank WHERE qtype='choice' AND "
+            "COALESCE(answer_status,'')='pending' ORDER BY id LIMIT ?",
+            (max(1, min(200, int(limit))),)).fetchall()
+    for r in rows:
+        item = dict(r)
+        opts = []
+        try:
+            import json as _j
+            opts = _j.loads(item["options"]) if item["options"] else []
+        except Exception:  # noqa: BLE001
+            opts = []
+        fenbi_ans = ""
+        fenbi_analysis = ""
+        source = ""
+        sim = 0.0
+        via = ""
+        if cookie and str(item["ext_id"] or "").strip().isdigit():
+            try:
+                sols = fetch_solutions_batch(
+                    cookie, [str(item["ext_id"]).strip()], interval)
+                if sols:
+                    s = sols[0]
+                    fenbi_ans = fb._answer_letters(s)
+                    fenbi_analysis = fb._strip_html(str(s.get("solution") or ""))
+                    source = str(s.get("source") or "")[:80]
+                    sim, via = 1.0, "solutions"
+            except Exception:  # noqa: BLE001  网络失败走本地匹配兜底
+                pass
+        if not fenbi_ans:
+            hits = search_similar_local(store, item["question"], top=1,
+                                        min_sim=local_min_sim)
+            if hits:
+                h = hits[0]
+                fenbi_ans = str(h["answer"] or "").strip()
+                fenbi_analysis = str(h["analysis"] or "")
+                source = str(h["source"] or "")[:80]
+                sim, via = float(h["similarity"]), "local"
+        if not fenbi_ans:
+            unmatched += 1
+            details.append({"id": item["id"], "result": "unmatched"})
+            continue
+        lib = {c.upper() for c in str(item["answer"] or "") if c.isalpha()}
+        fb_l = {c.upper() for c in fenbi_ans if c.isalpha()}
+        consistent = bool(lib) and bool(fb_l) and lib == fb_l
+        if consistent:
+            new_analysis = item["analysis"] or fenbi_analysis
+            with ss._connect() as conn:
+                conn.execute(
+                    "UPDATE question_bank SET answer_status='', analysis=? "
+                    "WHERE id=?", (new_analysis, item["id"]))
+            cleared += 1
+            details.append({"id": item["id"], "result": "cleared",
+                            "via": via, "similarity": sim, "source": source})
+        else:
+            mismatched += 1
+            details.append({"id": item["id"], "result": "mismatch",
+                            "lib_answer": item["answer"],
+                            "fenbi_answer": fenbi_ans, "via": via,
+                            "similarity": sim})
+    return {"checked": len(details) + 0, "cleared": cleared,
+            "mismatched": mismatched, "unmatched": unmatched,
+            "details": details}
+
+
 # ---------------- 分析管线 ----------------
 
 def _flatten_tree(tree: list) -> list[dict]:

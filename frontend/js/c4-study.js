@@ -655,8 +655,14 @@
       }
 
       var noAnsTip = (d.has_answer === false)
-        ? '<div style="font-size:12px;color:#b06a00;background:#fff8e6;border:1px solid #ffe1a8;border-radius:6px;padding:4px 8px;margin-bottom:8px">本题暂无答案与解析，仅供练习，不计入正确率</div>'
-        : '';
+        ? '<div style="font-size:12px;color:#b06a00;background:#fff8e6;border:1px solid #ffe1a8;border-radius:6px;padding:4px 8px;margin-bottom:8px">本题暂无答案与解析，仅供练习，不计入正确率' +
+          (d.id != null ? ' <button onclick="C4.fenbiSearch(' + d.id + ', this)" style="margin-left:6px;padding:3px 10px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🔍 粉笔搜题找答案</button>' : '') +
+          '<div id="fenbiSearchBox" style="margin-top:6px"></div></div>'
+        : (d.answer_status === 'pending'
+          ? '<div style="font-size:12px;color:#b06a00;background:#fff8e6;border:1px solid #ffe1a8;border-radius:6px;padding:4px 8px;margin-bottom:8px">⏳ 本题答案待核（自动核对中），判分暂不计数' +
+            (d.id != null ? ' <button onclick="C4.fenbiSearch(' + d.id + ', this)" style="margin-left:6px;padding:3px 10px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🔍 粉笔搜题</button>' : '') +
+            '<div id="fenbiSearchBox" style="margin-top:6px"></div></div>'
+          : '');
 
       area.innerHTML = '<div style="padding:12px;background:var(--gold-soft);border-radius:8px;margin-bottom:12px">' +
         '<div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">【' + typeLabel + '】' + catBadge + '</div>' +
@@ -685,6 +691,14 @@
           if (!answer) { alert('请输入答案'); return; }
         }
         var btn = document.getElementById('submitPractice');
+        // 批次26-G：AI 解析 / 粉笔搜题 工具行（判分后展示）
+        function aiToolsHtml() {
+          if (d.id == null) return '';
+          return '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap" id="aiToolsRow">' +
+            '<button onclick="C4.aiAnalysis(' + d.id + ', this)" style="padding:6px 14px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🤖 AI 多角度解析</button>' +
+            '<button onclick="C4.fenbiSearch(' + d.id + ', this)" style="padding:6px 14px;border:1px solid var(--line-2);color:var(--ink-2);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🔍 粉笔搜题</button>' +
+            '</div><div id="aiAnalysisBox"></div><div id="fenbiSearchResult"></div>';
+        }
         btn.disabled = true;
         btn.textContent = '提交中...';
 
@@ -705,14 +719,24 @@
               '<strong>' + (ok ? '✓ 回答正确' : '✗ 回答错误') + '</strong>' +
               (log.feedback ? '<br><span style="font-size:13px;color:var(--ink-2)">' + escapeHtml(log.feedback) + '</span>' : '') +
               analysisHtml +
-              '</div>';
+              '</div>' + aiToolsHtml();
           } else if (d.has_answer === false) {
             // 无答案题（仅题干+选项的练习卷）：不判分、不记错题本、不触发 AI 批改
             wrong = false;
             result.innerHTML = '<div style="padding:8px;border-radius:6px;background:#fff8e6">' +
               '<strong>本题暂无答案</strong>' +
-              '<br><span style="font-size:13px;color:var(--ink-2)">答案与解析尚未采集到，本题仅作练习，不计入正确率。</span>' +
-              '</div>';
+              '<br><span style="font-size:13px;color:var(--ink-2)">答案与解析尚未采集到，本题仅作练习，不计入正确率。可用上方「粉笔搜题」或「AI 解析」辅助学习。</span>' +
+              '</div>' + aiToolsHtml();
+            btn.disabled = false;
+            btn.textContent = '提交';
+            return;
+          } else if ((d.type === 'choice' || d.type === 'judge') && d.answer_status === 'pending') {
+            // 批次26-G：答案待核题不走主观题 AI 批改分支——引导 AI 解析 + 粉笔搜题
+            wrong = false;
+            result.innerHTML = '<div style="padding:8px;border-radius:6px;background:#fff8e6">' +
+              '<strong>⏳ 本题答案待核</strong>' +
+              '<br><span style="font-size:13px;color:var(--ink-2)">系统检测到该题答案与解析存在矛盾，已暂停判分。可用「AI 解析」独立验证，或「粉笔搜题」比对官方答案。</span>' +
+              '</div>' + aiToolsHtml();
             btn.disabled = false;
             btn.textContent = '提交';
             return;
@@ -819,6 +843,90 @@
   }
 
   // -----------------------------------------------------------------
+  // 5.5 批次26-G · AI 多角度解析 + 粉笔搜题
+  // -----------------------------------------------------------------
+  function _aiBtnLoading(btn, txt) {
+    if (!btn) return;
+    btn.dataset.orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = txt;
+  }
+  function _aiBtnReset(btn) {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.textContent = btn.dataset.orig || btn.textContent;
+  }
+
+  function aiAnalysis(qid, btn) {
+    var box = document.getElementById('aiAnalysisBox');
+    if (!box) { box = document.createElement('div'); box.id = 'aiAnalysisBox';
+      var row = document.getElementById('aiToolsRow');
+      (row && row.parentNode) ? row.parentNode.insertBefore(box, row.nextSibling)
+        : document.body.appendChild(box); }
+    _aiBtnLoading(btn, '⏳ AI 解析生成中…');
+    box.innerHTML = '<div style="margin-top:6px;padding:8px;border-radius:6px;background:#fff;border:1px solid var(--line-2)">' +
+      '<div class="skel-line" style="width:60%"></div><div class="skel-line" style="width:90%"></div><div class="skel-line" style="width:80%"></div></div>';
+    global.GK.api('/me/question/ai-analysis', { method: 'POST', body: { question_id: qid } })
+      .then(function (r) {
+        _aiBtnReset(btn);
+        var c = r.content || {};
+        var secs = (c.sections || []).map(function (s) {
+          return '<div style="margin-top:8px"><div style="font-size:12px;font-weight:600;color:var(--wood);margin-bottom:3px">◆ ' +
+            escapeHtml(s.title || '') + '</div><div style="font-size:13px;color:var(--ink-1);white-space:pre-wrap;line-height:1.65">' +
+            renderQText(String(s.content || '')) + '</div></div>';
+        }).join('');
+        var verdictHtml = (c.verdict === 'doubt')
+          ? '<div style="margin:6px 0;padding:5px 8px;background:#fff8f0;border:1px solid var(--bad);border-radius:6px;font-size:12px;color:var(--bad)">⚠️ 答案交叉验证：AI 独立解题结论与给定答案不一致——' + escapeHtml(c.reason || '给定答案可能有误，请以老师讲解为准') + '</div>'
+          : '<div style="margin:6px 0;font-size:12px;color:var(--good)">✅ 答案交叉验证：' + escapeHtml(c.reason || 'AI 独立解题结论与给定答案一致') + '</div>';
+        box.innerHTML = '<div style="margin-top:8px;padding:10px;background:var(--gold-soft);border-radius:8px;animation:fadeSlide .3s var(--ease-out) both">' +
+          '<div style="font-weight:600;font-size:13px">🤖 AI 多角度解析' +
+          (r.cached ? ' <span style="font-size:11px;color:var(--ink-3)">(缓存)</span>' : '') + '</div>' +
+          verdictHtml + secs + '</div>';
+      })
+      .catch(function (e) {
+        _aiBtnReset(btn);
+        box.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--bad)">AI 解析失败：' + escapeHtml(e.message || '未知错误') + '</div>';
+      });
+  }
+
+  function fenbiSearch(qid, btn) {
+    var box = document.getElementById('fenbiSearchBox') ||
+              document.getElementById('fenbiSearchResult');
+    if (!box) { box = document.createElement('div'); box.id = 'fenbiSearchResult';
+      var row = document.getElementById('aiToolsRow');
+      (row && row.parentNode) ? row.parentNode.insertBefore(box, row.nextSibling)
+        : document.body.appendChild(box); }
+    _aiBtnLoading(btn, '⏳ 搜题中…');
+    box.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--ink-3)">正在粉笔题库中搜索本题…</div>';
+    global.GK.api('/me/question/fenbi-search', { method: 'POST', body: { question_id: qid } })
+      .then(function (r) {
+        _aiBtnReset(btn);
+        var hits = r.hits || [];
+        if (!hits.length) {
+          box.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--ink-2)">未在粉笔题库找到相似题目。可稍后再试，或用「AI 解析」辅助学习。</div>';
+          return;
+        }
+        var items = hits.map(function (h) {
+          var sim = Math.round((h.similarity || 0) * 100);
+          var ans = String(h.answer || '（未返回）');
+          return '<div style="margin-top:6px;padding:8px;background:#fff;border:1px solid var(--line-2);border-radius:6px;animation:fadeSlide .3s var(--ease-out) both">' +
+            '<div style="font-size:12px;color:var(--ink-3)">相似度 ' + sim + '% · ' + escapeHtml(h.origin || '') +
+            (h.source ? ' · ' + escapeHtml(h.source) : '') + '</div>' +
+            '<div style="font-size:13px;color:var(--good);font-weight:600;margin-top:2px">官方答案：' + escapeHtml(ans) + '</div>' +
+            (h.analysis ? '<div style="font-size:12px;color:var(--ink-2);margin-top:4px;white-space:pre-wrap;max-height:150px;overflow:auto"><b>📖 官方解析</b><br>' + renderQText(String(h.analysis)) + '</div>' : '') +
+            '</div>';
+        }).join('');
+        box.innerHTML = '<div style="margin-top:8px;padding:8px;background:var(--gold-soft);border-radius:8px">' +
+          '<div style="font-size:12px;font-weight:600">🔍 粉笔搜题结果（' + hits.length + ' 条）</div>' + items +
+          '<div style="font-size:11px;color:var(--ink-3);margin-top:4px">答案仅供比对学习；题库答案以管理端核对入库为准。</div></div>';
+      })
+      .catch(function (e) {
+        _aiBtnReset(btn);
+        box.innerHTML = '<div style="margin-top:6px;font-size:12px;color:var(--bad)">搜题失败：' + escapeHtml(e.message || '未知错误') + '</div>';
+      });
+  }
+
+  // -----------------------------------------------------------------
   // 6. 挂载对外 API
   // -----------------------------------------------------------------
   global.C4 = {
@@ -844,7 +952,9 @@
     addFavorite: addFavorite,
     practiceCategory: practiceCategory,
     practiceByKnowledge: practiceByKnowledge,
-    nextByKnowledge: nextByKnowledge
+    nextByKnowledge: nextByKnowledge,
+    aiAnalysis: aiAnalysis,
+    fenbiSearch: fenbiSearch
   };
   global.GK.c4Ready = true;
 

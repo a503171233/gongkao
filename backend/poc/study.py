@@ -456,6 +456,18 @@ class StudyStore:
                 "CREATE INDEX IF NOT EXISTS idx_study_plan_user "
                 "ON study_plans(user_id, teacher_id, active)")
 
+            # 批次26-G AI 多角度解析缓存：按题干签名共享（同题跨用户/老师复用）
+            conn.executescript("""
+            CREATE TABLE IF NOT EXISTS ai_analysis (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_key TEXT NOT NULL,
+                content      TEXT NOT NULL,   -- JSON {verdict,reason,sections:[{title,content}]}
+                model        TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL,
+                UNIQUE(question_key)
+            );
+            """)
+
         # 收藏分组平滑迁移：老库补 fav_group 列（列已存在则忽略，不阻断启动）
         try:
             with self._connect() as conn:
@@ -938,6 +950,35 @@ class StudyStore:
         return {"added": added, "skipped": skipped, "invalid": invalid,
                 "filtered": filtered, "dupe_source": dupe_source}
 
+    # ---------------- 批次26-G · AI 多角度解析缓存 ----------------
+
+    def get_ai_analysis(self, question_key: str) -> dict | None:
+        """按题干签名取缓存的 AI 解析；无缓存返回 None。"""
+        with self._connect() as conn:
+            r = conn.execute(
+                "SELECT content, model, created_at FROM ai_analysis "
+                "WHERE question_key=?", (question_key,)).fetchone()
+        if not r:
+            return None
+        try:
+            data = json.loads(r["content"])
+        except Exception:  # noqa: BLE001  缓存损坏视为无
+            return None
+        return {"content": data, "model": r["model"],
+                "created_at": r["created_at"]}
+
+    def save_ai_analysis(self, question_key: str, content: dict,
+                         model: str = "") -> None:
+        """写入/覆盖 AI 解析缓存（同题签名唯一）。"""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO ai_analysis(question_key, content, model, created_at) "
+                "VALUES (?,?,?,?) ON CONFLICT(question_key) DO UPDATE SET "
+                "content=excluded.content, model=excluded.model, "
+                "created_at=excluded.created_at",
+                (question_key, json.dumps(content, ensure_ascii=False),
+                 model or "", _now_iso()))
+
     def question_count_by_teacher(self) -> dict[str, int]:
         """#26 R3 每老师题目数汇总（老师管理速览列用）。返回 {teacher_id: count}。"""
         with self._connect() as conn:
@@ -1358,6 +1399,8 @@ class StudyStore:
             # 无答案题（仅题干+选项的练习卷）或答案待核题：前端据此提示"暂无答案"，
             # 不再误走主观题 AI 批改分支（score=-1 与"主观题待评"共用）
             "has_answer": self._answer_trusted(q),
+            # 批次26-F/G：answer_status 透传——pending 题前端走"待核+AI解析+搜题"分支
+            "answer_status": (q.get("answer_status") or ""),
         }
         if q["qtype"] != "choice":
             resp.pop("options", None)
