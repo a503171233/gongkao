@@ -327,15 +327,65 @@ document.addEventListener('DOMContentLoaded', function () {
   setTimeout(function () { renderSideVol(); }, 50);
 })();
 </script>
-<!-- 批次26 · 移动端底部 Tab（App 化导航）+ 更多菜单 -->
+<!-- 批次26/27-G · 移动端底部 Tab（App 化导航）：四 tab = 学习/题库/测考/我的 -->
 <div class="ms-sheet-mask" id="msMask" onclick="TAB.closeMore()"></div>
 <nav class="tabbar" id="tabbar" aria-label="底部导航">
   <button data-tab="chat" class="on" onclick="TAB.go('chat')"><i class="ti">📖</i>学习</button>
-  <button data-tab="practice" onclick="TAB.go('practice')"><i class="ti">📚</i>练习</button>
+  <button data-tab="practice" onclick="TAB.go('practice')"><i class="ti">📚</i>题库</button>
   <button data-tab="exam" onclick="TAB.go('exam')"><i class="ti">📝</i>测考</button>
-  <button data-tab="report" onclick="TAB.go('report')"><i class="ti">📊</i>报告</button>
-  <button data-tab="more" onclick="TAB.go('more')"><i class="ti">🧭</i>更多</button>
+  <button data-tab="me" onclick="TAB.go('me')"><i class="ti">👤</i>我的</button>
 </nav>
+
+<!-- 批次27-G · 「我的」全屏视图（学员中心浓缩版；数据源与 student.html 同族） -->
+<div class="me-view" id="meView" aria-label="我的">
+  <div class="me-hero">
+    <div class="me-user">
+      <div class="me-avatar" id="meAvatar">学</div>
+      <div class="me-uinfo">
+        <div class="me-uname"><span id="meName">未登录</span><span class="role-badge free" id="meRole" style="display:none"></span></div>
+        <div class="me-usub" id="meSub">登录后同步你的学习进度</div>
+      </div>
+    </div>
+    <button class="me-login-btn" id="meLoginBtn" style="display:none" onclick="openAuthModal('login')">登录 / 免费注册</button>
+    <div class="me-stats" id="meStats" style="display:none">
+      <div class="mstat"><b id="meSt0">—</b><span>练习总量</span></div>
+      <div class="mstat"><b id="meSt1">—</b><span>正确率</span></div>
+      <div class="mstat"><b id="meSt2">—</b><span>积分</span></div>
+      <div class="mstat"><b id="meSt3">—</b><span>粉笔错题</span></div>
+    </div>
+  </div>
+  <div class="me-body">
+    <div class="ios-group-title">练习</div>
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C4.openPractice()})"><i class="ric">📚</i><span class="rtxt">开始练习<span class="rdesc">按知识点 / 分类抽题</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openReport()})"><i class="ric">📊</i><span class="rtxt">练习统计<span class="rdesc">正确率与 7 天趋势</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openFavorites()})"><i class="ric">📌</i><span class="rtxt">我的收藏<span class="rdesc">收藏的题目</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openMistakes()})"><i class="ric">❌</i><span class="rtxt">错题本<span class="rdesc">练习判错的题</span></span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">测考与报告</div>
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C5.openMockExam()})"><i class="ric">📝</i><span class="rtxt">模拟考试<span class="rdesc">整卷限时模考</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="ric">🧩</i><span class="rtxt">智能组卷<span class="rdesc">按考点自定义组卷</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C9.openReport()})"><i class="ric">📈</i><span class="rtxt">学习报告<span class="rdesc">掌握度与薄弱点</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C10.openFenbi()})"><i class="ric">🎯</i><span class="rtxt">粉笔提升<span class="rdesc">绑定 / 同步 / 提升计划</span></span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">AI 实战</div>
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C11.openEssay()})"><i class="ric">✍️</i><span class="rtxt">申论批改<span class="rdesc">AI 逐句点评</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C12.openInterview()})"><i class="ric">🎤</i><span class="rtxt">面试练习<span class="rdesc">AI 模拟问答</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C7.openMessages()})"><i class="ric">🔔</i><span class="rtxt">消息中心<span class="rdesc">系统与互动消息</span></span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">更多</div>
+    <div class="ios-list">
+      <button class="row" onclick="location.href='/student.html'"><i class="ric">🎓</i><span class="rtxt">学员中心<span class="rdesc">完整版功能门户</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.openMore()"><i class="ric">🧭</i><span class="rtxt">全部功能<span class="rdesc">激励中心等全部入口</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/knowledge.html'"><i class="ric">🧠</i><span class="rtxt">知识体系<span class="rdesc">321 考点知识树</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/forum.html'"><i class="ric">💬</i><span class="rtxt">学习论坛<span class="rdesc">学员交流</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/articles.html'"><i class="ric">📰</i><span class="rtxt">备考资讯<span class="rdesc">文章与 AI 要点</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/'"><i class="ric">🏠</i><span class="rtxt">官网首页</span><i class="chev">›</i></button>
+    </div>
+  </div>
+</div>
 <div class="more-sheet" id="moreSheet" role="dialog" aria-label="全部功能">
   <div class="ms-head"><b>全部功能</b><button class="ms-close" onclick="TAB.closeMore()" aria-label="关闭">✕</button></div>
   <div class="ms-grid">
@@ -359,7 +409,8 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 </div>
 <script>
-// 批次26 · Tab 导航：移动端 App 化（5 tab + 更多菜单；仅 ≤720px 显示，桌面自动隐藏）
+// 批次26/27-G · Tab 导航：移动端 App 化（四 tab = 学习/题库/测考/我的；
+// 更多菜单由「我的」页内入口打开；仅 ≤720px 显示，桌面自动隐藏）
 (function () {
   "use strict";
   var sheet = document.getElementById("moreSheet");
@@ -367,23 +418,31 @@ document.addEventListener('DOMContentLoaded', function () {
   var tabs = document.querySelectorAll("#tabbar button");
   // tab → 动作映射（复用既有面板函数，零后端改动）
   var ACTIONS = {
-    chat: null,                                   // 回到对话：关面板+收起菜单
+    chat: null,                                   // 回到对话：关面板+收起菜单+退我的视图
     practice: function () { C4.openPractice(); },
     exam: function () { C5.openMockExam(); },
-    report: function () { C9.openReport(); },
-    more: null                                    // 打开更多菜单
+    me: null                                      // 打开「我的」全屏视图
   };
   function setOn(key) {
     tabs.forEach(function (b) { b.classList.toggle("on", b.dataset.tab === key); });
   }
   window.TAB = {
     go: function (key) {
+      if (key === "me") {
+        TAB.closeMore();
+        setOn("me");
+        document.body.classList.add("me-open");
+        if (window.ME && ME.load) ME.load();
+        return;
+      }
       if (key === "more") {
         setOn("more");
         sheet.classList.add("open");
         mask.classList.add("show");
         return;
       }
+      // chat / practice / exam：先退出我的视图再动作
+      document.body.classList.remove("me-open");
       TAB.closeMore();
       setOn(key);
       var fn = ACTIONS[key];
@@ -400,8 +459,15 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       if (typeof fn === "function") fn();
     },
-    run: function (fn) {          // 更多菜单项：先收起菜单再执行
+    openMore: function () {         // 「我的」页内的全部功能入口
+      setOn("me");
+      sheet.classList.add("open");
+      mask.classList.add("show");
+    },
+    run: function (fn) {          // 菜单/我的页功能项：先收起浮层再执行
       TAB.closeMore();
+      document.body.classList.remove("me-open");
+      setOn("chat");
       setTimeout(fn, 120);        // 等收起动画过半，避免面板与菜单动画打架
     },
     closeMore: function () {
@@ -415,11 +481,65 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.matchMedia("(max-width: 720px)").matches) {
       document.body.classList.add("has-tabbar");
     } else {
-      document.body.classList.remove("has-tabbar");
+      document.body.classList.remove("has-tabbar", "me-open");
     }
   }
   mount();
   window.addEventListener("resize", mount);
+})();
+
+// 批次27-G · 「我的」视图数据加载（数据源与 student.html 同族：
+// /me 头像身份 + /practice/stats + /me/incentive + /me/fenbi/binding 四卡）
+window.ME = (function () {
+  "use strict";
+  var loaded = false;
+  function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+  function renderAnon() {
+    loaded = true;
+    set("meName", "未登录");
+    set("meAvatar", "学");
+    set("meSub", "登录后同步你的学习进度");
+    var rb = document.getElementById("meRole"); if (rb) rb.style.display = "none";
+    document.getElementById("meLoginBtn").style.display = "";
+    document.getElementById("meStats").style.display = "none";
+  }
+  function loadStats() {
+    GK.api("/practice/stats").then(function (r) {
+      set("meSt0", r && r.total != null ? r.total : "—");
+      set("meSt1", r && r.accuracy != null ? Math.round(r.accuracy * 100) + "%" : "—");
+    }).catch(function () { set("meSt0", "—"); set("meSt1", "—"); });
+    GK.api("/me/incentive").then(function (r) {
+      var pts = r && (r.points != null ? r.points : (r.summary && r.summary.points));
+      set("meSt2", pts != null ? pts : "—");
+    }).catch(function () { set("meSt2", "—"); });
+    GK.api("/me/fenbi/binding").then(function (r) {
+      set("meSt3", (r && r.bound && r.wrong_count != null) ? r.wrong_count
+        : (r && r.bound ? "—" : "未绑定"));
+    }).catch(function () { set("meSt3", "—"); });
+  }
+  function load() {
+    if (!window.GK || !GK.api) { setTimeout(load, 200); return; }
+    if (loaded) return;   // 首次打开拉取，之后由各功能面板自行刷新数据
+    GK.api("/me").then(function (r) {
+      loaded = true;
+      if (!r || r.anonymous) { renderAnon(); return; }
+      var name = r.username || r.user_id || "学员";
+      set("meName", name);
+      set("meAvatar", name.slice(0, 1).toUpperCase());
+      set("meSub", (r.is_member && r.member_expire_at)
+        ? "会员至 " + String(r.member_expire_at).slice(0, 10)
+        : (r.quota_left === -1 ? "额度不限 · AI 问答随便问"
+        : (r.quota_left != null ? "今日剩余 " + r.quota_left + " 次 AI 问答" : "")));
+      var map = { admin: ["管理员", "admin"], member: ["会员", "member"], free: ["免费学员", "free"] };
+      var m = map[r.role] || map.free;
+      var rb = document.getElementById("meRole");
+      if (rb) { rb.textContent = m[0]; rb.className = "role-badge " + m[1]; rb.style.display = ""; }
+      document.getElementById("meLoginBtn").style.display = "none";
+      document.getElementById("meStats").style.display = "";
+      loadStats();
+    }).catch(renderAnon);
+  }
+  return { load: load };
 })();
 </script>
 </div><!-- /#main -->
