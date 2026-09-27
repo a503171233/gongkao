@@ -112,5 +112,61 @@ chk("包含题目/给定答案/全部草稿", "题目：" in u and "给定答案
     and "【草稿1 · m1】" in u and "【草稿2 · m2】" in u)
 chk("包含合成规则与答案复核指令", "取各草稿之长" in u and "ai_answer" in u)
 
+print("== 7. 批次26-I · 额度门禁 ==")
+chk("免费/会员额度常量默认", api._AI_ANALYSIS_FREE_DAILY == 3
+    and api._AI_ANALYSIS_MEMBER_DAILY == 30)
+chk("频控按 kind 分池", api._ai_tool_allow("uX", "ai_free", 3) is True
+    and api._ai_tool_allow("uX", "ai_free", 3) is True
+    and api._ai_tool_allow("uX", "ai_free", 3) is True
+    and api._ai_tool_allow("uX", "ai_free", 3) is False,
+    "免费第 4 次应拒绝")
+chk("会员池独立不受免费池影响", api._ai_tool_allow("uX", "ai_member", 30) is True)
+chk("已用次数只读", api._ai_tool_used("uX", "ai_free") == 3
+    and api._ai_tool_used("uX", "ai_member") == 1)
+with mock.patch.object(api.auth_store, "get_membership_info",
+                       return_value={"is_member": True}), \
+     mock.patch.object(api.auth_store, "get_membership_info",
+                       return_value={"is_member": True}):
+    chk("会员判定 True", api._is_member("uX") is True)
+with mock.patch.object(api.auth_store, "get_membership_info",
+                       return_value={"is_member": False}):
+    chk("免费判定 False", api._is_member("uX") is False)
+
+print("== 8. 管理端单题 MoA 端点 ==")
+q8 = api.study_store.add_question("T001", "choice", "管理端 MoA 测试题干", "B",
+                                  options=["A. 甲", "B. 乙", "C. 丙", "D. 丁"])
+with mock.patch.object(api, "_admin_user", return_value={"role": "admin"}), \
+     mock.patch.object(api, "_generate_analysis_content",
+                       return_value=({"verdict": "agree", "ai_answer": "B",
+                                      "reason": "r", "pipeline": "moa",
+                                      "sections": [{"title": "考点定位", "content": "x"}]},
+                                     "deepseek-v4-pro")) as mgen:
+    r1 = api.admin_moa_analysis(question_id=q8["id"], authorization="x")
+    chk("首次生成非缓存且 pipeline=moa",
+        r1["cached"] is False and r1["content"]["pipeline"] == "moa")
+    chk("缓存落库", mgen.call_count == 1)
+    r2 = api.admin_moa_analysis(question_id=q8["id"], authorization="x")
+    chk("二次调用命中缓存不再生成",
+        r2["cached"] is True and mgen.call_count == 1)
+
+print("== 9. 批量任务状态机 ==")
+calls = {"n": 0}
+def fake_gen(q):
+    calls["n"] += 1
+    if q["id"] == 999: raise ValueError("模拟失败")
+    return ({"verdict": "agree", "ai_answer": "B", "reason": "r",
+             "pipeline": "moa",
+             "sections": [{"title": "t", "content": "c"}]}, "m")
+with mock.patch.object(api, "_generate_analysis_content", side_effect=fake_gen):
+    api._moa_batch_worker([{"id": 1, "question": "测试题干一"}, {"id": 999, "question": "测试题干二"}])
+    job = dict(api._moa_batch_job)
+chk("逐题完成计数", job["done"] == 2 and job["running"] is False)
+chk("成功/失败结果记录", job["results"][0]["ok"] is True
+    and job["results"][1]["ok"] is False and "模拟失败" in job["results"][1]["err"])
+from poc.study import _norm_question as _nq
+ok1 = api.study_store.get_ai_analysis(_nq("测试题干一"))
+chk("成功题缓存落库学员可见", ok1 is not None
+    and ok1["content"]["pipeline"] == "moa")
+
 print(f"\n通过 {PASS} · 失败 {FAIL}")
 sys.exit(1 if FAIL else 0)

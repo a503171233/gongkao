@@ -1792,6 +1792,7 @@ async function renderQList() {
         <button class="btn ghost sm" onclick="qbBatchDelete()">🗑 批量删除</button>
         <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" onclick="qbAiCategorize()">🏷 AI 补充分类</button>
         <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" onclick="qbAiAnalysisBatch()">✨ 批量 AI 解析</button>
+        <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" onclick="qbMoaBatch()">🔬 MoA 解析（学员可见）</button>
       </div>
       <button class="btn ghost sm" onclick="exportQuestions()">📤 导出当前筛选(CSV)</button>
     </div>
@@ -2954,6 +2955,7 @@ function showQuestionDetail(qid) {
       <div class="modal-actions">
         <button class="btn ghost sm" onclick="closeModal('qb-modal')">关闭</button>
         <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" id="qd-ai-btn" onclick="qbAiAnalysis(${q.id})">✨ AI 解析（多角度）</button>
+        <button class="btn sm ghost" onclick="qbMoaOne(${q.id})">🔬 MoA 解析（学员可见）</button>
       </div>`;
   }).catch(e => {
     $('#qb-modal .modal-box').innerHTML = `<h3>加载失败</h3><p class="err-tip">${esc(e.message)}</p>
@@ -3017,6 +3019,48 @@ async function qbAiAnalysisBatch() {
   } catch (e) {
     toast('批量 AI 解析失败：' + e.message, 'err');
   }
+}
+
+// 批次26-I · MoA 解析（后台生产 → 学员前台免费查看缓存）
+async function qbMoaOne(qid) {
+  if (!confirm('将用 MoA 多模型协同（3 模型并行出稿+聚合）生成本题五节解析，\n约 1~2 分钟。生成后学员在题目页「AI 多角度解析」免费查看。是否继续？')) return;
+  toast('MoA 解析生成中（约 1~2 分钟）…', 'info');
+  try {
+    const r = await admin('/admin/ai-analysis/moa', { method: 'POST', timeout: 300000,
+      body: JSON.stringify({ question_id: qid }) });
+    toast(r.cached ? '该题已有 MoA 解析缓存（无需重复生成）' : '✅ MoA 解析已生成，学员端可直接查看', r.cached ? 'info' : 'ok');
+  } catch (e) { toast('MoA 解析失败：' + e.message, 'err'); }
+}
+
+let _moaPollTimer = null;
+async function qbMoaBatch() {
+  const qids = [...(_qbChecked || [])];
+  const msg = qids.length
+    ? `将用 MoA 多模型协同生成勾选的 ${qids.length} 道题解析（后台执行，每题约 1 分钟）。\n生成后学员在题目页「AI 多角度解析」免费查看。是否继续？`
+    : '未勾选题目：将自动选取无 MoA 解析的可解析题（≤10 题）批量生成（后台执行）。\n是否继续？';
+  if (!confirm(msg)) return;
+  try {
+    const r = await admin('/admin/ai-analysis/moa-batch', { method: 'POST', timeout: 60000,
+      body: JSON.stringify({ qids, limit: 10 }) });
+    if (!r.started) { toast(r.message || '没有需要生成的题目', 'info'); return; }
+    toast(`MoA 批量解析已启动（共 ${r.total} 题，后台执行）`, 'ok');
+    qbMoaPoll();
+  } catch (e) { toast('MoA 批量启动失败：' + e.message, 'err'); }
+}
+
+function qbMoaPoll() {
+  if (_moaPollTimer) clearInterval(_moaPollTimer);
+  _moaPollTimer = setInterval(async () => {
+    try {
+      const s = await admin('/admin/ai-analysis/moa-batch/status');
+      if (s.running) { toast(`MoA 批量解析进行中：${s.done}/${s.total}…`, 'info'); return; }
+      clearInterval(_moaPollTimer); _moaPollTimer = null;
+      const ok = (s.results || []).filter(x => x.ok).length;
+      toast(`MoA 批量解析完成：成功 ${ok} 题${(s.results || []).length > ok ? `，失败 ${s.results.length - ok} 题` : ''}`,
+        s.results && s.results.length > ok ? 'info' : 'ok');
+      loadQuestions();
+    } catch (e) { clearInterval(_moaPollTimer); _moaPollTimer = null; }
+  }, 15000);
 }
 
 // 手动录入题目

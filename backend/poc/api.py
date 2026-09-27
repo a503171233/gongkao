@@ -995,7 +995,17 @@ def delete_mistake(
 _ai_tool_usage: dict[str, tuple[str, int]] = {}
 _ai_tool_lock = threading.Lock()
 _AI_ANALYSIS_DAILY_LIMIT = 30     # 每用户每日 AI 解析生成上限（缓存命中不计）
+_AI_ANALYSIS_MEMBER_DAILY = int(_os.getenv("AI_ANALYSIS_MEMBER_DAILY", "30"))
+_AI_ANALYSIS_FREE_DAILY = int(_os.getenv("AI_ANALYSIS_FREE_DAILY", "3"))
 _FENBI_SEARCH_DAILY_LIMIT = 30    # 每用户每日粉笔搜题上限
+
+
+def _is_member(user_id: str) -> bool:
+    """会员有效判定（role=member 且未过期）。"""
+    try:
+        return bool(auth_store.get_membership_info(user_id).get("is_member"))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _ai_tool_allow(user_id: str, kind: str, limit: int) -> bool:
@@ -1010,6 +1020,14 @@ def _ai_tool_allow(user_id: str, kind: str, limit: int) -> bool:
             return False
         _ai_tool_usage[key] = (d, n + 1)
         return True
+
+
+def _ai_tool_used(user_id: str, kind: str) -> int:
+    """当日已用次数（只读，供额度查询端点）。"""
+    today = _dt.datetime.now().strftime("%Y-%m-%d")
+    with _ai_tool_lock:
+        d, n = _ai_tool_usage.get(f"{kind}:{user_id}", ("", 0))
+        return n if d == today else 0
 
 
 def _qbank_row(question_id: int) -> dict | None:
@@ -1165,6 +1183,45 @@ def _moa_analysis_call(q: dict) -> tuple[str, str]:
         _MOA_AGGREGATOR
 
 
+def _generate_analysis_content(q: dict) -> tuple[dict, str]:
+    """MoA 多模型协同生成五节解析（失败自动降级单模型，再带一次重试）。
+    返回 (content dict, model)；全败抛 ValueError。学员端点与管理端共用。"""
+    data, model, pipeline = None, "", "single"
+    if _moa_enabled():
+        try:
+            raw, model = _moa_analysis_call(q)
+            pipeline = "moa"
+            try:
+                data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+            except Exception:  # noqa: BLE001  聚合输出非法 → 降级单模型
+                data, model, pipeline = None, "", "single"
+        except Exception:  # noqa: BLE001  MoA 整体失败 → 降级单模型
+            data, model, pipeline = None, "", "single"
+    if not data:
+        for _attempt in range(2):
+            try:
+                raw, model = _call_platform_llm(_ai_analysis_prompt(q))
+            except Exception as e:  # noqa: BLE001
+                raise ValueError(f"AI 解析生成失败：{str(e)[:120]}")
+            try:
+                data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+            except Exception:  # noqa: BLE001
+                data = None
+            if data and [s for s in (data.get("sections") or [])
+                         if isinstance(s, dict) and str(s.get("content") or "").strip()]:
+                break
+            data = None
+    if not data:
+        raise ValueError("AI 未产出有效解析，请重试")
+    sections = [s for s in (data.get("sections") or [])
+                if isinstance(s, dict) and str(s.get("content") or "").strip()]
+    return {"verdict": str(data.get("verdict") or "agree"),
+            "ai_answer": str(data.get("ai_answer") or "")[:8].upper(),
+            "reason": str(data.get("reason") or "")[:200],
+            "pipeline": pipeline,
+            "sections": sections}, model
+
+
 @app.post("/me/question/ai-analysis")
 def question_ai_analysis(
     question_id: int = Body(..., embed=True),
@@ -1185,47 +1242,146 @@ def question_ai_analysis(
     cached = study_store.get_ai_analysis(key)
     if cached:
         return {"cached": True, **cached, "answer_status": q.get("answer_status") or ""}
-    if not _ai_tool_allow(user["user_id"], "ai", _AI_ANALYSIS_DAILY_LIMIT):
-        raise HTTPException(status_code=429, detail="今日 AI 解析次数已达上限，明天再来")
-    # 批次26-H：MoA 多模型协同（提案层 3 模型并行出稿 → 聚合层合成），
-    # 失败自动降级单模型；LLM 长 JSON 偶发截断/围栏污染在单模型路径重试一次
-    data, model, pipeline = None, "", "single"
-    if _moa_enabled():
-        try:
-            raw, model = _moa_analysis_call(q)
-            pipeline = "moa"
-            try:
-                data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-            except Exception:  # noqa: BLE001  聚合输出非法 → 降级单模型
-                data, model, pipeline = None, "", "single"
-        except Exception:  # noqa: BLE001  MoA 整体失败 → 降级单模型
-            data, model, pipeline = None, "", "single"
-    if not data:
-        for _attempt in range(2):
-            try:
-                raw, model = _call_platform_llm(_ai_analysis_prompt(q))
-            except Exception as e:  # noqa: BLE001
-                raise HTTPException(status_code=502, detail=f"AI 解析生成失败：{str(e)[:120]}")
-            try:
-                data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-            except Exception:  # noqa: BLE001
-                data = None
-            if data and [s for s in (data.get("sections") or [])
-                         if isinstance(s, dict) and str(s.get("content") or "").strip()]:
-                break
-            data = None
-    if not data:
-        raise HTTPException(status_code=502, detail="AI 未产出有效解析，请重试")
-    sections = [s for s in (data.get("sections") or [])
-                if isinstance(s, dict) and str(s.get("content") or "").strip()]
-    content = {"verdict": str(data.get("verdict") or "agree"),
-               "ai_answer": str(data.get("ai_answer") or "")[:8].upper(),
-               "reason": str(data.get("reason") or "")[:200],
-               "pipeline": pipeline,
-               "sections": sections}
+    # 批次26-I：后台已生成（缓存命中）所有人免费查看；学员自己生成新解析——
+    # 会员 30 次/日，免费用户 3 次/日（额度只对"现场生成"计费，查看不消耗）
+    member = _is_member(user["user_id"])
+    if not _ai_tool_allow(user["user_id"],
+                          "ai_member" if member else "ai_free",
+                          _AI_ANALYSIS_MEMBER_DAILY if member
+                          else _AI_ANALYSIS_FREE_DAILY):
+        raise HTTPException(status_code=429,
+            detail=("今日 AI 解析次数已达上限（会员 30 次/日），明天再来"
+                    if member else
+                    "今日免费 AI 解析额度已用完（3 次/日）。开通会员不限次使用，或明天再来"))
+    try:
+        content, model = _generate_analysis_content(q)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     study_store.save_ai_analysis(key, content, model)
     return {"cached": False, "content": content, "model": model,
             "answer_status": q.get("answer_status") or ""}
+
+
+@app.get("/me/question/ai-analysis/quota")
+def ai_analysis_quota(authorization: str = Header(default="")):
+    """学员侧 AI 解析额度：会员/免费分池，缓存命中不消耗。"""
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    member = _is_member(user["user_id"])
+    limit = _AI_ANALYSIS_MEMBER_DAILY if member else _AI_ANALYSIS_FREE_DAILY
+    used = _ai_tool_used(user["user_id"], "ai_member" if member else "ai_free")
+    return {"member": member, "used": used, "limit": limit,
+            "remaining": max(0, limit - used)}
+
+
+@app.post("/admin/ai-analysis/moa")
+def admin_moa_analysis(
+    question_id: int = Body(..., embed=True),
+    authorization: str = Header(default=""),
+):
+    """管理端单题 MoA 解析：多模型协同生成五节解析入缓存（学员前台免费可见）。
+    已有缓存直接返回（不重复烧 token）。"""
+    _admin_user(authorization)
+    q = _qbank_row(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="题目不存在")
+    from .study import _norm_question
+    key = _norm_question(q["question"])
+    if not key:
+        raise HTTPException(status_code=400, detail="题干为空")
+    cached = study_store.get_ai_analysis(key)
+    if cached:
+        return {"id": question_id, "cached": True, "content": cached.get("content"),
+                "model": cached.get("model")}
+    try:
+        content, model = _generate_analysis_content(q)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    study_store.save_ai_analysis(key, content, model)
+    return {"id": question_id, "cached": False, "content": content, "model": model}
+
+
+# ---- 批量 MoA 解析（后台线程 + 进度轮询，仿粉笔分析任务模式） ----
+_moa_batch_lock = threading.Lock()
+_moa_batch_job: dict = {"running": False, "done": 0, "total": 0, "results": []}
+
+
+def _moa_batch_worker(qs: list[dict]) -> None:
+    from .study import _norm_question
+    for q in qs:
+        try:
+            key = _norm_question(q.get("question") or "")
+            if not key:
+                raise ValueError("题干为空")
+            cached = study_store.get_ai_analysis(key)
+            if cached:
+                ok, err = True, "已有缓存"
+            else:
+                content, model = _generate_analysis_content(q)
+                study_store.save_ai_analysis(key, content, model)
+                ok, err = True, ""
+        except Exception as e:  # noqa: BLE001  单题失败不中断批量
+            ok, err = False, str(e)[:100]
+        with _moa_batch_lock:
+            _moa_batch_job["done"] += 1
+            _moa_batch_job["results"].append({"id": q.get("id"), "ok": ok, "err": err})
+    with _moa_batch_lock:
+        _moa_batch_job["running"] = False
+
+
+@app.post("/admin/ai-analysis/moa-batch")
+def admin_moa_analysis_batch(
+    qids: list[int] = Body(default=[]),
+    limit: int = Body(default=10),
+    authorization: str = Header(default=""),
+):
+    """管理端批量 MoA 解析（后台线程，≤30 题/批）：qids 显式指定或自动选
+    无缓存的可解析题（choice/judge、有答案、非 pending）。"""
+    _admin_user(authorization)
+    with _moa_batch_lock:
+        if _moa_batch_job.get("running"):
+            raise HTTPException(status_code=409, detail="已有批量解析任务在运行，请稍候")
+        with study_store._connect() as conn:
+            if qids:
+                marks = ",".join("?" for _ in qids[:50])
+                rows = conn.execute(
+                    f"SELECT * FROM question_bank WHERE id IN ({marks})",
+                    qids[:50]).fetchall()
+            else:
+                limit_n = max(1, min(30, int(limit or 10)))
+                rows = conn.execute(
+                    "SELECT * FROM question_bank WHERE qtype IN ('choice','judge') "
+                    "AND TRIM(COALESCE(answer,''))<>'' "
+                    "AND COALESCE(answer_status,'')<>'pending' "
+                    "ORDER BY id LIMIT 120", ()).fetchall()
+        from .study import _norm_question
+        qs = []
+        for r in rows:
+            d = dict(r)
+            if qids or not study_store.get_ai_analysis(_norm_question(d["question"] or "")):
+                qs.append(d)
+            if not qids and len(qs) >= max(1, min(30, int(limit or 10))):
+                break
+        if not qs:
+            return {"started": False, "total": 0,
+                    "message": "所选题目均已有 AI 解析缓存（无需重复生成）"}
+        _moa_batch_job.update({"running": True, "done": 0,
+                               "total": len(qs), "results": []})
+        threading.Thread(target=_moa_batch_worker, args=(qs,),
+                         daemon=True, name="moa-batch").start()
+    return {"started": True, "total": len(qs)}
+
+
+@app.get("/admin/ai-analysis/moa-batch/status")
+def admin_moa_batch_status(authorization: str = Header(default="")):
+    """批量 MoA 解析进度：{running, done, total, results}。"""
+    _admin_user(authorization)
+    with _moa_batch_lock:
+        return {"running": _moa_batch_job["running"],
+                "done": _moa_batch_job["done"],
+                "total": _moa_batch_job["total"],
+                "results": list(_moa_batch_job["results"][-50:])}
 
 
 @app.post("/me/question/fenbi-search")
