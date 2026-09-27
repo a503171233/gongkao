@@ -1082,8 +1082,8 @@ def _call_platform_llm(messages: list[dict], max_tokens: int = 2400) -> tuple[st
 
 _MOA_PROPOSERS = [_m.strip() for _m in _os.getenv(
     "MOA_PROPOSER_MODELS",
-    "deepseek-v4-pro,glm-5.3,gpt-5.6-luna").split(",") if _m.strip()]
-_MOA_AGGREGATOR = _os.getenv("MOA_AGGREGATOR_MODEL", "grok-4.5")
+    "glm-5.2,gpt-5.6-luna,qwen3.8-flash").split(",") if _m.strip()]
+_MOA_AGGREGATOR = _os.getenv("MOA_AGGREGATOR_MODEL", "deepseek-v4-pro")
 _MOA_PROPOSE_BUDGET = float(_os.getenv("MOA_PROPOSE_BUDGET_SECS", "150"))
 
 

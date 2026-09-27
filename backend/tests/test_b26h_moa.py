@@ -37,9 +37,10 @@ Q = {"question": "下列关于行政许可的说法正确的是？", "qtype": "c
      "analysis": "故选B。"}
 
 print("== 1. 配置默认值与开关 ==")
-chk("提案层默认 3 模型", len(api._MOA_PROPOSERS) == 3
-    and "deepseek-v4-pro" in api._MOA_PROPOSERS, f"{api._MOA_PROPOSERS}")
-chk("聚合层默认 grok-4.5", api._MOA_AGGREGATOR == "grok-4.5")
+chk("提案层默认 3 模型（GLM 5.2/GPT 5.6 Luna/千问）",
+    api._MOA_PROPOSERS == ["glm-5.2", "gpt-5.6-luna", "qwen3.8-flash"],
+    f"{api._MOA_PROPOSERS}")
+chk("聚合层默认 deepseek-v4-pro", api._MOA_AGGREGATOR == "deepseek-v4-pro")
 chk("MoA 默认开启", api._moa_enabled() is True)
 with mock.patch.dict(os.environ, {"MOA_ENABLED": "0"}):
     chk("MOA_ENABLED=0 关闭", api._moa_enabled() is False)
