@@ -495,10 +495,11 @@ document.addEventListener('DOMContentLoaded', function () {
       sheet.classList.add("open");
       mask.classList.add("show");
     },
-    run: function (fn) {          // 菜单/页内功能项：先收浮层回学习视图再执行
+    run: function (fn) {          // 页内功能项：收起菜单后执行
       TAB.closeMore();
-      setView("chat");
-      setTimeout(fn, 120);        // 等收起动画过半，避免面板与菜单动画打架
+      // 批次27-I 修复：不再强制切回学习视图——面板是全屏推入页，
+      // 保持来源视图不动，关闭面板后自然回到打开它的页面（题库/测考/我的）
+      setTimeout(fn, 120);
     },
     closeMore: function () {
       sheet.classList.remove("open");
