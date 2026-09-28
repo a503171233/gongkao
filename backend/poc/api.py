@@ -43,6 +43,7 @@ from .payment import get_payment_store, PLANS
 from .sensitive import check_sensitive, SENSITIVE_ENABLED
 from . import study as study_mod
 from .study import get_study_store
+from . import attachments as attachments_mod
 from .incentive import get_incentive_store as _get_incentive
 from .mockexam import get_mockexam_store as _get_mockexam
 from .mockexam import start_paper_job as _start_mockexam_job
@@ -200,6 +201,10 @@ class AskReq(BaseModel):
     # 断点续答（SSE 断线重连）：前端已收到的部分答案；仅 stream=True 时生效，
     # 非流式请求忽略（照常入库，契约不变）。重连请求重复计 1 次额度（可接受）。
     resume: str = Field("", max_length=20000, description="续答：已收到的部分答案")
+    # 批次28：附件 id 列表（POST /ask/upload 返回的 attachment_id），≤3 个。
+    # 文本附件拼入 prompt 上下文；图片附件走视觉模型。
+    attachments: list[str] = Field(default=[], max_length=3,
+                                   description="附件 id 列表（≤3）")
 
 
 class RegisterReq(BaseModel):
@@ -545,6 +550,39 @@ def _quota_guard(user: dict | None):
                             detail=f"今日免费额度已用完，请升级会员或明日再来")
 
 
+# ---------- 批次28 · 学习页附件上传（提问带图/带资料） ----------
+
+_upload_rate: dict[str, list[float]] = {}
+_UPLOAD_RATE_LOCK = threading.Lock()
+_UPLOAD_RATE_LIMIT = 12      # 每身份每窗口 12 次
+_UPLOAD_RATE_WINDOW = 60.0
+
+
+@app.post("/ask/upload")
+async def ask_upload(file: UploadFile = File(...),
+                     authorization: str = Header(default="")):
+    """上传提问附件（图片/文档）→ 返回 attachment_id 供 /ask 携带。
+    游客可用（anonymous）；文档即传即解析文本；不计提问额度。"""
+    user = _resolve_user(authorization)
+    uid = user["user_id"] if user else "anonymous"
+
+    # 简易滑动窗口限流（防脚本刷盘）
+    now = _time.time()
+    with _UPLOAD_RATE_LOCK:
+        win = [t for t in _upload_rate.get(uid, []) if now - t < _UPLOAD_RATE_WINDOW]
+        if len(win) >= _UPLOAD_RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="上传太频繁，稍等片刻再试")
+        win.append(now)
+        _upload_rate[uid] = win
+
+    data = await file.read()
+    try:
+        meta = attachments_mod.save_upload(uid, file.filename or "", data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return meta
+
+
 @app.post("/ask")
 def ask(req: AskReq, authorization: str = Header(default="")):
     _check_teacher(req.teacher_id)
@@ -556,6 +594,12 @@ def ask(req: AskReq, authorization: str = Header(default="")):
         if hit:
             raise HTTPException(status_code=400, detail=f"问题包含敏感词: {hit}")
     metrics.ask_started(req.teacher_id)
+
+    # ── 批次28：附件解析（归属校验；unknown id 静默跳过不阻断提问）──
+    atts: list[dict] = []
+    if req.attachments:
+        uid_att = user["user_id"] if user else "anonymous"
+        atts = attachments_mod.resolve_attachments(req.attachments, uid_att)
 
     # ── 会话管理：解析/创建 → 取历史(存user前) → 存user → 推理 → 存assistant ──
     sess = None
@@ -573,14 +617,21 @@ def ask(req: AskReq, authorization: str = Header(default="")):
     # 断点续答：user 消息已在首连时入库，重连不重复入库（其余流程照常，额度重复计 1 次）
     resume = req.resume if (req.stream and req.resume) else ""
     if not resume:
-        chat_store.add_message(req.session_id, "user", req.query)
+        # 批次28：user 消息入库附附件名（历史回放可见学员发过什么资料）
+        _att_note = ""
+        if atts:
+            _names = "、".join(a["name"] for a in atts[:3])
+            _att_note = f"［附件：{_names}］"
+        chat_store.add_message(req.session_id, "user", (_att_note + req.query).strip())
 
     try:
         result = rag_ask(req.query, teacher_id=req.teacher_id, stream=req.stream,
-                         history=history, resume=resume)
+                         history=history, resume=resume, attachments=atts or None)
     except Exception as e:
         metrics.ask_failed(str(e))
+        import traceback as _tb
         print("[ask-failed]", str(e)[:500], flush=True)  # 27-K：503 脱敏后原始错误必须留服务端日志
+        print("[ask-failed-tb]", _tb.format_exc()[-1200:], flush=True)  # 批次28：完整栈定位
         msg = str(e)
         # #2 脱敏：运维细节（key/.env/内部路径/凭据特征）不下发给学员，统一业务话术；
         # 完整错误仍在服务端日志（metrics.ask_failed + 容器日志）可查。

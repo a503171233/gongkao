@@ -57,7 +57,10 @@ def _openai(base_url: str | None = None, api_key: str | None = None,
 
 
 def _is_retryable(err: Exception) -> bool:
-    """网络类/超时/5xx → 可重试；4xx（含429）、鉴权、参数错误及其他 → 不可重试。"""
+    """网络类/超时/5xx → 可重试；4xx（含429）、鉴权、参数错误及其他 → 不可重试。
+    批次28：网关对多模态请求偶发返回非标准响应体（str），同样按可重试处理。"""
+    if isinstance(err, RuntimeError) and "非标准响应" in str(err):
+        return True
     if isinstance(err, APIConnectionError):  # 含 APITimeoutError（其子类）
         return True
     if isinstance(err, APIStatusError):
@@ -94,6 +97,10 @@ def _chat_once(messages, model, tcfg, max_tokens: int = 2000,
         temperature=tcfg.temperature if temperature is None else temperature,
         max_tokens=max_tokens,
     )
+    # 批次28：部分中转后端对多模态（带图）请求偶发返回 200+纯文本体（非标准
+    # OpenAI JSON），SDK 会把它解成 str——视为本次失败走重试（网关换路由即可恢复）
+    if not hasattr(resp, "choices"):
+        raise RuntimeError(f"LLM 返回非标准响应（{type(resp).__name__}，网关降级？）")
     # A6：token 用量核算（resp.usage 可能为 None——部分代理不返回）
     try:
         usage = getattr(resp, "usage", None)
@@ -222,9 +229,23 @@ def _stream_once(messages, model, tcfg, produced: dict,
                 pass
 
 
-def stream_llm(messages, tcfg):
-    """流式：重试/降级仅发生在未产出前；产出后断流直接抛错（对齐 SSE error 协议）。"""
-    model, temperature, base_url, api_key = _apply_registry(None, None, None, None)
+def _has_image(messages) -> bool:
+    """批次28：messages 中是否携带 image_url 内容块（多模态请求）。
+    带图请求不可降级到备用模型——文本模型收到 image_url 会直接 4xx。"""
+    for m in messages or []:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list) and any(
+                isinstance(p, dict) and p.get("type") == "image_url" for p in c):
+            return True
+    return False
+
+
+def stream_llm(messages, tcfg, model: str | None = None,
+               base_url: str | None = None, api_key: str | None = None):
+    """流式：重试/降级仅发生在未产出前；产出后断流直接抛错（对齐 SSE error 协议）。
+    批次28：model/base_url/api_key 显式覆盖（带图请求走视觉模型注册条目）；
+    带图请求跳过 fallback 降级（备用文本模型不支持视觉，降级无意义）。"""
+    model, temperature, base_url, api_key = _apply_registry(model, None, base_url, api_key)
     produced = {"v": False}
     last_err: Exception | None = None
     for attempt in range(_max_retries() + 1):
@@ -238,6 +259,11 @@ def stream_llm(messages, tcfg):
                 raise
             last_err = e
             _backoff(attempt)
+
+    if _has_image(messages):
+        if last_err is not None:
+            raise last_err
+        return
 
     for fb in _fallback_models():
         try:

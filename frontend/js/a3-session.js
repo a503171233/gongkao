@@ -248,6 +248,13 @@
   // -----------------------------------------------------------------
   function send() {
     var q = queryEl ? queryEl.value.trim() : '';
+    // 批次28：附件就绪数 >0 且输入为空 → 自动补问题文案（/ask 要求 query 非空）。
+    // 必须在空输入校验之前：有附件时空文本是合法发送，不应触发 shake 反馈。
+    var attCount = (global.GK.attach && global.GK.attach.count()) || 0;
+    if (!q && attCount > 0) {
+      q = '请结合我上传的内容进行讲解。';
+      if (queryEl) queryEl.value = q;
+    }
     // 批次27-M10：空输入点「发送」给轻反馈（占位文案提示 + 输入框轻晃），不再静默
     if (!q) {
       if (queryEl) {
@@ -271,8 +278,9 @@
     if (sendBtn) sendBtn.disabled = true;
     if (queryEl) queryEl.value = '';
 
-    // 用户发言上屏（渲染层负责拼 DOM）
-    broadcast('ask:user', { text: q });
+    // 用户发言上屏（渲染层负责拼 DOM）；附件元数据一并列出（批次28）
+    var attMeta = (global.GK.attach && global.GK.attach.meta()) || [];
+    broadcast('ask:user', { text: q, attachments: attMeta });
 
     var body = {
       query: q,
@@ -280,6 +288,7 @@
       stream: true,
       session_id: global.GK.store.sessionId || '',
     };
+    if (attMeta.length) body.attachments = (global.GK.attach && global.GK.attach.ids()) || [];
 
     var finished = false;
     function finishSend() {
@@ -289,6 +298,7 @@
       if (sendBtn) sendBtn.disabled = false;
       if (queryEl) queryEl.focus();
       _sseCtl = null; _finishSend = null;   // 27-N：流已终态，清引用
+      if (global.GK.attach) global.GK.attach.clear();   // 批次28：已发送的附件清空待发条
       loadSessions(true);   // 刷新历史栏（含后端新建/复用的会话）
     }
 

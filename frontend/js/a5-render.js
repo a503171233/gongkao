@@ -284,7 +284,7 @@
   // -----------------------------------------------------------------
   // 6. 用户气泡 / 历史回放 / 清空
   // -----------------------------------------------------------------
-  function addUserMsg(text) {
+  function addUserMsg(text, atts) {
     var c = chatEl();
     if (!c) return;
     var m = document.createElement('div');
@@ -294,7 +294,23 @@
     avatar.textContent = '我';
     var bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.textContent = text || '';
+    // 批次28：附件 chips（🖼 图片 / 📄 文档）置于提问文本上方
+    if (atts && atts.length) {
+      var bar = document.createElement('div');
+      bar.className = 'msg-atts';
+      atts.forEach(function (a) {
+        var chip = document.createElement('span');
+        chip.className = 'msg-att';
+        chip.textContent = (a && a.kind === 'image' ? '🖼 ' : '📄 ') + (a && a.name ? a.name : '附件');
+        bar.appendChild(chip);
+      });
+      bubble.appendChild(bar);
+    }
+    if (text) {
+      var t = document.createElement('div');
+      t.textContent = text;
+      bubble.appendChild(t);
+    }
     m.appendChild(avatar);
     m.appendChild(bubble);
     c.appendChild(m);
@@ -366,7 +382,7 @@
     bus.addEventListener('ask:user', function (e) {
       var d = (e && e.detail) || {};
       state.lastQuestion = d.text || '';
-      addUserMsg(state.lastQuestion);
+      addUserMsg(state.lastQuestion, d.attachments);   // 批次28：附件元数据上屏
     });
     bus.addEventListener('ask:start', function () { newBubble(); });
     bus.addEventListener('ask:delta', function (e) {

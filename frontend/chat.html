@@ -6,7 +6,7 @@
   <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
   <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 学习中心</title>
-<link rel="stylesheet" href="/css/app.css?v=b27m2">
+<link rel="stylesheet" href="/css/app.css?v=b28a1">
 <link rel="stylesheet" href="/css/print.css">
 <!-- 对话站专属内联微调（书卷主题下补充少量细节） -->
 <style>
@@ -76,10 +76,14 @@
   </div>
 </div>
 <div id="inputbar">
+  <div id="attachBar" style="display:none" aria-live="polite"></div>
   <div class="inner">
-    <input id="query" type="text" placeholder="输入你的问题…" autocomplete="off">
+    <button id="attachBtn" type="button" title="上传图片或资料（png/jpg/webp/gif/txt/md/pdf/docx，≤3 个）">📎</button>
+    <input id="query" type="text" placeholder="输入你的问题…（可点 📎 附图片/资料）" autocomplete="off">
     <button id="send">发送</button>
   </div>
+  <input type="file" id="attachInput" hidden multiple
+         accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.pdf,.docx">
 </div>
 
 <!-- 登录/注册模态框 -->
@@ -102,11 +106,12 @@
   </form>
 </div>
 
-<script src="js/a4-request.js?v=b27m2" defer></script>
+<script src="js/a4-request.js?v=b28a1" defer></script>
 <script src="js/a2-teacher.js?v=20260905" defer></script>
-<script src="js/a5-render.js?v=b27m2" defer></script>
-<script src="js/a1-auth.js?v=b27m2" defer></script>
-<script src="js/a3-session.js?v=b27m2" defer></script>
+<script src="js/a5-render.js?v=b28a1" defer></script>
+<script src="js/a1-auth.js?v=b28a1" defer></script>
+<script src="js/a3-session.js?v=b28a2" defer></script>
+<script src="js/a6-attach.js?v=b28a1" defer></script>
 <script src="js/c4-study.js?v=b27m2" defer></script>
 <script src="js/c5-mockexam.js?v=b27m2" defer></script>
 <script src="js/c6-smartexam.js?v=b27m2" defer></script>

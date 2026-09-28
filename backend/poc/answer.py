@@ -13,6 +13,7 @@
 """
 import hashlib
 import json
+import os
 
 from . import llm
 from . import store
@@ -96,9 +97,13 @@ def build_context(hits: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def build_messages(tcfg, hits: list[dict], query: str, history: list[dict] | None = None) -> list[dict]:
+def build_messages(tcfg, hits: list[dict], query: str, history: list[dict] | None = None,
+                   attachments: list[dict] | None = None) -> list[dict]:
     """组装 messages：system(人设+教学资料) + 历史对话(可选) + 当前问题。
     history: ChatStore.get_messages 返回的历史，仅保留 user/assistant 防注入。
+    attachments（批次28）：[{kind,name,text,image_data_url}] ——
+    文本附件拼入 user 消息前缀（每附件 ≤8000 字）；图片附件把 user 消息
+    升级为多模态 content 数组（OpenAI image_url 格式，需视觉模型通道）。
     """
     # 按命中顺序去重取首个 doc_name（任务书：来源文档名去重取首个）
     doc_hint = "讲义"
@@ -114,6 +119,13 @@ def build_messages(tcfg, hits: list[dict], query: str, history: list[dict] | Non
         reject=reject_text(tcfg),
         context=build_context(hits),
     )
+    # 批次28：附件成为合法依据来源——否则 system 的"资料没有的内容不答"
+    # 会压过附件内容，模型对附件问题照样拒答/描述为空白
+    if any(a.get("kind") in ("file", "image") for a in (attachments or [])):
+        system += ("\n\n【学员附件说明】学员本次提问上传了附件（资料文档和/或图片）。"
+                   "附件中的文字与图片中清晰可见的内容（文字、数字、图形、题目等）"
+                   "均视为可依据的教学材料，请直接读取并结合附件作答——"
+                   "读取附件内容不算编造。附件与教学资料都没有的内容，不答、不编、不推测。")
     messages = [{"role": "system", "content": system}]
     for m in history or []:
         # 防脏输入：历史项来自 DB，支持缺字段、content 为 None；非 dict 条目直接跳过
@@ -123,7 +135,31 @@ def build_messages(tcfg, hits: list[dict], query: str, history: list[dict] | Non
         content = m.get("content", "")
         if role in ("user", "assistant") and content:
             messages.append({"role": role, "content": content})
-    messages.append({"role": "user", "content": query})
+    # ── 批次28：附件注入 ──
+    atts = [a for a in (attachments or []) if isinstance(a, dict)]
+    texts = [a for a in atts if a.get("kind") == "file" and a.get("text")]
+    images = [a for a in atts if a.get("kind") == "image" and a.get("image_data_url")]
+    if not texts and not images:
+        messages.append({"role": "user", "content": query})
+        return messages
+    parts = []
+    for a in texts:
+        parts.append("【学员上传资料《" + str(a.get("name") or "附件") + "》】\n"
+                     + str(a.get("text") or "")[:8000])
+    text_body = query if query.strip() else "请结合我上传的内容进行讲解。"
+    if texts:
+        parts.append("【学员提问】" + text_body)
+        full_text = "\n\n".join(parts)
+    else:
+        full_text = "【学员提问】" + text_body + "（已附图片，请结合图片内容解答）"
+    if images:
+        content: list = [{"type": "text", "text": full_text}]
+        for img in images[:3]:
+            content.append({"type": "image_url",
+                            "image_url": {"url": img["image_data_url"]}})
+        messages.append({"role": "user", "content": content})
+    else:
+        messages.append({"role": "user", "content": full_text})
     return messages
 
 
@@ -149,16 +185,74 @@ def _openai():
     return llm._openai()
 
 
-def _call_llm(messages, tcfg) -> str:
-    """B7：非流式调用，含超时 + 网络/5xx 重试 + 主模型降级（实现在 llm.py）。"""
-    return llm.call_llm(messages, tcfg)
+def _call_llm(messages, tcfg, channels: list[dict] | None = None) -> str:
+    """B7：非流式调用，含超时 + 网络/5xx 重试 + 主模型降级（实现在 llm.py）。
+    channels（批次28）：视觉候选链 [{model, base_url, api_key}, ...]——
+    带图请求按序尝试，某通道失败（超时/网关限制/非标准响应）自动切下一个；
+    文本请求传 None（单通道默认模型）。非流式失败时无已产出内容，切换无副作用。"""
+    channels = channels or [{}]
+    last_err: Exception | None = None
+    for ch in channels:
+        try:
+            return llm.call_llm(messages, tcfg, model=ch.get("model"),
+                                base_url=ch.get("base_url"), api_key=ch.get("api_key"))
+        except Exception as e:  # noqa: BLE001  换下一个视觉候选
+            last_err = e
+    raise last_err  # type: ignore[misc]
 
 
-def _stream_llm(messages, tcfg):
+def _stream_llm(messages, tcfg, channels: list[dict] | None = None):
     """B7：流式调用，含断流干净收尾 + 未产出前重试/降级（实现在 llm.py）。
     异常直接抛给 _stream_chain → api.py event_stream 转 SSE error 事件（协议已对齐）。
+    channels（批次28）：视觉候选链——仅当某通道在**产出首个 delta 之前**失败
+    才切换下一候选（首包前失败无已发送内容，切换安全）；一旦已产出 delta，
+    异常原样抛出交由上层断流处理（换模型重发会导致前端内容重复）。
     """
-    yield from llm.stream_llm(messages, tcfg)
+    channels = channels or [{}]
+    last_err: Exception | None = None
+    for ch in channels:
+        produced = False
+        try:
+            for item in llm.stream_llm(messages, tcfg, model=ch.get("model"),
+                                       base_url=ch.get("base_url"),
+                                       api_key=ch.get("api_key")):
+                produced = True
+                yield item
+            return
+        except Exception as e:  # noqa: BLE001
+            if produced:
+                raise          # 已有输出 → 不换模型，交上层断流兜底
+            last_err = e       # 首包前失败 → 换下一个视觉候选
+    raise last_err  # type: ignore[misc]
+
+
+def _vision_channels() -> list[dict]:
+    """批次28：视觉模型候选链——按序返回可用视觉通道（全部启用且带原始 key）。
+    VISION_MODEL 环境变量可覆盖候选顺序（逗号分隔），默认
+    "deepseek-v4.1-flash,qwen3.8-flash,gpt-5.6-luna"——2026-09-28 用 2026
+    测试图实测网关 7 模型：deepseek-v4.1-flash / qwen3.8-flash 识别正确
+    （gpt-5.6-luna 60s 超时 + 偶发"仅限指定客户端"限制；deepseek-v4-pro
+    对 system+多模态输出审核文本；glm-5.3 无视觉；grok/agnes 识别错），
+    luna 留作路由恢复时的备选，候选链保证任一通道漂移自动切换。
+    注意必须用 get_model() 取原始 key：list_models() 的 api_key 是脱敏掩码
+    （sk-a****vLvb），拿掩码调网关会 401 Invalid token。
+    返回空列表 → 上层给可读错误，不静默吞图。"""
+    names = [n.strip() for n in
+             os.getenv("VISION_MODEL",
+                       "deepseek-v4.1-flash,qwen3.8-flash,gpt-5.6-luna").split(",")
+             if n.strip()]
+    out: list[dict] = []
+    try:
+        from .models import get_ai_model_store
+        store_ = get_ai_model_store()
+        for name in names:
+            row = store_.get_model(name)
+            if row and row.get("enabled", True) and row.get("api_key"):
+                out.append({"model": row["model_id"], "base_url": row.get("base_url") or None,
+                            "api_key": row["api_key"]})
+    except Exception:  # noqa: BLE001  注册表不可用时按未配置处理
+        pass
+    return out
 
 
 def _gen_reject(tcfg=None):
@@ -183,18 +277,22 @@ def _gen_silent_done():
 
 
 def ask(query: str, teacher_id: str = "T001", stream: bool = False, history: list[dict] | None = None,
-        resume: str = ""):
+        resume: str = "", attachments: list[dict] | None = None):
     """完整问答链路。teacher_id 决定老师配置与知识库。stream=True 返回事件生成器。
     history: 可选会话历史（ChatStore.get_messages 结果），注入多轮上下文。
     resume: 断点续答（SSE 断线重连）——前端已收到的部分答案；仅 stream=True 时生效，
     非流式请求忽略该字段（行为与原契约一致）。resume 模式跳过 refs 事件（前端已持有）。
+    attachments（批次28）：附件列表 [{kind,name,text,image_data_url}]——
+    文本附件直接拼入 prompt；图片附件走视觉模型（VISION_MODEL 注册条目）。
     """
     query = query.strip()
     if not query:
         raise ValueError("问题不能为空")
     tcfg = store._GLOBAL.get_teacher(teacher_id)
     hits = _retrieve_hits(query, tcfg)
-    if not hits:
+    # 批次28：附件提问不做检索空判——学员上传资料/图片问"图里是什么"这类
+    # 问题本就不依赖知识库命中，检索无命中也应结合附件作答（依据来源=附件）
+    if not hits and not attachments:
         # 无匹配 → 拒答，不调大模型（说明书 §4.2 2001 分支）
         if stream:
             # 断点续答时检索无命中（如知识库被清空）：不覆盖前端已有内容，静默收尾
@@ -222,23 +320,39 @@ def ask(query: str, teacher_id: str = "T001", stream: bool = False, history: lis
     if not _api_key_now or _api_key_now.startswith("sk-请"):
         raise RuntimeError("未配置 API_KEY：请在「AI 模型管理」为默认模型填写密钥，或在 .env 填入中转站 key")
 
-    messages = build_messages(tcfg, hits, query, history=history)
+    messages = build_messages(tcfg, hits, query, history=history, attachments=attachments)
+    # 批次28：带图请求必须走视觉模型通道（文本模型收到 image_url 直接 4xx）
+    _has_img = llm._has_image(messages)
+    channels: list[dict] = []
+    if _has_img:
+        channels = _vision_channels()
+        if not channels:
+            raise ValueError("图片理解模型未配置，请联系管理员或改用文字提问")
     if stream:
-        return _stream_chain(messages, tcfg, hits, teacher_id, resume=resume)
+        return _stream_chain(messages, tcfg, hits, teacher_id, resume=resume,
+                             channels=channels, soft_guard=bool(attachments))
     # 问题级缓存（§8.1）：键含 history 哈希，多轮上下文不串；命中直接返回
+    # 批次28：缓存键不含 attachments——带附件请求完全绕过缓存（读写均跳），
+    # 防止"带图答案"污染后续无附件的同 query 查询
     hist_key = hashlib.md5(
         json.dumps(history or [], ensure_ascii=False).encode("utf-8")
     ).hexdigest()[:12]
     cache_key = _safe_key("ans", teacher_id, query, hist_key)
-    hit = answer_cache.get(cache_key)
-    if hit is not None:
-        return hit
-    answer = _call_llm(messages, tcfg)
+    if not attachments:
+        hit = answer_cache.get(cache_key)
+        if hit is not None:
+            return hit
+    answer = _call_llm(messages, tcfg, channels=channels)
     # ── 幻觉检测分级守卫（§9.4 v2）：必须在写缓存前检查 ──
     # block → 拒答不入缓存；confirm → 放行+提示但不入缓存（重问重新生成）；
     # warn → 放行+提示并入缓存；pass → 原行为
+    # 批次28：附件回答的依据=学员上传材料（不在讲义内），讲义比对必然失配——
+    # block 降级为 warn（放行+提示，不拦回答）
     passed, guard_detail = run_guard(answer, hits, tcfg, teacher_id, query=query)
     level = guard_detail.get("level") or ("pass" if passed else "block")
+    if level == "block" and attachments:
+        level = "warn"
+        guard_detail = {"level": "warn", "soft_fails": ["学员附件回答，未做讲义强校验"]}
     if level == "block":
         reason = (guard_detail.get("fails") or ["unknown"])[0]
         guard_counter.record(teacher_id, query, reason, level="block")
@@ -253,20 +367,34 @@ def ask(query: str, teacher_id: str = "T001", stream: bool = False, history: lis
         "answer": answer, "hits": hits, "rejected": False, "guard_fails": [],
         "guard_level": level, "guard_notice": GUARD_NOTICES.get(level, ""),
     }
-    if level != "confirm":
+    if level != "confirm" and not attachments:
         answer_cache.set(cache_key, result)
     return result
 
 
-def _stream_chain(messages, tcfg, hits, teacher_id, resume: str = ""):
+def _msg_text(content) -> str:
+    """批次28：user 消息文本提取——content 可为 str 或多模态数组（text 块拼接）。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(p.get("text", "") for p in content
+                         if isinstance(p, dict) and p.get("type") == "text")
+    return str(content or "")
+
+
+def _stream_chain(messages, tcfg, hits, teacher_id, resume: str = "",
+                  channels: list[dict] | None = None, soft_guard: bool = False):
     """流式链：边推边累积；done 前对完整回答跑幻觉检测分级守卫。
     block → guard_block 事件（前端替换为拒答提示，链路终止）；
     warn/confirm → guard_warn 事件（内容照常，前端附提示条，refs/done 照发）。
     resume（断点续答）：预置前端已收到的部分答案进累积缓冲（守卫对全文跑）；
     LLM 上下文末尾内存追加续写指令（不入库、不入缓存键）；refs 事件跳过（前端已持有）。
+    channels（批次28）：带图请求的视觉候选链透传（首包前失败自动换候选）。
+    soft_guard（批次28）：附件回答（依据=学员上传材料，不在讲义）时 True——
+    守卫 block 降级为 warn，不拦回答。
     """
     buf: list[str] = []
-    query = messages[-1]["content"] if messages else ""
+    query = _msg_text(messages[-1]["content"]) if messages else ""
     if resume:
         buf.append(resume)
         messages = messages + [
@@ -274,7 +402,7 @@ def _stream_chain(messages, tcfg, hits, teacher_id, resume: str = ""):
             {"role": "user",
              "content": "上一条回复因网络中断未发送完整。请从中断处继续输出剩余内容，衔接自然，禁止重复已输出内容。"},
         ]
-    for item in _stream_llm(messages, tcfg):
+    for item in _stream_llm(messages, tcfg, channels=channels):
         if item["type"] == "delta":
             buf.append(item["data"])
         yield item
@@ -282,6 +410,9 @@ def _stream_chain(messages, tcfg, hits, teacher_id, resume: str = ""):
     if answer:
         passed, detail = run_guard(answer, hits, tcfg, teacher_id, query=query)
         level = detail.get("level") or ("pass" if passed else "block")
+        if level == "block" and soft_guard:
+            level = "warn"
+            detail = {"level": "warn", "soft_fails": ["学员附件回答，未做讲义强校验"]}
         if level == "block":
             reason = (detail.get("fails") or ["unknown"])[0]
             guard_counter.record(teacher_id, query, reason, level="block")
