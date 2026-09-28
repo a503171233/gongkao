@@ -23,7 +23,7 @@ async function renderAcOverview() {
     ` <button onclick="acTestFetch()" style="margin-left:6px;padding:2px 8px;border:1px solid #d8dce6;border-radius:5px;background:#fff;cursor:pointer;font-size:11px">⚡ 试抓</button>` +
     `<span id="acFetchTestOut" style="font-size:11px;color:#888;margin-left:6px"></span>`;
 
-  global.acTestFetch = async function () {
+  window.acTestFetch = async function () {  // 27-L：浏览器无 global 裸引用（admin 页 renderAcOverview 崩溃根因）
     var out = document.getElementById('acFetchTestOut');
     if (out) { out.textContent = '试抓中…'; out.style.color = '#888'; }
     try {

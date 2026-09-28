@@ -210,8 +210,17 @@ def ask(query: str, teacher_id: str = "T001", stream: bool = False, history: lis
             return _gen_mock(answer, hits, resume=resume)
         return {"answer": answer, "hits": hits, "rejected": False, "mock": True}
 
-    if not store._GLOBAL.api_key or store._GLOBAL.api_key.startswith("sk-请"):
-        raise RuntimeError("未配置 API_KEY：请在 .env 填入中转站 key")
+    # 27-L：模型注册表默认模型自带通道密钥（base_url/api_key 独立），
+    # 全局 .env key 仅在注册表不可用时兜底必需——两路任一有 key 即放行。
+    _eff = None
+    try:
+        from .models import get_ai_model_store
+        _eff = get_ai_model_store().effective_default()
+    except Exception:  # noqa: BLE001
+        pass
+    _api_key_now = (_eff or {}).get("api_key") or store._GLOBAL.api_key or ""
+    if not _api_key_now or _api_key_now.startswith("sk-请"):
+        raise RuntimeError("未配置 API_KEY：请在「AI 模型管理」为默认模型填写密钥，或在 .env 填入中转站 key")
 
     messages = build_messages(tcfg, hits, query, history=history)
     if stream:

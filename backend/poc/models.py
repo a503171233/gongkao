@@ -225,34 +225,7 @@ class AiModelStore:
         return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
-# ---------- 内置模型目录（OpenAI 兼容协议；兜底：远程拉取失败时展示） ----------
-BUILTIN_MODELS = [
-    {"model_id": "gpt-5.6-luna", "name": "Luna 主模型", "provider": "anyyds",
-     "base_url": "https://ai.anyyds.cn/v1"},
-    {"model_id": "gpt-4o-mini", "name": "GPT-4o mini", "provider": "openai",
-     "base_url": "https://api.openai.com/v1"},
-    {"model_id": "deepseek-chat", "name": "DeepSeek Chat", "provider": "deepseek",
-     "base_url": "https://api.deepseek.com/v1"},
-    {"model_id": "qwen-plus", "name": "通义千问 Plus", "provider": "aliyun",
-     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-    {"model_id": "glm-4-flash", "name": "智谱GLM-4-Flash", "provider": "zhipu",
-     "base_url": "https://open.bigmodel.cn/api/paas/v4"},
-    {"model_id": "moonshot-v1-8k", "name": "Moonshot (月之暗面)", "provider": "moonshot",
-     "base_url": "https://api.moonshot.cn/v1"},
-]
-
-
-def builtin_catalog() -> list[dict]:
-    """返回内置模型目录（含已注册状态）。"""
-    store = get_ai_model_store()
-    reg = {m["model_id"] for m in store.list_models()}
-    out = []
-    for m in BUILTIN_MODELS:
-        d = dict(m)
-        d["registered"] = m["model_id"] in reg
-        out.append(d)
-    return out
-
+# ---------- 内置模型目录已删除（27-L）：模型一律以注册表为准，远端拉取失败即明示错误 ----------
 
 def list_remote_models(base_url: str = "", provider: str = "", api_key: str = "") -> dict:
     """按 OpenAI 兼容协议 GET {base_url}/models 拉取模型列表。
@@ -260,7 +233,7 @@ def list_remote_models(base_url: str = "", provider: str = "", api_key: str = ""
     返回: {ok: bool, models: [model_id...], error: str?, used_fallback: bool,
            base_url: <API 根地址（不含 /models），供一键登记复用>,
            key_source: 实际生效密钥来源}
-    失败时自动回退内置目录（ok=False, used_fallback=True）。
+    失败时返回空列表（ok=False），不再回退内置目录（27-L：模型一律以注册表为准）。
     使用标准库，避免对 requests 的运行时依赖。
 
     密钥候选链（按序尝试）：显式传入 > 该平台注册表密钥 > 采集通道已存密钥 > 全局密钥。
@@ -313,7 +286,7 @@ def list_remote_models(base_url: str = "", provider: str = "", api_key: str = ""
             raw = data.get("data", data if isinstance(data, list) else [])
             ids = [str(it["id"]) for it in raw if isinstance(it, dict) and it.get("id")]
             if not ids:
-                return {"ok": False, "models": [m["model_id"] for m in BUILTIN_MODELS],
+                return {"ok": False, "models": [],
                         "error": "接口未返回模型列表(data字段为空)", "used_fallback": True,
                         "base_url": root, "key_source": src}
             return {"ok": True, "models": ids, "error": "", "used_fallback": False,
@@ -323,14 +296,14 @@ def list_remote_models(base_url: str = "", provider: str = "", api_key: str = ""
             if e.code in (401, 403):
                 models_err = f"HTTP Error {e.code}: Unauthorized（密钥被拒，来源：{src}）"
                 continue
-            return {"ok": False, "models": [m["model_id"] for m in BUILTIN_MODELS],
+            return {"ok": False, "models": [],
                     "error": f"HTTPError: HTTP Error {e.code}", "used_fallback": True,
                     "base_url": root, "key_source": src}
         except Exception as e:  # noqa: BLE001 网络/协议失败 → 兜底内置目录
-            return {"ok": False, "models": [m["model_id"] for m in BUILTIN_MODELS],
+            return {"ok": False, "models": [],
                     "error": f"{type(e).__name__}: {e}", "used_fallback": True,
                     "base_url": root, "key_source": src}
-    return {"ok": False, "models": [m["model_id"] for m in BUILTIN_MODELS],
+    return {"ok": False, "models": [],
             "error": models_err or "所有候选密钥均被拒", "used_fallback": True,
             "base_url": root, "key_source": "none"}
 

@@ -103,6 +103,38 @@ def _chat_once(messages, model, tcfg, max_tokens: int = 2000,
     return resp.choices[0].message.content or ""
 
 
+def _registry_default() -> dict | None:
+    """27-L：取模型注册表默认模型（ai_models 表 effective_default）。
+    含该模型自身通道（base_url/api_key）；无注册默认时 effective_default 返回
+    全局 .env 配置，语义与原 tcfg 兜底一致。DB 异常不阻断（返回 None 走 tcfg）。"""
+    try:
+        from .models import get_ai_model_store
+        eff = get_ai_model_store().effective_default()
+        if eff and eff.get("model_id"):
+            return eff
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _apply_registry(model, temperature, base_url, api_key):
+    """27-L：模型选择统一口径——显式参数 > 注册表默认模型 > tcfg（调用方原逻辑）。"""
+    if model is not None:
+        return model, temperature, base_url, api_key
+    eff = _registry_default()
+    if not eff:
+        return model, temperature, base_url, api_key
+    if model is None:
+        model = eff["model_id"]
+    if temperature is None and eff.get("temperature") is not None:
+        temperature = eff["temperature"]
+    if base_url is None and eff.get("base_url"):
+        base_url = eff["base_url"]
+    if api_key is None and eff.get("api_key"):
+        api_key = eff["api_key"]
+    return model, temperature, base_url, api_key
+
+
 def call_llm(messages, tcfg, max_tokens: int = 2000, model: str | None = None,
              temperature: float | None = None,
              base_url: str | None = None, api_key: str | None = None) -> str:
@@ -110,6 +142,7 @@ def call_llm(messages, tcfg, max_tokens: int = 2000, model: str | None = None,
     max_tokens 默认 2000（问答）；抽取等大输出调用方按需传更大值。
     model/temperature 显式给出时覆盖 tcfg 对应值（AI模型管理页默认模型由此接入）；
     base_url/api_key 显式给出时用该模型自身通道（默认模型页配置），否则走全局 .env。"""
+    model, temperature, base_url, api_key = _apply_registry(model, temperature, base_url, api_key)
     last_err: Exception | None = None
     for attempt in range(_max_retries() + 1):  # 首次尝试 + 重试次数
         try:
@@ -184,11 +217,13 @@ def _stream_once(messages, model, tcfg, produced: dict,
 
 def stream_llm(messages, tcfg):
     """流式：重试/降级仅发生在未产出前；产出后断流直接抛错（对齐 SSE error 协议）。"""
+    model, temperature, base_url, api_key = _apply_registry(None, None, None, None)
     produced = {"v": False}
     last_err: Exception | None = None
     for attempt in range(_max_retries() + 1):
         try:
-            yield from _stream_once(messages, tcfg.llm_model, tcfg, produced)
+            yield from _stream_once(messages, model or tcfg.llm_model, tcfg, produced,
+                                    base_url=base_url, api_key=api_key)
             return
         except Exception as e:  # noqa: BLE001
             if produced["v"] or not _is_retryable(e) or attempt >= _max_retries():
@@ -199,7 +234,8 @@ def stream_llm(messages, tcfg):
 
     for fb in _fallback_models():
         try:
-            yield from _stream_once(messages, fb, tcfg, produced)
+            yield from _stream_once(messages, fb, tcfg, produced,
+                                    base_url=base_url, api_key=api_key)
             return
         except Exception as e:  # noqa: BLE001
             if produced["v"]:

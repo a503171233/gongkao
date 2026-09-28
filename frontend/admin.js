@@ -805,25 +805,12 @@ async function renderAiModels() {
       </table>
     </div>
   </div>
-  <div class="panel" style="margin-top:16px">
-    <div class="panel-head">
-      <div class="toolbar" style="flex:1"><b>🪄 内置模型目录</b><span style="font-size:11.5px;color:var(--ink-3)">OpenAI 兼容协议 · 一键登记进注册表，或点击「获取模型」从远端拉取</span></div>
-      <button class="btn ghost sm" onclick="aimLoadBuiltin()">⟳ 刷新内置</button>
-    </div>
-    <div class="tbl-wrap">
-      <table class="tbl">
-        <thead><tr><th>模型标识</th><th>名称</th><th>提供方</th><th>Base URL</th><th>操作</th></tr></thead>
-        <tbody id="aim-builtin-body"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
   <div id="aim-modal" class="modal-mask"></div>`;
   await aimLoad();
   acLlmLoad();
 }
 
 let _aimCache = [];
-let _aimBuiltin = [];
 
 async function aimLoad() {
   const [mr, er] = await Promise.all([
@@ -842,40 +829,6 @@ async function aimLoad() {
     <div class="card"><div class="card-label">输出上限</div><div class="card-n">${eff.max_tokens ?? '—'}</div><div class="card-sub">tokens</div></div>
     <div class="card"><div class="card-label">已注册</div><div class="card-n">${_aimCache.length}</div><div class="card-sub">个候选模型</div></div>`;
   renderAiRows(_aimCache);
-  aimLoadBuiltin();
-}
-
-// 加载内置模型目录并渲染（含一键登记）
-async function aimLoadBuiltin() {
-  const tbody = $('#aim-builtin-body');
-  if (!tbody) return;
-  try {
-    const r = await admin('/admin/ai-models/builtin');
-    _aimBuiltin = (r.models || []);
-    tbody.innerHTML = _aimBuiltin.map(m => `
-      <tr>
-        <td><code>${esc(m.model_id)}</code></td>
-        <td><b>${esc(m.name)}</b></td>
-        <td>${esc(m.provider)}</td>
-        <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.base_url)}">${esc(m.base_url)}</td>
-        <td>${m.registered
-          ? '<span class="badge green">已登记</span>'
-          : `<button class="btn ghost sm" onclick="aimRegisterBuiltin('${esc(m.model_id)}')">一键登记</button>`}</td>
-      </tr>`).join('');
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="5" class="err-tip">加载失败：${esc(e.message)}</td></tr>`; }
-}
-
-// 一键登记内置模型
-async function aimRegisterBuiltin(modelId) {
-  const m = _aimBuiltin.find(x => x.model_id === modelId);
-  if (!m) return;
-  try {
-    await admin('/admin/ai-models', { method: 'POST', body: JSON.stringify({
-      name: m.name, model_id: m.model_id, provider: m.provider, base_url: m.base_url,
-      api_key: '', temperature: 0.3, max_tokens: 2000, remark: '内置目录一键登记',
-    })});
-    toast(`已登记 ${modelId}`, 'ok'); aimLoad();
-  } catch (e) { toast('登记失败：' + e.message, 'err'); }
 }
 
 // 获取模型：弹窗 → 填 Base URL → 调远端拉取，失败自动兜底内置目录
@@ -883,7 +836,7 @@ function aimFetchModal() {
   const effBase = (_aimCache.find(x => x.is_default) || {}).base_url || '';
   openModal('aim-modal', `
     <h3>📥 获取模型</h3>
-    <p style="font-size:12.5px;color:var(--ink-3);margin-bottom:12px">按 <b>OpenAI 兼容协议</b> 请求 <code>{Base URL}/models</code> 拉取可用模型；<br>跨域/网络/鉴权失败时自动<b>降级展示内置目录</b>并给出原因。<br>⚠️ 填写 API Key 后，<b>一键登记的模型将保存该密钥</b>（留空 = 平台全局密钥）；不同密钥可见/可用的模型不同。</p>
+    <p style="font-size:12.5px;color:var(--ink-3);margin-bottom:12px">按 <b>OpenAI 兼容协议</b> 请求 <code>{Base URL}/models</code> 拉取可用模型；<br>跨域/网络/鉴权失败时会<b>明示错误原因</b>（模型一律以注册表为准，不再内置兜底）。<br>⚠️ 填写 API Key 后，<b>一键登记的模型将保存该密钥</b>（留空 = 平台全局密钥）；不同密钥可见/可用的模型不同。</p>
     <div class="field"><label>Base URL</label><input id="aimf-base" value="${esc(effBase || 'https://ai.anyyds.cn/v1')}" placeholder="https://provider/v1"></div>
     <div class="field"><label>提供方（可选）</label><input id="aimf-provider" placeholder="anyyds / openai / deepseek …"></div>
     <div class="field"><label>API Key（可选，读取平台 .env 缺省）</label><input id="aimf-key" type="password" placeholder="sk-…"></div>
@@ -910,11 +863,11 @@ async function aimFetchList() {
     const r = await admin('/admin/ai-models/list-remote', {
       method: 'POST', body: JSON.stringify({ base_url: base, provider, api_key: key }),
     });
-    const isFallback = r.used_fallback === true;
+    const isFallback = r.used_fallback === true;  // 27-L：后端已不回退内置目录，此分支仅防御
     // 记录 base_url / 密钥用于一键登记（r.base_url 是 API 根地址，不含 /models）
     window._aimLast = { base: r.base_url || base, provider, key };
     box.innerHTML = (isFallback
-      ? `<div class="err-tip" style="margin-bottom:10px">⚠️ 远端获取失败，已降级展示内置目录：${esc(r.error || '')}</div>`
+      ? `<div class="err-tip" style="margin-bottom:10px">⚠️ 远端获取失败：${esc(r.error || '')}</div>`
       : `<p class="hint ok" style="margin-bottom:10px">✅ 获取到 ${r.models.length} 个模型（${esc(r.base_url || base)}）</p>`)
       + `<table class="tbl"><thead><tr><th>模型标识</th><th>操作</th></tr></thead><tbody>`
       + r.models.map(id => {
@@ -923,7 +876,7 @@ async function aimFetchList() {
             ? '<span class="badge green">已登记</span>'
             : `<button class="btn ghost sm" onclick="aimRegisterRemote('${esc(id)}', '${esc(window._aimLast.provider)}')">一键登记</button>`}</td></tr>`;
         }).join('') + `</tbody></table>`;
-    hint.textContent = isFallback ? `${r.models.length} 个（内置兜底）` : `${r.models.length} 个（远端）`;
+    hint.textContent = isFallback ? '远端获取失败' : `${r.models.length} 个（远端）`;
     hint.className = isFallback ? 'hint err' : 'hint ok';
   } catch (e) {
     box.innerHTML = `<div class="err-tip">拉取失败：${esc(e.message)}</div>`;

@@ -37,7 +37,6 @@ from .guard import guard_counter
 from .metrics import metrics
 from .models import (
     get_ai_model_store as _get_aimodel,
-    builtin_catalog,
     list_remote_models,
 )
 from .payment import get_payment_store, PLANS
@@ -5452,13 +5451,6 @@ def admin_ai_model_create(req: AiModelCreateReq = Body(default_factory=AiModelCr
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"model": m}
-
-
-@app.get("/admin/ai-models/builtin")
-def admin_ai_models_builtin(authorization: str = Header(default="")):
-    """内置模型目录（OpenAI 兼容协议；含已注册标记，兜底展示用）。"""
-    _admin_user(authorization)
-    return {"models": builtin_catalog()}
 
 
 @app.post("/admin/ai-models/list-remote")
