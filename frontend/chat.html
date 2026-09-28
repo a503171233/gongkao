@@ -14,6 +14,14 @@
 </style>
 </head>
 <body>
+<script>
+  // 批次27-I5：?tab= 跨页直达首帧即目标页 —— 同步预置视图 class，
+  // 避免「先渲染学习页 → 300ms 后才切走」的闪烁（DOM 解析到此处即执行，早于首帧绘制）
+  (function () {
+    var t = new URLSearchParams(location.search).get('tab');
+    if (t === 'bank' || t === 'exam' || t === 'me') document.body.classList.add('v-' + t);
+  })();
+</script>
 <div class="layout">
 <aside id="sidebar">
   <!-- 当前老师书卷信息（JS 渲染） -->
@@ -250,15 +258,15 @@ document.addEventListener('DOMContentLoaded', function () {
       }, 900);
     }
     // 批次27-I4：底部 tab 跨页直达 —— forum.html 等页面 tabbar 跳 /chat.html?tab=bank|exam|me|forum
+    // 批次27-I5：去掉 300ms 延迟——body class 已在 <body> 后同步预置（首帧即目标页），
+    // 这里同步执行 TAB.go 只做幂等确认+触发数据加载+tabbar 高亮，无闪烁
     var tb = sp.get('tab');
     if (tb === 'forum') { location.replace('/forum.html'); return; }
     if (tb === 'bank' || tb === 'exam' || tb === 'me') {
-      setTimeout(function () {
-        try {
-          TAB.go(tb);
-          history.replaceState(null, '', location.pathname);  // 清参数，刷新不重放
-        } catch (e) {}
-      }, 300);
+      try {
+        TAB.go(tb);
+        history.replaceState(null, '', location.pathname);  // 清参数，刷新不重放
+      } catch (e) {}
     }
   } catch (e) {}
 });
