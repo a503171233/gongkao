@@ -6,7 +6,7 @@
   <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
   <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 学习中心</title>
-<link rel="stylesheet" href="/css/app.css?v=b27i2">
+<link rel="stylesheet" href="/css/app.css?v=b27k1">
 <link rel="stylesheet" href="/css/print.css">
 <!-- 对话站专属内联微调（书卷主题下补充少量细节） -->
 <style>
@@ -49,7 +49,7 @@
   <button id="c4FavBtn" class="head-btn" onclick="C4.openFavorites()">📌 收藏</button>
   <button id="c4MistBtn" class="head-btn" onclick="C4.openMistakes()">❌ 错题本</button>
   <span class="ts-sep" aria-hidden="true"></span>
-  <button id="c5MockBtn" class="head-btn" onclick="C5.openMockExam()">📝 模考</button>
+  <button id="c5MockBtn" class="head-btn" onclick="C5.openMockExam()">📝 解析</button>
   <button id="c6SmartBtn" class="head-btn" onclick="C6.openSmartExam()">🧩 组卷</button>
   <span class="ts-sep" aria-hidden="true"></span>
   <button id="c8Btn" class="head-btn" onclick="C8.openIncentive()">🏆 激励</button>
@@ -165,7 +165,7 @@
   <div class="exam-hero">
     <div class="eh-t">📝 真题模考</div>
     <div class="eh-d">整卷限时作答 · 自动判分<br>交卷生成 AI 提升计划（含时间分配诊断）</div>
-    <button class="eh-btn" onclick="TAB.run(function(){C5.openMockExam()})">开始模考</button>
+    <button class="eh-btn" onclick="TAB.run(function(){C6.openSmartExam()})">开始模考</button>
   </div>
   <button class="bigrow" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="bic">🧩</i><span class="bt"><span class="bnm">智能组卷</span><span class="bds">按考点 / 题量自定义组卷练习</span></span><i class="chev">›</i></button>
   <button class="bigrow" onclick="TAB.run(function(){C10.openFenbi()})"><i class="bic">🎯</i><span class="bt"><span class="bnm">粉笔模考报告</span><span class="bds">绑定粉笔同步模考成绩与解答</span></span><i class="chev">›</i></button>
@@ -201,7 +201,7 @@
     </div>
     <div class="ios-group-title">测考与报告</div>
     <div class="ios-list">
-      <button class="row" onclick="TAB.run(function(){C5.openMockExam()})"><i class="ric">📝</i><span class="rtxt">模拟考试<span class="rdesc">整卷限时模考</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="ric">📝</i><span class="rtxt">模拟考试<span class="rdesc">整卷限时模考</span></span><i class="chev">›</i></button>
       <button class="row" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="ric">🧩</i><span class="rtxt">智能组卷<span class="rdesc">按考点自定义组卷</span></span><i class="chev">›</i></button>
       <button class="row" onclick="TAB.run(function(){C9.openReport()})"><i class="ric">📈</i><span class="rtxt">学习报告<span class="rdesc">掌握度与薄弱点</span></span><i class="chev">›</i></button>
       <button class="row" onclick="TAB.run(function(){C10.openFenbi()})"><i class="ric">🎯</i><span class="rtxt">粉笔提升<span class="rdesc">绑定 / 同步 / 提升计划</span></span><i class="chev">›</i></button>
@@ -237,7 +237,7 @@
     <button class="ms-item" onclick="TAB.run(function(){C4.openReport()})"><i class="mi">📊</i>练习统计</button>
     <button class="ms-item" onclick="TAB.run(function(){C4.openFavorites()})"><i class="mi">📌</i>收藏</button>
     <button class="ms-item" onclick="TAB.run(function(){C4.openMistakes()})"><i class="mi">❌</i>错题本</button>
-    <button class="ms-item" onclick="TAB.run(function(){C5.openMockExam()})"><i class="mi">📝</i>模考</button>
+    <button class="ms-item" onclick="TAB.run(function(){C5.openMockExam()})"><i class="mi">📝</i>模考解析</button>
     <button class="ms-item" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="mi">🧩</i>组卷</button>
     <button class="ms-item" onclick="TAB.run(function(){C8.openIncentive()})"><i class="mi">🏆</i>激励</button>
     <button class="ms-item" onclick="TAB.run(function(){C9.openReport()})"><i class="mi">📈</i>报告</button>

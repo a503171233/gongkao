@@ -551,7 +551,7 @@ body.v-me .me-view { display: block; animation: fadeSlide var(--dur) var(--ease-
   box-shadow: var(--shadow-1); padding: 12px 4px 10px; text-align: center; }
 .mstat b { display: block; font-size: 18px; font-weight: 800; color: var(--wood-deep);
   font-variant-numeric: tabular-nums; line-height: 1.3; }
-.mstat span { font-size: 10.5px; color: var(--ink-3); }
+.mstat span { font-size: 12px; color: var(--ink-3); }
 .me-body { padding: 4px 14px calc(20px + var(--safe-bottom)); }
 .me-login-btn { width: 100%; margin-top: 16px; padding: 13px; border: none;
   border-radius: 14px; background: var(--wood); color: #fffaf0; font-family: inherit;
@@ -610,7 +610,7 @@ body.v-bank #viewBank, body.v-exam #viewExam { display: block;
   border-radius: 14px; box-shadow: var(--shadow-1); padding: 11px 6px 9px; text-align: center; }
 .bstat b { display: block; font-size: 19px; font-weight: 800; color: var(--wood-deep);
   font-variant-numeric: tabular-nums; line-height: 1.3; }
-.bstat span { font-size: 10.5px; color: var(--ink-3); }
+.bstat span { font-size: 12px; color: var(--ink-3); }
 
 /* ---- 题库页：专项练习模块卡网格（粉笔式） ---- */
 .bank-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 0 14px; }
@@ -710,4 +710,12 @@ body.v-bank #viewBank, body.v-exam #viewExam { display: block;
   .pg-nav .pg-title { flex: 1; min-width: 0; font-size: 17px; font-weight: 700;
     color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pg-nav .pg-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+}
+
+/* 批次27-K：iOS Safari 聚焦 font-size<16px 的输入框会自动放大页面导致布局错位 */
+@media (max-width: 720px) {
+  input[type="text"], input[type="password"], input[type="search"],
+  input[type="number"], input[type="email"], input[type="tel"], input:not([type]), textarea {
+    font-size: 16px;
+  }
 }

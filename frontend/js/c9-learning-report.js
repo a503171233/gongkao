@@ -114,7 +114,8 @@
       return '<p style="color:var(--ink-3);text-align:center;padding:14px 0">近 7 天暂无练习记录</p>';
     }
     var maxN = Math.max.apply(null, days.map(function (d) { return d.n || 0; })) || 1;
-    return '<div style="display:flex;align-items:flex-end;gap:6px;height:96px;padding:6px 2px">' +
+    return '<div style="font-size:11.5px;color:var(--ink-3);margin:0 0 6px">柱上数字 = 当天答对 / 答题数</div>' +
+      '<div style="display:flex;align-items:flex-end;gap:6px;height:96px;padding:6px 2px">' +
       days.map(function (d) {
         var n = d.n || 0;
         var ok = d.ok || 0;

@@ -581,6 +581,7 @@ def ask(req: AskReq, authorization: str = Header(default="")):
                          history=history, resume=resume)
     except Exception as e:
         metrics.ask_failed(str(e))
+        print("[ask-failed]", str(e)[:500], flush=True)  # 27-K：503 脱敏后原始错误必须留服务端日志
         msg = str(e)
         # #2 脱敏：运维细节（key/.env/内部路径/凭据特征）不下发给学员，统一业务话术；
         # 完整错误仍在服务端日志（metrics.ask_failed + 容器日志）可查。

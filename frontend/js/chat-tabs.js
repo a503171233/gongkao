@@ -177,7 +177,22 @@ window.PGPAGE = (function () {
     nav.innerHTML = '<button class="pg-back" aria-label="返回">‹</button>' +
       '<span class="pg-title"></span><i class="pg-dot"></i>';
     nav.querySelector(".pg-title").textContent = pageTitle(p);
-    nav.querySelector(".pg-back").onclick = function () { closePanel(p); };
+    nav.querySelector(".pg-back").onclick = function () {
+      // 批次27-K：做题/考试进行中点返回需确认，防误触丢进度
+      var needsConfirm = false, tip = "";
+      if (p.id === "c4Panel") {
+        var sp = document.getElementById("submitPractice");
+        var res = document.getElementById("practiceResult");
+        needsConfirm = !!(sp && sp.getBoundingClientRect().height > 0 && (!res || !res.textContent.trim()));
+        tip = "本题还未提交，返回后作答不保存。确定返回吗？";
+      } else if (p.id === "c6Panel") {
+        var cd = document.getElementById("seCountdown");
+        needsConfirm = !!(cd && cd.getBoundingClientRect().height > 0);
+        tip = "考试正在进行中，返回不会暂停计时。确定返回吗？";
+      }
+      if (needsConfirm && !window.confirm(tip)) return;
+      closePanel(p);
+    };
     p.insertBefore(nav, p.firstChild);
     // 推入动画：先落位屏外（armed），双 rAF 后滑入（in）
     if (animate && !p.classList.contains("pg-in")) {
