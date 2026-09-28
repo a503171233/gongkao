@@ -352,5 +352,15 @@ window.ME = (function () {
       loadStats();
     }).catch(renderAnon);
   }
+  // 批次27-M2：登录/登出即时刷新「我的」页——此前游客态 renderAnon 置
+  // loaded=true 且不订阅 auth:changed，游客在本页登录后仍显示「未登录」，
+  // 只有整页刷新才恢复（P1-7）。现在 auth:changed 重置 loaded 并重拉。
+  // 注意：本文件 IIFE 无 global 参数（勿用裸 global 标识符），统一走 window。
+  if (window.GK && GK.bus) {
+    GK.bus.addEventListener("auth:changed", function () {
+      loaded = false;
+      ME.load();
+    });
+  }
   return { load: load };
 })();
