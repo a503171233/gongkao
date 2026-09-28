@@ -133,8 +133,21 @@
 
   // -----------------------------------------------------------------
   // 5. 提交登录/注册（走 GK.api，只调注册/登录接口；业务请求由 A4 带头）
+  //    批次27-M1：in-flight 锁——提交期间再调用（连点/回车/多入口）直接吞掉，
+  //    与 chat-boot.js 的按钮禁用双保险，杜绝重复鉴权请求。
   // -----------------------------------------------------------------
+  var authBusy = false;
   async function authAction() {
+    if (authBusy) return;
+    authBusy = true;
+    try {
+      await authActionInner();
+    } finally {
+      authBusy = false;
+    }
+  }
+
+  async function authActionInner() {
     var u = global.document.getElementById('authUsername').value.trim();
     var p = global.document.getElementById('authPassword').value;
     var errEl = getErrEl();
@@ -193,6 +206,33 @@
       if (errEl) errEl.textContent = msg;
     }
   }
+
+  // -----------------------------------------------------------------
+  // 5.5 未登录功能引导弹层（批次27-M2：替代原生 alert）
+  //     站内视觉、说明用途、直达登录/注册；不阻塞主线程。
+  //     各功能模块统一调用 GK.promptLogin('收藏') 等。
+  // -----------------------------------------------------------------
+  function promptLogin(feature) {
+    var mask = global.document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.style.zIndex = '300';   // 盖过功能面板（c11/c12 z-index 200）
+    mask.innerHTML =
+      '<div class="modal" style="max-width:340px;text-align:center">' +
+        '<div style="font-size:38px;line-height:1.2">🔐</div>' +
+        '<h2 style="margin:6px 0 4px">登录后开始</h2>' +
+        '<p style="font-size:13.5px;color:var(--ink-2);margin:0 0 16px;line-height:1.7">' +
+          '登录后即可使用' + escapeHtml(feature || '此功能') + '，<br>学习记录与进度都会为你保留</p>' +
+        '<div class="row">' +
+          '<button class="cancel" id="plLater">稍后再说</button>' +
+          '<button class="submit" id="plGo">去登录 / 注册</button>' +
+        '</div>' +
+      '</div>';
+    global.document.body.appendChild(mask);
+    mask.querySelector('#plLater').onclick = function () { mask.remove(); };
+    mask.querySelector('#plGo').onclick = function () { mask.remove(); openAuthModal('login'); };
+    mask.addEventListener('click', function (e) { if (e.target === mask) mask.remove(); });
+  }
+  global.GK.promptLogin = promptLogin;
 
   // -----------------------------------------------------------------
   // 6. OAuth 回调：启动时解析 URL ?token= → 存 → 清地址栏 → 刷新

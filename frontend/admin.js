@@ -400,8 +400,8 @@ async function loadDashboard() {
           tooltip: { backgroundColor: '#3d3a33', titleColor: '#fffaf0', bodyColor: '#f6f1e7' },
         },
         scales: isDonut ? {} : {
-          x: { grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#98917f', font: { size: 10.5 } } },
-          y: { beginAtZero: true, grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#98917f', font: { size: 10.5 } } },
+          x: { grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#6E6657', font: { size: 10.5 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#6E6657', font: { size: 10.5 } } },
         },
       },
     });

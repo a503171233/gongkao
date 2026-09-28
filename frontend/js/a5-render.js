@@ -221,7 +221,7 @@
       'padding:3px 10px;font-size:12px;cursor:pointer;color:#666;';
     fav.onclick = function () {
       if (global.C4 && global.C4.bookmarkCurrent) global.C4.bookmarkCurrent();
-      else alert('请先登录后使用收藏功能');
+      else if (global.GK && global.GK.promptLogin) global.GK.promptLogin('收藏');
     };
     bar.appendChild(fav);
     bubble.appendChild(bar);

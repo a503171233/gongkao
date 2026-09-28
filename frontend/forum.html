@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 学员论坛</title>
 <!-- 批次27-I4：引入全站设计系统（移动端底部 tabbar 组件复用） -->
-<link rel="stylesheet" href="/css/app.css?v=b27k1">
+<link rel="stylesheet" href="/css/app.css?v=b27m1">
 <!-- 书卷主题 · 与前台官网/学习中心统一视觉；公开浏览，登录后发帖交流 -->
 <style>
 :root {
@@ -17,7 +17,7 @@
   --card-2:     #fbf4e4;
   --ink:        #3d3a33;
   --ink-2:      #6b655a;
-  --ink-3:      #98917f;
+  --ink-3:      #6E6657;
   --wood:       #8b5e3c;
   --wood-deep:  #6f4a2d;
   --gold:       #c9a05a;
@@ -100,9 +100,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
   border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .chip:hover { border-color: var(--gold); color: var(--wood-deep); }
 .chip.on { background: var(--wood); border-color: var(--wood); color: #fffaf0; }
-.chip em { font-style: normal; opacity: .7; margin-left: 4px; font-size: 11px; }
+.chip em { font-style: normal; opacity: .7; margin-left: 4px; font-size: 12px; }
 
-.badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .badge.cat { background: var(--gold-soft); color: var(--wood-deep); }
 .badge.lz { background: rgba(122,158,109,.18); color: var(--good); }
 
@@ -134,7 +134,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
   background: linear-gradient(135deg, var(--gold-soft), var(--paper-2)); color: var(--wood-deep);
   display: grid; place-items: center; font-size: 14px; font-weight: 800; }
 .reply-item .who .un { font-size: 12px; color: var(--ink-2); word-break: break-all; }
-.reply-item .who .tm { font-size: 10.5px; color: var(--ink-3); }
+.reply-item .who .tm { font-size: 12px; color: var(--ink-3); }
 .reply-item .rbody { flex: 1; font-size: 14px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 .reply-form { padding: 14px 4px; }
 .reply-form textarea { width: 100%; min-height: 84px; resize: vertical; }
@@ -179,6 +179,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
   .knav .links {
     margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
     scrollbar-width: none; white-space: nowrap;
+    flex: 1 1 auto; min-width: 0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
   }
   .knav .links::-webkit-scrollbar { display: none; }
   .knav .links a {

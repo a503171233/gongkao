@@ -219,7 +219,24 @@
   // -----------------------------------------------------------------
   function send() {
     var q = queryEl ? queryEl.value.trim() : '';
-    if (!q || _sending) return;
+    // 批次27-M10：空输入点「发送」给轻反馈（占位文案提示 + 输入框轻晃），不再静默
+    if (!q) {
+      if (queryEl) {
+        if (!queryEl.dataset.ph) queryEl.dataset.ph = queryEl.placeholder || '';
+        queryEl.classList.remove('gk-shake');
+        void queryEl.offsetWidth;   // 重启动画
+        queryEl.classList.add('gk-shake');
+        queryEl.placeholder = '先输入问题，再点发送哦';
+        queryEl.focus();
+        clearTimeout(send._phT);
+        send._phT = setTimeout(function () {
+          queryEl.classList.remove('gk-shake');
+          queryEl.placeholder = queryEl.dataset.ph || '';
+        }, 1800);
+      }
+      return;
+    }
+    if (_sending) return;
 
     _sending = true;
     if (sendBtn) sendBtn.disabled = true;

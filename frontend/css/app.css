@@ -14,7 +14,7 @@
   --card-2:     #fbf4e4;   /* 卡片悬浮色 */
   --ink:        #3d3a33;   /* 深墨主文字 */
   --ink-2:      #6b655a;   /* 次级文字 */
-  --ink-3:      #98917f;   /* 弱文字 */
+  --ink-3:      #6E6657;   /* 弱文字 */
   --wood:       #8b5e3c;   /* 书卷木色 */
   --wood-deep:  #6f4a2d;   /* 深木 */
   --gold:       #c9a05a;   /* 金棕点缀 */
@@ -313,6 +313,7 @@ a:hover { color: var(--wood-deep); }
   .nav-links, .knav .links {
     display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
     scrollbar-width: none; white-space: nowrap; flex-wrap: nowrap;
+    flex: 1 1 auto; min-width: 0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
   }
   .nav-links::-webkit-scrollbar, .knav .links::-webkit-scrollbar { display: none; }
   .nav-links a, .knav .links a {
@@ -432,17 +433,20 @@ a:hover { color: var(--wood-deep); }
 .more-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: calc(var(--z-tabbar) + 1);
   transform: translateY(105%); transition: transform var(--dur-slow) var(--spring);
   background: var(--card); border-radius: 22px 22px 0 0;
-  box-shadow: var(--shadow-3); padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
-  max-height: 72vh; overflow-y: auto; }
+  box-shadow: var(--shadow-3); padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+  max-height: 72vh;
+  /* 批次27-M11：dvh 约束（支持时）——弹层顶部永不顶出首屏，末项一屏内可达 */
+  max-height: min(72vh, calc(100dvh - 80px));
+  overflow-y: auto; }
 .more-sheet.open { transform: translateY(0); }
 .more-sheet .ms-head { display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 14px; }
+  margin-bottom: 10px; }
 .more-sheet .ms-head b { font-size: 16px; }
 .more-sheet .ms-close { border: 1px solid var(--line-2); background: var(--paper);
   width: 34px; height: 34px; border-radius: 50%; font-size: 15px; color: var(--ink-2); cursor: pointer; }
-.ms-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.ms-grid .ms-item { display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 12px 4px 10px; border-radius: 14px; background: var(--paper);
+.ms-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ms-grid .ms-item { display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 4px 9px; border-radius: 14px; background: var(--paper);
   border: 1px solid transparent; cursor: pointer; font-family: inherit;
   font-size: 11.5px; color: var(--ink-2); font-weight: 600;
   transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
@@ -462,6 +466,16 @@ a:hover { color: var(--wood-deep); }
 }
 
 /* ---------- 无障碍：尊重减弱动态偏好 ---------- */
+/* 批次27-M10：空输入点发送——输入框轻晃提示（响应动作，非装饰动效） */
+@keyframes gk-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+.gk-shake { animation: gk-shake .45s var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .gk-shake { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
   .enter, .hero, .rise { animation: none !important; }
   .skel::after { animation: none !important; }

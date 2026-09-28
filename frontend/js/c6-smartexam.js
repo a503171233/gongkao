@@ -36,7 +36,7 @@
 
   function requireLogin() {
     if (currentUserId() === 'anonymous') {
-      alert('请先登录后使用智能组卷');
+      global.GK.promptLogin('智能组卷');
       return false;
     }
     return true;

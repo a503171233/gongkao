@@ -33,7 +33,7 @@
 
   function requireLogin() {
     if (currentUserId() === 'anonymous') {
-      alert('请先登录后查看激励面板');
+      global.GK.promptLogin('激励面板');
       return false;
     }
     return true;

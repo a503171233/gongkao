@@ -10,7 +10,7 @@
 <style>
 :root {
   --paper:#f6f1e7; --paper-2:#efe7d6; --card:#fffaf0; --card-2:#fbf4e4;
-  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#98917f;
+  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#6E6657;
   --wood:#8b5e3c; --wood-deep:#6f4a2d; --gold:#c9a05a; --gold-deep:#a5813f; --gold-soft:#e6d3ac;
   --good:#7a9e6d; --bad:#b45a4a; --line:#e2d9c6; --line-2:#d2c5ab;
   --shadow-1:0 1px 3px rgba(93,72,41,.08),0 1px 2px rgba(93,72,41,.05);
@@ -47,7 +47,7 @@ a { color:var(--wood-deep); text-decoration:none; }
   border-radius:999px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
 .chip:hover { border-color:var(--gold); color:var(--wood-deep); }
 .chip.on { background:var(--wood); border-color:var(--wood); color:#fffaf0; }
-.chip em { font-style:normal; opacity:.7; margin-left:4px; font-size:11px; }
+.chip em { font-style:normal; opacity:.7; margin-left:4px; font-size: 12px; }
 .btn { padding:8px 16px; border:1px solid transparent; border-radius:9px; cursor:pointer; font-size:13px;
   font-weight:600; font-family:inherit; display:inline-flex; align-items:center; gap:6px; }
 .btn:hover { box-shadow:var(--shadow-2); }
@@ -60,7 +60,7 @@ a { color:var(--wood-deep); text-decoration:none; }
 input, textarea { font-family:inherit; font-size:14px; color:var(--ink); background:var(--card);
   border:1px solid var(--line-2); border-radius:9px; padding:8px 12px; outline:none; }
 input:focus, textarea:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgba(201,160,90,.16); }
-.badge { display:inline-block; padding:1px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+.badge { display:inline-block; padding:1px 9px; border-radius:999px; font-size: 12px; font-weight:700; }
 .badge.cat { background:var(--gold-soft); color:var(--wood-deep); }
 .badge.ai { background:rgba(122,158,109,.2); color:var(--good); }
 .badge.hot { background:rgba(180,90,74,.14); color:var(--bad); }
@@ -119,6 +119,7 @@ input:focus, textarea:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgb
   .knav .links {
     margin-left:0; overflow-x:auto; -webkit-overflow-scrolling:touch;
     scrollbar-width:none; white-space:nowrap; flex-wrap:nowrap;
+    flex:1 1 auto; min-width:0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
   }
   .knav .links::-webkit-scrollbar { display:none; }
   .knav .links a {

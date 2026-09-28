@@ -38,7 +38,7 @@
 
   function requireLogin() {
     if (currentUserId() === 'anonymous') {
-      alert('请先登录后查看学习报告');
+      global.GK.promptLogin('学习报告');
       return false;
     }
     return true;

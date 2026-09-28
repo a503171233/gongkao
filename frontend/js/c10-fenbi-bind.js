@@ -39,7 +39,7 @@
   function requireLogin() {
     var uid = (global.GK.store && global.GK.store.userId) || 'anonymous';
     if (uid === 'anonymous') {
-      alert('请先登录后使用提升计划');
+      global.GK.promptLogin('提升计划');
       return false;
     }
     return true;

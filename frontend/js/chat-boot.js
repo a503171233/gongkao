@@ -56,17 +56,25 @@ function renderAuthArea() { if (window.GK && GK.renderAuthArea) GK.renderAuthAre
 function logout() { if (window.GK && GK.logout) GK.logout(); }
 
 // 模态框事件绑定（业务在 GK）
+// 批次27-M1 去重：提交统一收敛到 form.onsubmit 一处——原先按钮 onclick +
+// form onsubmit（按钮默认 type=submit，点击会再次触发 submit）+ 密码框
+// Enter onkeydown 三路叠加，单击发 2~3 次 /api/login（注册场景有重复建号风险）。
 const authSubmitBtn = document.getElementById('authSubmitBtn');
 const authSwitchEl = document.getElementById('authSwitch');
-const authPwdEl = document.getElementById('authPassword');
 const authModalEl = document.getElementById('authModal');
-if (authSubmitBtn) authSubmitBtn.onclick = authAction;
-// #9 form 化：回车提交（submit 按钮在 form 内默认 type=submit，拦截原生刷新）
 const authFormEl = document.getElementById('authForm');
-if (authFormEl) authFormEl.onsubmit = (e) => { e.preventDefault(); authAction(); };
+if (authFormEl) authFormEl.onsubmit = (e) => {
+  e.preventDefault();                       // 拦截原生刷新
+  if (authFormEl.dataset.busy === '1') return;   // 提交中防抖（连点/回车均吞掉）
+  authFormEl.dataset.busy = '1';
+  if (authSubmitBtn) authSubmitBtn.disabled = true;  // 请求期间禁用按钮
+  Promise.resolve(window.GK && GK.authAction ? GK.authAction() : null).finally(function () {
+    authFormEl.dataset.busy = '';
+    if (authSubmitBtn) authSubmitBtn.disabled = false;
+  });
+};
 if (authSwitchEl) authSwitchEl.onclick = () => openAuthModal(
   (authSwitchEl.textContent || '').indexOf('去注册') !== -1 ? 'register' : 'login');
-if (authPwdEl) authPwdEl.onkeydown = e => { if (e.key === 'Enter') authAction(); };
 if (authModalEl) authModalEl.addEventListener('click', e => {
   if (e.target.id === 'authModal') closeAuthModal();
 });

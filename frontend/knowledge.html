@@ -15,7 +15,7 @@
   --card-2:     #fbf4e4;
   --ink:        #3d3a33;
   --ink-2:      #6b655a;
-  --ink-3:      #98917f;
+  --ink-3:      #6E6657;
   --wood:       #8b5e3c;
   --wood-deep:  #6f4a2d;
   --gold:       #c9a05a;
@@ -76,7 +76,7 @@ a { color: var(--wood-deep); text-decoration: none; }
 .card .cn { font-size: 30px; font-weight: 800; color: var(--wood-deep); font-variant-numeric: tabular-nums; }
 .card .cn.gold { color: var(--gold-deep); }
 .card .cn.green { color: var(--good); }
-.card .cs { font-size: 11.5px; color: var(--ink-3); }
+.card .cs { font-size: 12px; color: var(--ink-3); }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -100,7 +100,7 @@ a { color: var(--wood-deep); text-decoration: none; }
 .btn.ghost:hover { border-color: var(--gold); background: var(--gold-soft); }
 .btn.sm { padding: 4px 8px; font-size: 12px; border-radius: 7px; }
 
-.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .badge.blue { background: rgba(139,94,60,.14); color: var(--wood-deep); }
 
 /* 树 */
@@ -113,21 +113,21 @@ a { color: var(--wood-deep); text-decoration: none; }
 .kn-row .caret.leaf { visibility: hidden; }
 .kn-row .nm { font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
 .kn-row .nm:hover { color: var(--wood-deep); text-decoration: underline; }
-.kn-row .cnt { font-size: 11px; color: var(--ink-3); flex-shrink: 0; align-self: center; }
+.kn-row .cnt { font-size: 12px; color: var(--ink-3); flex-shrink: 0; align-self: center; }
 .kn-row .desc { font-size: 12px; color: var(--ink-3); margin-left: 4px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; max-width: 360px; flex-shrink: 999; min-width: 0; }
-.kn-row .path { font-size: 11px; color: var(--gold-deep); font-weight: 600; flex-shrink: 0; }
-.kn-row .prac { flex-shrink: 0; padding: 3px 10px; font-size: 11.5px; border-radius: 7px;
+.kn-row .path { font-size: 12px; color: var(--gold-deep); font-weight: 600; flex-shrink: 0; }
+.kn-row .prac { flex-shrink: 0; padding: 3px 10px; font-size: 12px; border-radius: 7px;
   border: 1px solid var(--line-2); background: var(--card); color: var(--wood-deep);
   cursor: pointer; font-family: inherit; font-weight: 600; }
 .kn-row .prac:hover { border-color: var(--gold); background: var(--gold-soft); }
 /* 批次20 掌握度徽标 */
-.mastery { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+.mastery { flex-shrink: 0; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
 .mastery.strong { background: rgba(122,158,109,.16); color: var(--good); }
 .mastery.mid { background: rgba(201,160,90,.18); color: var(--gold-deep); }
 .mastery.weak { background: rgba(180,90,74,.14); color: var(--bad); }
 .mastery.none { background: var(--paper-2); color: var(--ink-3); font-weight: 600; }
-.mlegend { font-size: 11px; color: var(--ink-3); font-weight: 600; display: none; }
+.mlegend { font-size: 12px; color: var(--ink-3); font-weight: 600; display: none; }
 /* 批次23 节点说明块：默认 2 行截断，点击展开全文（white-space 保留【】分段换行） */
 .kn-desc {
   font-size: 12px; line-height: 1.65; color: var(--ink-3);
@@ -148,13 +148,13 @@ a { color: var(--wood-deep); text-decoration: none; }
 .plan-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .plan-day { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,.55); }
 .plan-day h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink); display: flex; gap: 6px; align-items: center; }
-.plan-day h4 .focus { font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: rgba(201,160,90,.14); color: #8a6d3b; }
+.plan-day h4 .focus { font-size: 12px; padding: 1px 7px; border-radius: 99px; background: rgba(201,160,90,.14); color: #8a6d3b; }
 .plan-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px dashed rgba(0,0,0,.06); font-size: 12.5px; }
-.plan-item .note { flex-shrink: 0; font-size: 11px; color: var(--ink-3); }
+.plan-item .note { flex-shrink: 0; font-size: 12px; color: var(--ink-3); }
 .plan-item .nm { flex: 1; min-width: 0; color: var(--ink); }
-.plan-item .nm small { display: block; color: var(--ink-3); font-size: 11px; }
+.plan-item .nm small { display: block; color: var(--ink-3); font-size: 12px; }
 .plan-item.done .nm { text-decoration: line-through; color: var(--ink-3); }
-.plan-item .ck { flex-shrink: 0; border: 1px solid var(--line); background: #fff; border-radius: 99px; padding: 2px 10px; font-size: 11.5px; cursor: pointer; color: var(--ink-2); }
+.plan-item .ck { flex-shrink: 0; border: 1px solid var(--line); background: #fff; border-radius: 99px; padding: 2px 10px; font-size: 12px; cursor: pointer; color: var(--ink-2); }
 .plan-item .ck.on { background: #8a9a5b; border-color: #8a9a5b; color: #fff; }
 .plan-item .go { flex-shrink: 0; border: none; background: none; color: #8a6d3b; font-size: 12px; cursor: pointer; padding: 2px 4px; }
 .plan-item .go:hover { text-decoration: underline; }
@@ -182,7 +182,7 @@ a { color: var(--wood-deep); text-decoration: none; }
   padding: 8px 14px; background: rgba(251,244,228,.94); border-bottom: 1px solid var(--line);
   backdrop-filter: saturate(160%) blur(8px); }
 .map-tools .zm { min-width: 46px; text-align: center; font-size: 12px; color: var(--ink-3); font-weight: 700; }
-.map-tools .hint { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+.map-tools .hint { margin-left: auto; font-size: 12px; color: var(--ink-3); }
 #map-svg-holder svg { display: block; }
 #map-svg-holder .map-empty { text-align: center; padding: 44px 16px; color: var(--ink-3); font-size: 13px; }
 #map-svg-holder { background: var(--paper-2); }
@@ -203,6 +203,7 @@ a { color: var(--wood-deep); text-decoration: none; }
   .knav .links {
     margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
     scrollbar-width: none; white-space: nowrap;
+    flex: 1 1 auto; min-width: 0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
   }
   .knav .links::-webkit-scrollbar { display: none; }
   .knav .links a {
@@ -217,11 +218,11 @@ a { color: var(--wood-deep); text-decoration: none; }
   .card { padding: 12px 12px; border-radius: 12px; }
   .cards .card { padding: 11px 10px; }
   .cards .cn { font-size: 23px; white-space: nowrap; letter-spacing: -0.5px; }  /* 「可检索」等文字卡防折行 */
-  .cards .cs { font-size: 11px; }
+  .cards .cs { font-size: 12px; }
   /* 工具栏：控件全宽、触控 40px */
   .toolbar { gap: 8px; }
   .toolbar select, .toolbar input[type=search], .toolbar .head-btn, .btn {
-    min-height: 40px; font-size: 14px;   /* 16px 防 iOS 聚焦缩放，14px 由页面 scale */
+    min-height: 40px; font-size: 16px;   /* 27-M9：≥16px 防 iOS 聚焦自动放大（批次25 注释误标 14px） */
   }
   .kn-row .caret, .kn-row .prac { min-height: 32px; }  /* 树行内紧凑触控（行高约束下 32px） */
   .toolbar select, .toolbar input[type=search] { flex: 1 1 130px; }
@@ -234,12 +235,12 @@ a { color: var(--wood-deep); text-decoration: none; }
   .kn-row .cnt { display: none; }
   .kn-row .nm { font-size: 14px; line-height: 1.4; }
   .kn-row .prac { padding: 6px 11px; font-size: 12px; min-height: 32px; display: inline-flex; align-items: center; }
-  .kn-row .mastery { font-size: 10.5px; padding: 3px 7px; white-space: nowrap; }
+  .kn-row .mastery { font-size: 12px; padding: 3px 7px; white-space: nowrap; }
   .kn-desc { font-size: 12.5px; line-height: 1.7; margin-left: 8px; }
   /* 学习计划：7 天卡单列 */
   .plan-days { grid-template-columns: 1fr; }
   /* 掌握度图例换行更紧凑 */
-  .mlegend { font-size: 10.5px; }
+  .mlegend { font-size: 12px; }
 }
 </style>
 </head>
@@ -402,17 +403,37 @@ function buildPaths(nodes, anc, topName) {
 
 // 批次20：拉取掌握度（页面默认 fetch 不带 token，此处手动附；
 // 未登录/失败 → mastery 保持 null 不渲染徽标）
+let mlegendOrig = null;   // 27-M6：图例原始 HTML（登录提示替换后可恢复）
 async function loadMastery() {
+  const lg = $('#mlegend');
+  const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
+  // 批次27-M6：游客不再发必然 401 的请求（消除控制台网络报错），
+  // 图例位置改给一条「登录后可查看」的轻引导；token 过期(401)同样静默降级
+  if (!mlegendOrig && lg) mlegendOrig = lg.innerHTML;
+  if (!tk) {
+    mastery = null;
+    if (lg) {
+      lg.style.display = 'inline';
+      lg.innerHTML = '登录后可查看各知识点掌握度';
+      lg.style.cursor = 'default';
+    }
+    return;
+  }
   try {
-    const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
     const resp = await fetch('/api/knowledge/mastery?teacher_id=' + encodeURIComponent(tid()), {
       headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + tk }
     });
-    const j = await resp.json();
-    mastery = (resp.ok && j.mastery) ? j.mastery : null;
+    mastery = null;
+    if (resp.ok) {
+      const j = await resp.json();
+      mastery = j.mastery || null;
+    }
   } catch (e) { mastery = null; }
-  const lg = $('#mlegend');
-  if (lg) lg.style.display = mastery ? 'inline' : 'none';
+  if (lg) {
+    lg.style.display = mastery ? 'inline' : 'none';
+    if (!mastery) lg.innerHTML = mlegendOrig;
+    lg.style.cursor = '';
+  }
 }
 
 // 批次20：后序聚合——章节掌握度 = 子叶累加；批次23 四层树：知识点层(d2)用明细、不进考点层(d3)

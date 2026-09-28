@@ -206,6 +206,13 @@
         cache: 'no-store',
       }).then(function (resp) {
         if (!resp.ok) {
+          // 批次27-M4：5xx（如间歇性 503/502 网关抖动）在未收到 start 前
+          // 可以安全重试——走断线退避通道（1s/2s/4s）；4xx 业务错
+          // （额度/敏感词/鉴权）重试无意义，保持终态错误。
+          if (resp.status >= 500 && !started && attempt < MAX_RETRY) {
+            onBroken('HTTP ' + resp.status);
+            return null;
+          }
           // 非 2xx：业务错（额度/敏感词等）重连无意义，按终态错误处理
           finished = true;
           resp.text().then(function (text) {

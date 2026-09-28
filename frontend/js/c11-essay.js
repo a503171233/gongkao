@@ -54,7 +54,7 @@
 
   function openEssay() {
     var uid = (global.GK.store && global.GK.store.userId) || 'anonymous';
-    if (uid === 'anonymous') { alert('请先登录后使用申论批改'); return; }
+    if (uid === 'anonymous') { global.GK.promptLogin('申论批改'); return; }
     shell('申论 AI 批改', '<p style="color:var(--ink-3);text-align:center;padding:30px 0">加载中…</p>');
     global.GK.api('/me/essay/history').then(function (r) {
       renderEntry(r.items || []);

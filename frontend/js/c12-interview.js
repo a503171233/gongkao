@@ -51,7 +51,7 @@
 
   function openInterview() {
     var uid = (global.GK.store && global.GK.store.userId) || 'anonymous';
-    if (uid === 'anonymous') { alert('请先登录后使用面试练习'); return; }
+    if (uid === 'anonymous') { global.GK.promptLogin('面试练习'); return; }
     shell('面试练习', '<p style="color:var(--ink-3);text-align:center;padding:30px 0">加载中…</p>');
     global.GK.api('/me/interview/history').then(function (r) {
       renderEntry(r.items || []);

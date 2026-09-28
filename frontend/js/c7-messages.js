@@ -144,7 +144,7 @@
 
   function openMessages() {
     if (!hasToken()) {
-      alert('请先登录后查看消息');
+      global.GK.promptLogin('消息中心');
       return;
     }
     ensurePanel();

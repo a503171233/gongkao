@@ -36,7 +36,7 @@
 
   function requireLogin() {
     if (currentUserId() === 'anonymous') {
-      alert('请先登录后使用模考解析');
+      global.GK.promptLogin('模考解析');
       return false;
     }
     return true;

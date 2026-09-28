@@ -11,7 +11,7 @@
 <style>
 :root {
   --paper:#f6f1e7; --paper-2:#efe7d6; --card:#fffaf0; --card-2:#fbf4e4;
-  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#98917f;
+  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#6E6657;
   --wood:#8b5e3c; --wood-deep:#6f4a2d; --gold:#c9a05a; --gold-deep:#a5813f; --gold-soft:#e6d3ac;
   --good:#7a9e6d; --bad:#b45a4a; --line:#e2d9c6; --line-2:#d2c5ab;
   --shadow-1:0 1px 3px rgba(93,72,41,.08),0 1px 2px rgba(93,72,41,.05);
@@ -52,7 +52,7 @@ a { color:var(--wood-deep); text-decoration:none; }
 .uc-name { font-size:19px; font-weight:800; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .uc-sub { font-size:12.5px; color:var(--ink-3); margin-top:3px; }
 .uc-side { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.role-badge { display:inline-block; padding:2px 11px; border-radius:999px; font-size:11.5px; font-weight:700; }
+.role-badge { display:inline-block; padding:2px 11px; border-radius:999px; font-size: 12px; font-weight:700; }
 .role-badge.admin { background:rgba(180,90,74,.14); color:var(--bad); }
 .role-badge.member { background:var(--gold-soft); color:var(--wood-deep); }
 .role-badge.free { background:var(--paper-2); color:var(--ink-2); }
@@ -69,7 +69,7 @@ a { color:var(--wood-deep); text-decoration:none; }
 .stat:hover { transform:translateY(-2px); box-shadow:var(--shadow-2); }
 .stat .n { font-size:24px; font-weight:800; color:var(--wood-deep); font-variant-numeric:tabular-nums; }
 .stat .l { font-size:12px; color:var(--ink-3); margin-top:2px; }
-.stat .s { font-size:11.5px; color:var(--ink-3); margin-top:4px; }
+.stat .s { font-size: 12px; color:var(--ink-3); margin-top:4px; }
 
 /* ---- 功能宫格 ---- */
 .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
@@ -81,7 +81,7 @@ a { color:var(--wood-deep); text-decoration:none; }
 .tile .ico { font-size:24px; line-height:1.3; }
 .tile .tbody { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .tile .nm { font-size:14.5px; font-weight:700; color:var(--ink); }
-.tile .ds { font-size:11.5px; color:var(--ink-3); line-height:1.5; }
+.tile .ds { font-size: 12px; color:var(--ink-3); line-height:1.5; }
 .tile.focus { border-color:var(--gold); background:linear-gradient(160deg,var(--card),var(--card-2)); }
 
 /* ---- 登录引导（未登录态覆盖数据区） ---- */
@@ -127,7 +127,7 @@ a { color:var(--wood-deep); text-decoration:none; }
     font-size:16px; flex-shrink:0; line-height:1; }
   .tile .tbody { flex:1; min-width:0; }
   .tile .nm { font-size:14.5px; }
-  .tile .ds { font-size:11.5px; }
+  .tile .ds { font-size: 12px; }
 }
 </style>
 </head>

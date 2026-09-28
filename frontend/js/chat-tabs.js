@@ -30,6 +30,8 @@
         if (btn) btn.click();
         else p.style.display = "none";
       });
+      // 批次27-M5：面板全关后清掉面板态历史，下一次手势返回正常后退页面
+      if (window.history.state && window.history.state.gkPanel) window.history.back();
       if (key === "me" && window.ME && ME.load) ME.load();
       if (key === "bank" && window.BANK && BANK.load) BANK.load();
       if (key === "exam" && window.EXAM && EXAM.load) EXAM.load();
@@ -171,6 +173,49 @@ window.PGPAGE = (function () {
     if (p.parentNode) p.parentNode.removeChild(p);
     else p.style.display = "none";
   }
+  // 批次27-M5：面板接入 history——打开推入一条 {gkPanel} 记录，浏览器/手势
+  // 返回 = 关闭当前面板（此前会直接离站）；面板内「‹」统一走 history.back()
+  // 单一路径，确认逻辑只在 popstate 一处执行。
+  function confirmClose(p) {
+    if (p.id === "c4Panel") {
+      var sp = document.getElementById("submitPractice");
+      var res = document.getElementById("practiceResult");
+      if (sp && sp.getBoundingClientRect().height > 0 && (!res || !res.textContent.trim())) {
+        return window.confirm("本题还未提交，返回后作答不保存。确定返回吗？");
+      }
+    } else if (p.id === "c6Panel") {
+      var cd = document.getElementById("seCountdown");
+      if (cd && cd.getBoundingClientRect().height > 0) {
+        return window.confirm("考试正在进行中，返回不会暂停计时。确定返回吗？");
+      }
+    }
+    return true;
+  }
+  function pushPanelState(pid) {
+    try {
+      if (!(window.history.state && window.history.state.gkPanel)) {
+        window.history.pushState({ gkPanel: pid }, "");
+      }
+    } catch (e) { /* 隐私模式等 pushState 失败：退化为无 history 集成 */ }
+  }
+  function visiblePanel() {
+    var els = document.querySelectorAll("#c4Panel, [id$=\"Panel\"], .c-panel");
+    for (var i = 0; i < els.length; i++) {
+      if (isVisible(els[i])) return els[i];
+    }
+    return null;
+  }
+  window.addEventListener("popstate", function (ev) {
+    if (!isMobile()) return;
+    if (ev.state && ev.state.gkPanel) return;   // 前进进入面板态：由页面逻辑处理
+    var p = visiblePanel();
+    if (!p) return;
+    if (!confirmClose(p)) {                     // 用户取消返回：顶回面板态
+      pushPanelState(p.id);
+      return;
+    }
+    closePanel(p);
+  });
   function insertNav(p, animate) {
     var nav = document.createElement("div");
     nav.className = "pg-nav";
@@ -178,20 +223,10 @@ window.PGPAGE = (function () {
       '<span class="pg-title"></span><i class="pg-dot"></i>';
     nav.querySelector(".pg-title").textContent = pageTitle(p);
     nav.querySelector(".pg-back").onclick = function () {
-      // 批次27-K：做题/考试进行中点返回需确认，防误触丢进度
-      var needsConfirm = false, tip = "";
-      if (p.id === "c4Panel") {
-        var sp = document.getElementById("submitPractice");
-        var res = document.getElementById("practiceResult");
-        needsConfirm = !!(sp && sp.getBoundingClientRect().height > 0 && (!res || !res.textContent.trim()));
-        tip = "本题还未提交，返回后作答不保存。确定返回吗？";
-      } else if (p.id === "c6Panel") {
-        var cd = document.getElementById("seCountdown");
-        needsConfirm = !!(cd && cd.getBoundingClientRect().height > 0);
-        tip = "考试正在进行中，返回不会暂停计时。确定返回吗？";
-      }
-      if (needsConfirm && !window.confirm(tip)) return;
-      closePanel(p);
+      // 批次27-M5：统一走 history.back() → popstate 关面板（确认逻辑在彼处）；
+      // state 缺失（直达/历史异常）时原地关闭，避免误退离站
+      if (window.history.state && window.history.state.gkPanel) window.history.back();
+      else if (confirmClose(p)) closePanel(p);
     };
     p.insertBefore(nav, p.firstChild);
     // 推入动画：先落位屏外（armed），双 rAF 后滑入（in）
@@ -215,6 +250,7 @@ window.PGPAGE = (function () {
     }
     // 无 nav：首次 或 innerHTML 重写把 nav 删了（c11/c12 模式）——重插
     insertNav(p, true);
+    pushPanelState(p.id);   // 批次27-M5：面板可见即推入历史记录（幂等）
   }
   function isVisible(p) {
     if (!p || !p.parentNode) return false;

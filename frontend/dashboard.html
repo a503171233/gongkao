@@ -7,7 +7,7 @@
   <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
   <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>运营看板 · 书山公考</title>
-<link rel="stylesheet" href="/css/app.css?v=b27k1">
+<link rel="stylesheet" href="/css/app.css?v=b27m1">
 <style>
   /* ===== 看板专属补充样式（设计令牌取自 app.css 书卷主题） ===== */
   .dash-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -305,7 +305,7 @@ function renderQuotaBars(qd) {
            '" height="' + h.toFixed(1) + '" rx="3" fill="#8b5e3c">' +
            '<title>' + esc(d.date) + ' 已用 ' + d.used + '</title></rect>';
     if (days.length <= 8) {
-      svg += '<text x="' + (x + bw * 0.3).toFixed(1) + '" y="' + (H - 6) + '" font-size="10" fill="#98917f" text-anchor="middle">' +
+      svg += '<text x="' + (x + bw * 0.3).toFixed(1) + '" y="' + (H - 6) + '" font-size="10" fill="#6E6657" text-anchor="middle">' +
              esc(d.date.slice(5)) + '</text>';
     }
   });
