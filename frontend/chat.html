@@ -249,6 +249,17 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (e) {}
       }, 900);
     }
+    // 批次27-I4：底部 tab 跨页直达 —— forum.html 等页面 tabbar 跳 /chat.html?tab=bank|exam|me|forum
+    var tb = sp.get('tab');
+    if (tb === 'forum') { location.replace('/forum.html'); return; }
+    if (tb === 'bank' || tb === 'exam' || tb === 'me') {
+      setTimeout(function () {
+        try {
+          TAB.go(tb);
+          history.replaceState(null, '', location.pathname);  // 清参数，刷新不重放
+        } catch (e) {}
+      }, 300);
+    }
   } catch (e) {}
 });
 
@@ -333,6 +344,7 @@ document.addEventListener('DOMContentLoaded', function () {
   <button data-tab="chat" class="on" onclick="TAB.go('chat')"><i class="ti">📖</i>学习</button>
   <button data-tab="bank" onclick="TAB.go('bank')"><i class="ti">📚</i>题库</button>
   <button data-tab="exam" onclick="TAB.go('exam')"><i class="ti">📝</i>测考</button>
+  <button data-tab="forum" onclick="location.href='/forum.html'"><i class="ti">💬</i>论坛</button>
   <button data-tab="me" onclick="TAB.go('me')"><i class="ti">👤</i>我的</button>
 </nav>
 

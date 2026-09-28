@@ -6,6 +6,8 @@
   <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
   <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 学员论坛</title>
+<!-- 批次27-I4：引入全站设计系统（移动端底部 tabbar 组件复用） -->
+<link rel="stylesheet" href="/css/app.css?v=b27i2">
 <!-- 书卷主题 · 与前台官网/学习中心统一视觉；公开浏览，登录后发帖交流 -->
 <style>
 :root {
@@ -773,6 +775,25 @@ function init() {
   });
 }
 init();
+</script>
+<!-- 批次27-I4 · 移动端底部 Tab（与 chat.html 同款五 tab；论坛为当前页高亮） -->
+<nav class="tabbar" id="tabbar" aria-label="底部导航">
+  <button data-tab="chat" onclick="location.href='/chat.html'"><i class="ti">📖</i>学习</button>
+  <button data-tab="bank" onclick="location.href='/chat.html?tab=bank'"><i class="ti">📚</i>题库</button>
+  <button data-tab="exam" onclick="location.href='/chat.html?tab=exam'"><i class="ti">📝</i>测考</button>
+  <button data-tab="forum" class="on" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="ti">💬</i>论坛</button>
+  <button data-tab="me" onclick="location.href='/chat.html?tab=me'"><i class="ti">👤</i>我的</button>
+</nav>
+<script>
+// 仅移动端挂 tabbar 标记（CSS 据此显示底栏 + body 预留底部空间）
+(function () {
+  function mount() {
+    if (window.matchMedia("(max-width: 720px)").matches) document.body.classList.add("has-tabbar");
+    else document.body.classList.remove("has-tabbar");
+  }
+  mount();
+  window.addEventListener("resize", mount);
+})();
 </script>
 </body>
 </html>

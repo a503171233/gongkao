@@ -415,7 +415,7 @@ a:hover { color: var(--wood-deep); }
   border-top: 1px solid var(--line);
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
   box-shadow: 0 -1px 12px rgba(93,72,41,.06);
-  grid-template-columns: repeat(4, 1fr); }
+  grid-template-columns: repeat(5, 1fr); }
 .tabbar button { appearance: none; border: none; background: none; font-family: inherit;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   font-size: 10.5px; font-weight: 600; color: var(--ink-3); cursor: pointer;
