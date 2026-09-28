@@ -530,7 +530,25 @@
 
   function startPolling() {
     stopTimers();
+    // 27-N P1-5：超时兜底——running 超 9 分钟（后端 8 分钟僵死线 + 轮询间隔余量）
+    // 停止轮询并给出明确提示，不再无限停在 70%
+    var startedAt = Date.now();
+    var timedOut = false;
     _pollTimer = setInterval(function () {
+      if (!timedOut && Date.now() - startedAt > 9 * 60 * 1000) {
+        timedOut = true;
+        stopTimers();
+        var body = document.getElementById('c10Body');
+        if (body) body.innerHTML =
+          '<div style="text-align:center;padding:36px 12px">' +
+            '<div style="font-size:36px">⏳</div>' +
+            '<div style="font-weight:700;font-size:15px;margin-top:10px">生成时间超出预期</div>' +
+            '<div style="color:var(--ink-3);font-size:12.5px;margin-top:6px">任务可能被服务端中断，稍等片刻后可重新生成</div>' +
+            '<button onclick="C10.analyze()" style="margin-top:14px;padding:10px 28px;border:none;border-radius:10px;background:var(--wood);color:#fff;font-size:14px;font-weight:700;cursor:pointer">重新生成</button>' +
+          '</div>';
+        return;
+      }
+      if (timedOut) return;
       global.GK.api('/me/fenbi/analysis/latest').then(function (d) {
         var l = d.latest;
         if (!l) return;

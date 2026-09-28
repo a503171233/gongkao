@@ -35,11 +35,13 @@ from .metrics import metrics
 _RETRYABLE_5XX = frozenset({500, 502, 503, 504})
 
 
-def _openai(base_url: str | None = None, api_key: str | None = None):
+def _openai(base_url: str | None = None, api_key: str | None = None,
+            timeout: float | None = None):
     """构造 OpenAI 兼容客户端：密钥/端点/超时默认取 config；可被 AI 模型管理页的
     注册模型覆盖（base_url/api_key 显式传入时用模型自身通道），SDK 重试关闭。
     批次27-E：key 与端点均缺配置时快速失败并给出可操作指引，
-    替代 openai SDK 的「Missing credentials」神秘报错。"""
+    替代 openai SDK 的「Missing credentials」神秘报错。
+    27-N：timeout 可由调用方覆盖（fenbi 分析等需硬预算的场景，防挂死线程）。"""
     g = store._GLOBAL
     eff_key = api_key or g.api_key
     if not eff_key:
@@ -49,7 +51,7 @@ def _openai(base_url: str | None = None, api_key: str | None = None):
     return OpenAI(
         api_key=eff_key,
         base_url=base_url or g.api_base_url,
-        timeout=g.llm_timeout,
+        timeout=timeout if timeout else g.llm_timeout,
         max_retries=0,
     )
 
@@ -78,12 +80,14 @@ def _fallback_models() -> list[str]:
 
 def _chat_once(messages, model, tcfg, max_tokens: int = 2000,
                temperature: float | None = None,
-               base_url: str | None = None, api_key: str | None = None) -> str:
+               base_url: str | None = None, api_key: str | None = None,
+               timeout: float | None = None) -> str:
     """单次非流式调用；成功返回文本，失败抛异常（由 call_llm 决定是否重试）。
     成功后采集 usage 上报 metrics（A6 token 核算）。
     max_tokens/temperature 可调：问答默认取 tcfg；题目抽取等大 JSON 输出场景显式传更大值/温度。
-    base_url/api_key 可选：AI 模型管理页注册模型各自的通道配置。"""
-    client = _openai(base_url=base_url, api_key=api_key)
+    base_url/api_key 可选：AI 模型管理页注册模型各自的通道配置。
+    timeout 可选（27-N）：覆盖全局 LLM_TIMEOUT，fenbi 等硬预算场景用。"""
+    client = _openai(base_url=base_url, api_key=api_key, timeout=timeout)
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
@@ -137,17 +141,19 @@ def _apply_registry(model, temperature, base_url, api_key):
 
 def call_llm(messages, tcfg, max_tokens: int = 2000, model: str | None = None,
              temperature: float | None = None,
-             base_url: str | None = None, api_key: str | None = None) -> str:
+             base_url: str | None = None, api_key: str | None = None,
+             timeout: float | None = None) -> str:
     """非流式：主模型重试（LLM_MAX_RETRIES 次）→ 备用模型（每个 1 次）→ 全败抛错。
     max_tokens 默认 2000（问答）；抽取等大输出调用方按需传更大值。
     model/temperature 显式给出时覆盖 tcfg 对应值（AI模型管理页默认模型由此接入）；
-    base_url/api_key 显式给出时用该模型自身通道（默认模型页配置），否则走全局 .env。"""
+    base_url/api_key 显式给出时用该模型自身通道（默认模型页配置），否则走全局 .env。
+    timeout 显式给出时覆盖全局 LLM_TIMEOUT（27-N：fenbi 等硬预算场景）。"""
     model, temperature, base_url, api_key = _apply_registry(model, temperature, base_url, api_key)
     last_err: Exception | None = None
     for attempt in range(_max_retries() + 1):  # 首次尝试 + 重试次数
         try:
             return _chat_once(messages, model or tcfg.llm_model, tcfg, max_tokens,
-                              temperature, base_url, api_key)
+                              temperature, base_url, api_key, timeout=timeout)
         except Exception as e:  # noqa: BLE001
             if not _is_retryable(e):
                 raise  # 4xx/鉴权/参数错误：直接抛错上报，不重试不降级
@@ -159,7 +165,8 @@ def call_llm(messages, tcfg, max_tokens: int = 2000, model: str | None = None,
     # 主模型耗尽 → 降级备用（每个仅 1 次，不重试；全部失败抛最后错误）
     for fb in _fallback_models():
         try:
-            return _chat_once(messages, fb, tcfg, max_tokens, temperature, base_url, api_key)
+            return _chat_once(messages, fb, tcfg, max_tokens, temperature, base_url, api_key,
+                              timeout=timeout)
         except Exception as e:  # noqa: BLE001
             last_err = e
     if last_err is not None:

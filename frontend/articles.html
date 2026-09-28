@@ -207,7 +207,12 @@ async function apiReq(path, opts) {
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   const token = readToken();
-  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (token) {
+    headers['Authorization'] = 'Bearer ' + token;
+    // 27-N：公网发布代理会剥离 Authorization 头，冗余携带 X-Auth-Token
+    // （自建 nginx 侧转换回 Authorization 传给后端）——与主站 GK.api 口径一致
+    headers['X-Auth-Token'] = token;
+  }
   const init = { method: opts.method || 'GET', headers: headers };
   if (opts.body !== undefined && init.method !== 'GET')
     init.body = (typeof opts.body === 'string' || isForm) ? opts.body : JSON.stringify(opts.body);
@@ -376,10 +381,14 @@ async function bootAuth() {
   if (!readToken()) return;
   try {
     const d = await apiReq('/me');
-    if (!d || d.anonymous) { setToken(''); return; }
+    // 27-N：anonymous 不再清 token（防公网代理偶发剥头误清）；仅 401/403 才清
+    if (!d || d.anonymous) { renderAuthArea(); return; }
     state.user = { user_id:'', username:d.username, role:d.role };
     renderAuthArea();
-  } catch (e) { setToken(''); }
+  } catch (e) {
+    if (e && (e.status === 401 || e.status === 403)) setToken('');
+    renderAuthArea();
+  }
 }
 function onClick(ev) {
   const btn = ev.target.closest('[data-act]');

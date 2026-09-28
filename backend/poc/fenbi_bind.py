@@ -569,8 +569,10 @@ class FenbiBindStore:
 
     def start_analysis(self, user_id: str) -> tuple[int, str]:
         """新建分析任务；返回 (id, error)。冷却 6h + 每用户单 running。
-        批次27-E：running 超 30 分钟视为僵死（进程重启/线程被杀）自动置
-        failed 放行——否则服务重启后用户被「已有分析在进行中」永久卡死。"""
+        批次27-E：running 超时视为僵死（进程重启/线程被杀）自动置
+        failed 放行——否则服务重启后用户被「已有分析在进行中」永久卡死。
+        27-N P1-5：僵死阈值 1800→480s——分析带硬预算（强模型 300s+默认链），
+        480s 仍未完成必属异常；30 分钟阈值会让用户中途重试全部 429。"""
         with self._connect() as conn:
             run = conn.execute(
                 "SELECT id, created_at FROM fenbi_analyses WHERE user_id=? AND"
@@ -582,7 +584,7 @@ class FenbiBindStore:
                     try:
                         dt = datetime.strptime(run["created_at"],
                                                "%Y-%m-%d %H:%M:%S")
-                        stale = time.time() - dt.timestamp() > 1800
+                        stale = time.time() - dt.timestamp() > 480
                     except ValueError:
                         stale = False
                 if not stale:

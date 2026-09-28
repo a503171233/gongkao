@@ -141,9 +141,19 @@ a:hover { color: var(--wood-deep); }
 .session-item { padding: 9px 11px; border-radius: var(--radius-s); cursor: pointer; font-size: 13px; color: var(--ink); display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px; transition: background .2s var(--spring); }
 .session-item:hover { background: var(--paper-2); }
 .session-item.active { background: var(--gold-soft); color: var(--wood-deep); font-weight: 600; }
-.session-item .del { visibility: hidden; color: var(--ink-3); font-size: 14px; padding: 0 4px; }
+.session-item .del { visibility: hidden; color: var(--ink-3); font-size: 14px; padding: 10px 8px; margin: -10px -4px; flex-shrink: 0; line-height: 1; }
 .session-item:hover .del { visibility: visible; }
 .session-item .del:hover { color: var(--bad); }
+/* 27-N P2-12：触屏无 hover —— ✕ 常显，避免"点一下出✕再点一下才删除"两段式 */
+@media (hover: none) {
+  .session-item .del { visibility: visible; }
+}
+/* 27-N P2-12：「＋新会话」点击后的可感知反馈（一次性高亮） */
+@keyframes gk-flash {
+  0%, 100% { background: transparent; color: inherit; }
+  35% { background: var(--gold-soft); color: var(--wood-deep); }
+}
+.gk-flash { animation: gk-flash .8s var(--ease-out); }
 .session-more { padding: 9px; text-align: center; color: var(--wood); cursor: pointer; font-size: 12.5px; border-radius: var(--radius-s); }
 .session-more:hover { background: var(--paper-2); }
 
@@ -476,6 +486,7 @@ a:hover { color: var(--wood-deep); }
 }
 .gk-shake { animation: gk-shake .45s var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .gk-shake { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .gk-flash { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
   .enter, .hero, .rise { animation: none !important; }
   .skel::after { animation: none !important; }

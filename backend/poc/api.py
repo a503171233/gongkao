@@ -5899,10 +5899,19 @@ def _fenbi_llm_call(messages):
     """任务书 LLM 通道（批次27-F 增强）：注册表强模型优先——生产实锤 flash 级
     模型在「2233 错题长文 + JSON 输出」场景极不稳定（空输出/缺字段/截断混合），
     任务书属低频高价值场景（6h 冷却），优先用 pro 级模型；全部不可用再回退
-    默认模型链（_grade_llm_call，含降级兜底）。输出长文 4000。"""
+    默认模型链（_grade_llm_call，含降级兜底）。输出长文 4000。
+    27-N P1-5：总预算 300s + 单通道 90s 硬超时——此前每通道全局 180s 超时×
+    内部重试×4 通道最坏可挂 30+ 分钟，前端停在 70% 僵住、重试还 429。预算耗尽
+    返回空串 → run_analysis 按空输出走降级统计版，任务必然收敛。"""
     prefer_ids = ("deepseek-v4-pro", "claude-opus-4-8", "gpt-5.6-luna")
+    t0 = time.time()
+    budget = 300.0    # 全通道总预算（秒）
+    per_call = 90.0   # 单次 HTTP 超时（秒）
     tcfg = cfg.get_teacher("T001")
     for mid in prefer_ids:
+        if time.time() - t0 > budget:
+            print(f"[fenbi_llm] 总预算 {budget:.0f}s 耗尽，跳过剩余强模型", flush=True)
+            break
         try:
             m = _get_aimodel().get_model(mid)
         except Exception:  # noqa: BLE001
@@ -5914,12 +5923,17 @@ def _fenbi_llm_call(messages):
             out = llm_biz.call_llm(
                 messages, tcfg, max_tokens=4000, model=m["model_id"],
                 base_url=m.get("base_url"), api_key=m.get("api_key"),
-                temperature=0.2)
+                temperature=0.2, timeout=per_call)
             if out and out.strip():
                 print(f"[fenbi_llm] 强模型 {mid} 生成成功（{len(out)} 字符）", flush=True)
                 return out
         except Exception as e:  # noqa: BLE001  逐个尝试下一个
             print(f"[fenbi_llm] 强模型 {mid} 失败：{type(e).__name__}: {str(e)[:100]}", flush=True)
+    if time.time() - t0 > budget:
+        # 27-N：预算耗尽不再走默认链（同样 180s×重试会继续挂）——
+        # 返回空串让 run_analysis 走「空输出 → 降级统计版」收敛路径
+        print("[fenbi_llm] 总预算耗尽，跳过默认链，触发降级统计版", flush=True)
+        return ""
     return _grade_llm_call(messages, tcfg, max_tokens=4000)
 
 

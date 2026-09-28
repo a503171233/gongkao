@@ -421,7 +421,8 @@ async function loadMastery() {
   }
   try {
     const resp = await fetch('/api/knowledge/mastery?teacher_id=' + encodeURIComponent(tid()), {
-      headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + tk }
+      headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + tk,
+                 'X-Auth-Token': tk }   // 27-N：双头防公网代理剥 Authorization
     });
     mastery = null;
     if (resp.ok) {
@@ -575,7 +576,10 @@ function planApi(path, opts) {
   const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
   opts = opts || {};
   opts.headers = Object.assign({ 'Accept': 'application/json',
-    'Content-Type': 'application/json' }, tk ? { 'Authorization': 'Bearer ' + tk } : {});
+    'Content-Type': 'application/json' }, tk ? {
+    'Authorization': 'Bearer ' + tk,
+    // 27-N：公网代理剥离 Authorization，冗余携带 X-Auth-Token（nginx 转换回传）
+    'X-Auth-Token': tk } : {});
   return fetch('/api' + path, opts).then(async r => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));

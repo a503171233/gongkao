@@ -52,6 +52,25 @@
   var _sending = false;   // 防连点
   var _pageSize = 30;     // 会话分页：每页 30 条
   var _loadedAll = false; // 是否已加载全部
+  // 27-N P2-16：当前流的 AbortController 与发送态复位钩子。
+  // 此前 GK.sse 返回的 controller 全站无人调用 abort，a4 的 AbortError
+  // 分支成为死代码；且切老师/新会话后旧流仍在推送（污染新会话渲染）。
+  // 现在生命周期收口：新会话/删除会话时主动断旧流并复位发送态。
+  var _sseCtl = null;
+  var _finishSend = null;
+
+  function abortActiveStream() {
+    if (_sseCtl) {
+      var ctl = _sseCtl;
+      _sseCtl = null;
+      try { ctl.abort(); } catch (e) { /* abort 失败不影响后续 */ }
+    }
+    if (_finishSend) {
+      var fin = _finishSend;
+      _finishSend = null;
+      fin();   // 复位 _sending/按钮/焦点/列表（abort 不触发 done/error 回调）
+    }
+  }
 
   // -----------------------------------------------------------------
   // 3. 内部工具
@@ -189,9 +208,18 @@
   // 6. 新建会话：清空 session_id，下次 ask 由后端自动创建
   // -----------------------------------------------------------------
   function newSession(hint) {
+    // 27-N P2-16：旧流还在推送时先断开，防污染新会话
+    abortActiveStream();
     global.GK.store.sessionId = '';
     broadcast('render:clear', { hint: hint || '新会话已开始，请提问。' });
     if (queryEl) queryEl.focus();
+    // 27-N P2-12：「＋新会话」点击后的可感知反馈（一次性高亮）
+    if (newSessionBtn) {
+      newSessionBtn.classList.remove('gk-flash');
+      void newSessionBtn.offsetWidth;
+      newSessionBtn.classList.add('gk-flash');
+      setTimeout(function () { newSessionBtn.classList.remove('gk-flash'); }, 900);
+    }
     loadSessions(true);
   }
 
@@ -203,6 +231,7 @@
     try {
       await global.GK.api('/sessions/' + encodeURIComponent(sid), { method: 'DELETE' });
       if (sid === global.GK.store.sessionId) {
+        abortActiveStream();   // 27-N P2-16：删当前会话时断开仍在推送的旧流
         global.GK.store.sessionId = '';
         broadcast('render:clear', { hint: '会话已删除，开始新对话吧。' });
       }
@@ -259,12 +288,13 @@
       _sending = false;
       if (sendBtn) sendBtn.disabled = false;
       if (queryEl) queryEl.focus();
+      _sseCtl = null; _finishSend = null;   // 27-N：流已终态，清引用
       loadSessions(true);   // 刷新历史栏（含后端新建/复用的会话）
     }
 
     // A4 传输（本模块不直接 fetch）；错误 detail 由 A4 抛到 error 回调
     var reconnecting = false; // 断线重连状态：delta 恢复时广播 reconnected 清除提示
-    global.GK.sse('/ask', body, {
+    _sseCtl = global.GK.sse('/ask', body, {
       start: function (d) {
         // 收到 start → 后端已建/复用会话 → 回填 session_id
         if (d && d.session_id) {
@@ -329,6 +359,7 @@
         });
       },
     });
+    _finishSend = finishSend;   // 27-N P2-16：abortActiveStream 复位发送态用
   }
 
   // -----------------------------------------------------------------

@@ -40,7 +40,7 @@
         '<span style="flex:1"></span>' +
         '<button onclick="C11.close()" style="padding:5px 10px;border:none;border-radius:8px;background:var(--paper-2);color:var(--ink-2);cursor:pointer;font-size:12px">✕</button>' +
       '</div>' +
-      '<div style="flex:1;overflow-y:auto;padding:16px;color:var(--ink);font-size:13.5px;line-height:1.7">' + inner + '</div>';
+      '<div id="c11Body" style="flex:1;overflow-y:auto;padding:16px;color:var(--ink);font-size:13.5px;line-height:1.7">' + inner + '</div>';
     return p;
   }
   function toast(msg, type) {
@@ -143,8 +143,12 @@
   }
 
   function printResult() {
-    var body = document.getElementById('c11Body');
-    if (body) global.GK.printExport('申论批改报告', body.innerHTML);
+    var body = document.getElementById('c11Body') || ensurePanel().querySelector('div:nth-child(2)');
+    if (body && body.innerHTML.replace(/<[^>]*>/g, '').trim()) {
+      global.GK.printExport('申论批改报告', body.innerHTML);
+    } else {
+      toast('暂无可导出的批改结果', 'error');
+    }
   }
 
   global.C11 = { openEssay: openEssay, close: close, pick: pick, grade: grade, printResult: printResult };

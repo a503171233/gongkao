@@ -106,6 +106,27 @@ def _extract_json(text: str) -> dict:
     raise ValueError("AI 返回格式无法解析，请重试")
 
 
+def _llm_json(prompt: str, llm_call, tries: int = 3) -> dict:
+    """批次27-N P2-13：AI 返回 JSON 容错重试。
+
+    此前 gen_question/review_answer 直接 _extract_json(llm_call(...))，
+    模型偶发输出带解释文字/代码块围栏时一次解析失败即 400，用户直接撞错。
+    现在解析失败时带纠正提示重试（最多 tries 次），全失败才抛给上层。
+    仅重试 ValueError（格式问题）；网络/超时异常由上层原有错误链路处理。
+    """
+    last_err: ValueError | None = None
+    for i in range(tries):
+        p = prompt if i == 0 else (
+            prompt + "\n\n注意：你上一次的输出无法解析为 JSON。"
+            "请严格只输出一个 JSON 对象，不要任何解释、前后缀或代码块围栏。"
+        )
+        try:
+            return _extract_json(llm_call([{"role": "user", "content": p}]))
+        except ValueError as e:
+            last_err = e
+    raise last_err if last_err else ValueError("AI 返回格式无法解析，请重试")
+
+
 def gen_question(store: InterviewStore, user_id: str, module: str,
                  llm_call, difficulty: str = "standard") -> dict:
     """AI 出一道结构化面试题并落库。"""
@@ -118,7 +139,7 @@ def gen_question(store: InterviewStore, user_id: str, module: str,
         "严格要求：只输出 JSON：{\"question\": \"<题干，含场景/背景与提问，80-200字>\"}\n"
         "题干要具体（给出背景细节），避免空泛。"
     )
-    obj = _extract_json(llm_call([{"role": "user", "content": prompt}]))
+    obj = _llm_json(prompt, llm_call)
     q = str(obj.get("question", "")).strip()
     if len(q) < 20:
         raise ValueError("AI 出题异常，请重试")
@@ -150,7 +171,7 @@ def review_answer(store: InterviewStore, user_id: str, qid: int,
         f"【题目】{row['question']}\n【考生作答】\n{answer.strip()}\n\n"
         "点评要具体到考生答题内容，优点与问题并重，不套话。"
     )
-    obj = _extract_json(llm_call([{"role": "user", "content": prompt}]))
+    obj = _llm_json(prompt, llm_call)
     try:
         score = max(0.0, min(float(obj.get("score", 0)), 100.0))
     except (TypeError, ValueError):

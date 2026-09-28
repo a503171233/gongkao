@@ -238,7 +238,9 @@
           onBroken('stream ended unexpectedly');
         }
       }).catch(function (err) {
-        if (err && err.name === 'AbortError') return;     // 用户主动 abort，静默
+        // 27-N P2-16：A3 在新会话/删除会话/切老师时 abort 旧流（防污染新会话），
+        // 本分支是活代码——用户主动取消静默返回，绝不能走 onBroken 重连
+        if (err && err.name === 'AbortError') return;
         onBroken('网络异常: ' + (err && err.message ? err.message : err));
       });
     }
@@ -351,9 +353,20 @@
   // 7. 导出 DOCX（#21）：与 printExport 同源 HTML → POST /me/export/docx
   //    后端 python-docx 生成真实 OOXML；blob 触发浏览器下载。
   // -----------------------------------------------------------------
+  // 27-N P1-4：导出 HTML 净化——网关 WAF 会拦截请求体含 onclick=/<script 的
+  // 内容（403），而各面板导出的是整段 innerHTML（必然带内联 onclick）。
+  // 导出文档不需要任何可执行内容：剥内联事件属性、script/iframe 块与 javascript: 伪协议。
+  function sanitizeForExport(html) {
+    return String(html || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<(iframe|object|embed)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/\s(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, ' $1="#"');
+  }
+
   function docxExport(title, html) {
     var t = String(title || '导出文档');
-    var body = String(html || '');
+    var body = sanitizeForExport(html);
     if (!body.trim()) {
       if (global.GK.toast) global.GK.toast('暂无可导出的内容', 'error');
       return;

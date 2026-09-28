@@ -712,11 +712,23 @@ class StudyStore:
         return [self._parse_mistake_refs(r) for r in rows]
 
     def delete_mistake(self, user_id: str, mist_id: int) -> bool:
+        # 批次27-N P2-11：删除错题时联动移出复习队列。review_schedule 按
+        # question_id 排程，错题删掉后残留会产生"幽灵复习项"（题已不在
+        # 错题本，复习队列仍推）。有 question_id 才联动；手抄错题无关联不受影响。
         with self._connect() as conn:
+            row = conn.execute(
+                "SELECT question_id FROM mistakes WHERE id=? AND user_id=?",
+                (mist_id, user_id),
+            ).fetchone()
             cur = conn.execute(
                 "DELETE FROM mistakes WHERE id=? AND user_id=?",
                 (mist_id, user_id),
             )
+            if row and row["question_id"] is not None:
+                conn.execute(
+                    "DELETE FROM review_schedule WHERE user_id=? AND question_id=?",
+                    (user_id, row["question_id"]),
+                )
         return cur.rowcount > 0
 
     def _parse_mistake_refs(self, row: sqlite3.Row) -> dict:
