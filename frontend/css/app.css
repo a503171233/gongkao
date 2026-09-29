@@ -454,6 +454,14 @@ a:hover { color: var(--wood-deep); }
 .tabbar button.on .ti { transform: translateY(-1px) scale(1.08); }
 .tabbar button .tdot { position: absolute; }   /* 消息角标由按钮内元素自行定位 */
 
+/* 批次28：粉笔快照题目配图（/api/qimg/ 本地图） */
+.fb-qimg { max-width: 100%; max-height: 260px; border-radius: 8px;
+  margin: 6px 0; display: block; background: var(--paper-2); }
+
+/* 批次28：底栏 emoji 行高收紧——emoji 字形溢出行框会压住下方文字 */
+.tabbar button .ti { line-height: 1; height: 22px; display: inline-flex;
+  align-items: center; justify-content: center; }
+
 /* 「更多」菜单（底部升起的功能网格） */
 .more-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: calc(var(--z-tabbar) + 1);
   transform: translateY(105%); transition: transform var(--dur-slow) var(--spring);

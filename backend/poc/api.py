@@ -706,6 +706,7 @@ def ask(req: AskReq, authorization: str = Header(default="")):
         "session_id": req.session_id,
         "answer": result["answer"],
         "rejected": result.get("rejected", False),
+        "general": result.get("general", False),
         "references": refs,
         "guard_fails": result.get("guard_fails", []),
         "guard_level": result.get("guard_level", "pass"),
@@ -5955,12 +5956,12 @@ def _fenbi_llm_call(messages):
     内部重试×4 通道最坏可挂 30+ 分钟，前端停在 70% 僵住、重试还 429。预算耗尽
     返回空串 → run_analysis 按空输出走降级统计版，任务必然收敛。"""
     prefer_ids = ("deepseek-v4-pro", "claude-opus-4-8", "gpt-5.6-luna")
-    t0 = time.time()
+    t0 = _time.time()
     budget = 300.0    # 全通道总预算（秒）
     per_call = 90.0   # 单次 HTTP 超时（秒）
     tcfg = cfg.get_teacher("T001")
     for mid in prefer_ids:
-        if time.time() - t0 > budget:
+        if _time.time() - t0 > budget:
             print(f"[fenbi_llm] 总预算 {budget:.0f}s 耗尽，跳过剩余强模型", flush=True)
             break
         try:
@@ -5980,7 +5981,7 @@ def _fenbi_llm_call(messages):
                 return out
         except Exception as e:  # noqa: BLE001  逐个尝试下一个
             print(f"[fenbi_llm] 强模型 {mid} 失败：{type(e).__name__}: {str(e)[:100]}", flush=True)
-    if time.time() - t0 > budget:
+    if _time.time() - t0 > budget:
         # 27-N：预算耗尽不再走默认链（同样 180s×重试会继续挂）——
         # 返回空串让 run_analysis 走「空输出 → 降级统计版」收敛路径
         print("[fenbi_llm] 总预算耗尽，跳过默认链，触发降级统计版", flush=True)
@@ -6074,8 +6075,18 @@ def me_fenbi_analyze(authorization: str = Header(default="")):
         aid, err = fenbi_bind_store.start_analysis(uid)
     if err:
         raise HTTPException(429, err)
-    threading.Thread(target=run_analysis, daemon=True,
-                     args=(fenbi_bind_store, uid, aid, _fenbi_llm_call)).start()
+
+    def _analyze_and_link() -> None:
+        """批次28：分析完成后把错题/收藏快照联动进系统错题本/收藏夹。"""
+        run_analysis(fenbi_bind_store, uid, aid, _fenbi_llm_call)
+        try:
+            r = fenbi_bind.sync_into_system(fenbi_bind_store, study_store, uid)
+            print(f"[fenbi-link] user={uid} mistakes+{r['mistakes_new']}"
+                  f" favorites+{r['favorites_new']}", flush=True)
+        except Exception:  # noqa: BLE001  联动失败不影响分析结果
+            traceback.print_exc()
+
+    threading.Thread(target=_analyze_and_link, daemon=True).start()
     return {"ok": True, "analysis_id": aid}
 
 
@@ -6089,6 +6100,36 @@ def me_fenbi_analysis_latest(authorization: str = Header(default="")):
     if latest and latest["status"] == "done":
         latest["wrong_count"] = fenbi_bind_store.wrong_count(user["user_id"])
     return {"latest": latest}
+
+
+# ---------- 批次 J · 粉笔同步明细 + 任务书同步学习计划 ----------
+# 注：明细查询沿用批次 27 已有契约（/me/fenbi/wrongs、/me/fenbi/collects、
+# /me/fenbi/mock/exams[/{eid}]，见文件后段，web 端 c10 已在用）——
+# App 端 v2.8.2 起对齐同一契约，避免同路径重复注册导致响应字段漂移。
+
+def _fenbi_user(authorization: str) -> dict:
+    user = _resolve_user(authorization)
+    if user is None:
+        raise HTTPException(401, "请先登录")
+    b = fenbi_bind_store.get_binding(user["user_id"])
+    if not b or b.get("status") != "bound":
+        raise HTTPException(400, "请先绑定粉笔账号")
+    return user
+
+
+@app.post("/me/fenbi/sync-plan")
+def me_fenbi_sync_plan(authorization: str = Header(default="")):
+    """把最近一次任务书手动同步到学习计划（绑定完成时已自动同步，此为兜底入口）。"""
+    user = _fenbi_user(authorization)
+    latest = _analysis_view(fenbi_bind_store.latest_analysis(user["user_id"]))
+    if not latest or latest["status"] != "done" or not latest.get("report"):
+        raise HTTPException(404, "还没有已完成的任务书，请先运行「同步提升计划」")
+    try:
+        plan = study_store.sync_fenbi_report_plan(
+            "T001", user["user_id"], latest["report"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "plan_id": plan["plan_id"]}
 
 
 # ---------- #17b 粉笔登录会话（验证码/扫码 playwright） ----------
@@ -6248,6 +6289,14 @@ def _run_fenbi_sync(store: FenbiBindStore, uid: str, kind: str,
             total, saved = fenbi_bind.sync_collect(store, uid, _p)
         else:
             total, saved = fenbi_bind.sync_mock(store, uid, _p)
+        # 批次28：错题/收藏同步完成后联动系统错题本/收藏夹（幂等，ext_id 去重）
+        if kind in ("wrong", "collect"):
+            try:
+                r = fenbi_bind.sync_into_system(store, study_store, uid, _p)
+                print(f"[fenbi-link] {kind} user={uid} mistakes+{r['mistakes_new']}"
+                      f" favorites+{r['favorites_new']}", flush=True)
+            except Exception:  # noqa: BLE001  联动失败不影响同步结果
+                traceback.print_exc()
         store.update_sync(sid, status="done", stage="完成", progress=100,
                           total=total, new_count=saved,
                           done_at=fenbi_bind._now())

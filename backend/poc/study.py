@@ -422,6 +422,21 @@ class StudyStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_practice_cat ON practice_logs(user_id, category)")
 
+            # 迁移：批次28 外部错题/收藏对齐键（粉笔快照联动系统错题本/
+            # 收藏夹的幂等去重键，'fb:{qid}'/'fbc:{qid}'）
+            for _ddl in (
+                "ALTER TABLE mistakes ADD COLUMN ext_id TEXT DEFAULT ''",
+                "ALTER TABLE favorites ADD COLUMN ext_id TEXT DEFAULT ''",
+            ):
+                try:
+                    conn.execute(_ddl)
+                except sqlite3.OperationalError:
+                    pass  # 列已存在
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mistake_ext ON mistakes(user_id, ext_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_fav_ext ON favorites(user_id, ext_id)")
+
             # #16 错题强化重练：艾宾浩斯复习节奏表
             # stage = 已连续答对次数；0 = 尚未开始复习（首次答错后进入）；
             # next_review_at = 下一轮应复习时间（ISO）；全员已掌握则移出（删除行）。
@@ -479,8 +494,10 @@ class StudyStore:
     # ==================== 收藏 ====================
     def add_favorite(self, user_id: str, teacher_id: str, question: str,
                      answer: str, refs: list[dict] | None = None,
-                     session_id: str = "", group: str = "") -> dict:
-        """收藏一条问答记录。group 为收藏分组（空=未分组，旧客户端不传完全兼容）。"""
+                     session_id: str = "", group: str = "",
+                     ext_id: str = "") -> dict:
+        """收藏一条问答记录。group 为收藏分组（空=未分组，旧客户端不传完全兼容）。
+        ext_id 为外部题源对齐键（批次28），重复同步幂等。"""
         # 检查限额（匿名不限）
         if user_id != 'anonymous':
             count = self._count_favorites(user_id)
@@ -491,11 +508,17 @@ class StudyStore:
             import json
             refs_json = json.dumps(refs, ensure_ascii=False)
         with self._connect() as conn:
+            if ext_id:
+                dup = conn.execute(
+                    "SELECT 1 FROM favorites WHERE user_id=? AND ext_id=?",
+                    (user_id, ext_id)).fetchone()
+                if dup:
+                    return {"id": None, "duplicate": True}
             cur = conn.execute(
-                """INSERT INTO favorites(user_id, teacher_id, question, answer, refs, session_id, fav_group, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO favorites(user_id, teacher_id, question, answer, refs, session_id, fav_group, created_at, ext_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (user_id, teacher_id, question, answer, refs_json, session_id,
-                 (group or "").strip()[:50], now),
+                 (group or "").strip()[:50], now, ext_id),
             )
             fid = cur.lastrowid
         return {
@@ -666,21 +689,42 @@ class StudyStore:
         return r
 
     # ==================== 错题本 ====================
+    def ext_ids(self, user_id: str) -> set[str]:
+        """批次28：学员已有的外部对齐键集合（mistakes+favorites）。
+        粉笔快照联动写入前查重，保证重复同步幂等。"""
+        out: set[str] = set()
+        with self._connect() as conn:
+            for tbl in ("mistakes", "favorites"):
+                for r in conn.execute(
+                    f"SELECT ext_id FROM {tbl} WHERE user_id=? AND ext_id!=''",
+                    (user_id,),
+                ):
+                    out.add(str(r["ext_id"]))
+        return out
+
     def add_mistake(self, user_id: str, teacher_id: str, question: str,
                     user_answer: str, correct_note: str,
                     refs: list[dict] | None = None, session_id: str = "",
-                    question_id: int | None = None) -> dict:
-        """记录错题。question_id 关联题库原题（#36 错题重练）。"""
+                    question_id: int | None = None,
+                    ext_id: str = "") -> dict:
+        """记录错题。question_id 关联题库原题（#36 错题重练）。
+        ext_id 为外部题源对齐键（批次28，如 'fb:123'），重复同步幂等。"""
         now = _now_iso()
         refs_json = ''
         if refs:
             import json
             refs_json = json.dumps(refs, ensure_ascii=False)
         with self._connect() as conn:
+            if ext_id:
+                dup = conn.execute(
+                    "SELECT 1 FROM mistakes WHERE user_id=? AND ext_id=?",
+                    (user_id, ext_id)).fetchone()
+                if dup:
+                    return {"id": None, "duplicate": True}
             cur = conn.execute(
-                """INSERT INTO mistakes(user_id, teacher_id, question, user_answer, correct_note, refs, session_id, created_at, question_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (user_id, teacher_id, question, user_answer, correct_note, refs_json, session_id, now, question_id),
+                """INSERT INTO mistakes(user_id, teacher_id, question, user_answer, correct_note, refs, session_id, created_at, question_id, ext_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, teacher_id, question, user_answer, correct_note, refs_json, session_id, now, question_id, ext_id),
             )
             mid = cur.lastrowid
         return {
@@ -1693,6 +1737,68 @@ class StudyStore:
             plan_id = cur.lastrowid
         return {"plan_id": plan_id, "created_at": now, "days": days}
 
+    def sync_fenbi_report_plan(self, teacher_id: str, user_id: str,
+                               report: dict) -> dict:
+        """批次 J：粉笔 AI 提升计划任务书 → 学习计划。
+
+        任务书 weeks（4 周）映射为 days（每周一个 day）：
+          day=i+1，title=「第X周 · 主题」，focus=本周目标，
+          items=tasks → {kind:"fenbi", name:任务名, note:"时间槽 · 做法 · 时长"}。
+        payload.fenbi_report 附任务书全文（summary/weak_points/advice/time_plan），
+        供学习计划页渲染摘要卡。生成即作废旧计划（与 generate_study_plan 语义一致），
+        原掌握度计划可通过「重新生成」找回。"""
+        weeks = (report or {}).get("weeks") or []
+        if not weeks:
+            raise ValueError("任务书中没有周计划数据，无法同步")
+        days: list[dict] = []
+        for i, w in enumerate(weeks[:6]):
+            tasks = w.get("tasks") or []
+            if not tasks:
+                continue
+            items = []
+            for t in tasks:
+                note_parts = [str(t.get("slot") or "").strip()]
+                detail = str(t.get("detail") or "").strip()
+                if detail:
+                    note_parts.append(detail)
+                minutes = t.get("minutes")
+                if minutes:
+                    note_parts.append(f"约{minutes}分钟")
+                items.append(self._plan_item(
+                    "fenbi", str(t.get("title") or "提升任务"), "粉笔提升",
+                    "task", note=" · ".join(p for p in note_parts if p)))
+            if not items:
+                continue
+            theme = str(w.get("theme") or f"第{i + 1}周")
+            days.append({"day": i + 1,
+                         "title": f"第{i + 1}周 · {theme}",
+                         "focus": str(w.get("goal") or "粉笔错题驱动提升"),
+                         "items": items})
+        if not days:
+            raise ValueError("任务书周计划均为空，无法同步")
+        fr = {
+            "summary": str((report or {}).get("summary") or ""),
+            "weak_points": (report or {}).get("weak_points") or [],
+            "advice": (report or {}).get("advice") or [],
+            "time_plan": (report or {}).get("time_plan") or [],
+            "synced_at": _now_iso(),
+            "source": "fenbi_bind",
+        }
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute("UPDATE study_plans SET active=0 "
+                         "WHERE user_id=? AND teacher_id=? AND active=1",
+                         (user_id, teacher_id))
+            cur = conn.execute(
+                "INSERT INTO study_plans(user_id, teacher_id, days, payload, active, created_at) "
+                "VALUES(?,?,?,?,1,?)",
+                (user_id, teacher_id, len(days),
+                 json.dumps({"days": days, "fenbi_report": fr}, ensure_ascii=False),
+                 now))
+            plan_id = cur.lastrowid
+        return {"plan_id": plan_id, "created_at": now, "days": days,
+                "fenbi_report": fr}
+
     def get_active_plan(self, teacher_id: str, user_id: str) -> dict | None:
         """当前生效计划（7 天内），含进度统计；过期懒清理。"""
         with self._connect() as conn:
@@ -1711,14 +1817,21 @@ class StudyStore:
         except ValueError:
             age_days = 0
         if age_days > self._PLAN_TTL_DAYS:
-            with self._connect() as conn:
-                conn.execute("UPDATE study_plans SET active=0 WHERE id=?", (row["id"],))
-            return None
-        days = json.loads(row["payload"]).get("days") or []
+            # 批次 J：payload 带 fenbi_report 的是粉笔任务书计划（4 周节奏），
+            # TTL 放宽到 35 天，避免 7 天就被懒清理掉
+            payload_probe = json.loads(row["payload"] or "{}")
+            ttl = 35 if payload_probe.get("fenbi_report") else self._PLAN_TTL_DAYS
+            if age_days > ttl:
+                with self._connect() as conn:
+                    conn.execute("UPDATE study_plans SET active=0 WHERE id=?", (row["id"],))
+                return None
+        payload = json.loads(row["payload"] or "{}")
+        days = payload.get("days") or []
         items = [it for d in days for it in d.get("items") or []]
         done = sum(1 for it in items if it.get("done"))
         return {"plan_id": row["id"], "created_at": created,
                 "days": days,
+                "fenbi_report": payload.get("fenbi_report"),
                 "progress": {"done": done, "total": len(items),
                              "pct": round(done * 100 / len(items)) if items else 0}}
 

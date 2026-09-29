@@ -27,6 +27,27 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // 批次28：题目富文本——escapeHtml 后把 ![图N](/api/qimg/…) 标记还原为
+  // <img>（URL 白名单 /api/qimg/，其余降级占位文字）；[图N] 占位 → 提示。
+  function richBody(raw, maxLen) {
+    var s = escapeHtml(maxLen ? String(raw || '').slice(0, maxLen) : raw);
+    s = s.replace(/!\[图\d*\]\((\/api\/qimg\/[A-Za-z0-9_\-\/.]+)\)/g,
+      '<img src="$1" class="fb-qimg" loading="lazy" alt="题图">');
+    s = s.replace(/!\[图\d*\]\([^)]*\)/g,
+      '<span style="color:var(--ink-3)">[图片加载失败]</span>');
+    s = s.replace(/\[图\d*\]/g,
+      '<span style="color:var(--ink-3)">🖼</span>');
+    return s;
+  }
+
+  // 批次28：资料（材料）区块——资料分析题的图表/文字材料
+  function materialBlock(material) {
+    if (!material || !String(material).trim()) return '';
+    return '<div style="background:var(--paper-2);border-radius:9px;padding:9px 11px;margin-bottom:8px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--wood);margin-bottom:3px">📋 资料</div>' +
+      '<div style="font-size:12px;line-height:1.6;color:var(--ink-2)">' + richBody(material) + '</div></div>';
+  }
+
   function showToast(msg, type) {
     var div = document.createElement('div');
     div.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;box-shadow:0 2px 12px rgba(0,0,0,.15);';
@@ -333,10 +354,11 @@
               (it.keypoint ? '<span style="color:var(--wood);font-size:10.5px">' + escapeHtml(it.keypoint) + '</span>' : '') +
               '<span style="flex:1"></span><span style="color:var(--ink-3);font-size:10.5px">难度 ' + (it.difficulty || '-') + '</span>' +
             '</div>' +
-            '<div style="font-size:12.5px;line-height:1.55;color:var(--ink)">' + escapeHtml(String(it.content || '').slice(0, 90)) + '…</div>' +
+            materialBlock(it.material) +
+            '<div style="font-size:12.5px;line-height:1.55;color:var(--ink)">' + richBody(it.content, 90) + '…</div>' +
             '<div style="color:var(--good);font-size:11.5px;margin-top:5px">答案：' + escapeHtml(it.answer || '-') + '</div>' +
             (it.analysis ? '<details style="margin-top:5px"><summary style="cursor:pointer;color:var(--wood);font-size:11.5px">查看解析</summary>' +
-              '<div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:4px">' + escapeHtml(String(it.analysis).slice(0, 300)) + '…</div></details>' : '') +
+              '<div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:4px">' + richBody(it.analysis, 600) + '…</div></details>' : '') +
           '</div>';
       });
       hh += '</div>';
@@ -436,11 +458,12 @@
         h +=
           '<div style="border:1px solid #ffc9c9;background:#fffafa;border-radius:9px;padding:10px 12px;margin-bottom:8px">' +
             '<div style="font-size:10.5px;color:var(--bad);font-weight:700;margin-bottom:3px">错题 ' + (i + 1) + '（ID ' + escapeHtml(a.question_id) + '）</div>' +
-            '<div style="font-size:12.5px;line-height:1.55">' + escapeHtml(String(a.content || '').slice(0, 120)) + '…</div>' +
+            materialBlock(a.material) +
+            '<div style="font-size:12.5px;line-height:1.55">' + richBody(a.content, 120) + '…</div>' +
             (a.user_answer && a.user_answer !== 'null' ? '<div style="font-size:11.5px;color:var(--bad);margin-top:4px">我的答案：' + escapeHtml(fmtAnswer(a.user_answer)) + '</div>' : '') +
             '<div style="font-size:11.5px;color:var(--good);margin-top:2px">正确答案：' + escapeHtml(fmtAnswer(a.correct_answer)) + '</div>' +
             (a.analysis ? '<details style="margin-top:5px"><summary style="cursor:pointer;color:var(--wood);font-size:11.5px">查看解析</summary>' +
-              '<div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:4px">' + escapeHtml(String(a.analysis).slice(0, 300)) + '…</div></details>' : '') +
+              '<div style="font-size:12px;color:var(--ink-2);line-height:1.6;margin-top:4px">' + richBody(a.analysis, 600) + '…</div></details>' : '') +
           '</div>';
       });
       // 全部题目（折叠）

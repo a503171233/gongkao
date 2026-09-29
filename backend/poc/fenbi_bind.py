@@ -225,6 +225,16 @@ class FenbiBindStore:
             CREATE INDEX IF NOT EXISTS idx_fsl_user
                 ON fenbi_sync_log(user_id, created_at);
             """)
+            # 批次28 迁移：三表补 material 列（资料分析材料/图文题材料快照）。
+            # CREATE TABLE IF NOT EXISTS 对已存在的旧表不生效，须逐表检查补列。
+            for tbl in ("fenbi_wrong_questions", "fenbi_collect_questions",
+                        "fenbi_mock_answers"):
+                cols = {r[1] for r in conn.execute(
+                    f"PRAGMA table_info({tbl})").fetchall()}
+                if "material" not in cols:
+                    conn.execute(
+                        f"ALTER TABLE {tbl} ADD COLUMN material"
+                        " TEXT NOT NULL DEFAULT ''")
 
     # ---- bindings ----
 
@@ -295,19 +305,20 @@ class FenbiBindStore:
     def save_wrong_questions(self, user_id: str,
                              rows: list[dict]) -> int:
         """INSERT OR IGNORE；rows: {question_id, module, keypoint, content,
-        options(list), answer, analysis, difficulty, source}。"""
+        material, options(list), answer, analysis, difficulty, source}。"""
         n = 0
         with self._connect() as conn:
             for r in rows:
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO fenbi_wrong_questions"
                     "(user_id, question_id, module, keypoint, content,"
-                    " options, answer, analysis, difficulty, source,"
-                    " created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    " material, options, answer, analysis, difficulty, source,"
+                    " created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                     (user_id, str(r.get("question_id") or ""),
                      str(r.get("module") or ""),
                      str(r.get("keypoint") or ""),
                      str(r.get("content") or ""),
+                     str(r.get("material") or ""),
                      json.dumps(r.get("options") or [], ensure_ascii=False),
                      str(r.get("answer") or ""),
                      str(r.get("analysis") or ""),
@@ -332,19 +343,20 @@ class FenbiBindStore:
 
     def save_collect_questions(self, user_id: str,
                                rows: list[dict]) -> int:
-        """INSERT OR IGNORE（同错题表结构）。"""
+        """INSERT OR IGNORE（同错题表结构，含 material）。"""
         n = 0
         with self._connect() as conn:
             for r in rows:
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO fenbi_collect_questions"
                     "(user_id, question_id, module, keypoint, content,"
-                    " options, answer, analysis, difficulty, source,"
-                    " created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    " material, options, answer, analysis, difficulty, source,"
+                    " created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                     (user_id, str(r.get("question_id") or ""),
                      str(r.get("module") or ""),
                      str(r.get("keypoint") or ""),
                      str(r.get("content") or ""),
+                     str(r.get("material") or ""),
                      json.dumps(r.get("options") or [], ensure_ascii=False),
                      str(r.get("answer") or ""),
                      str(r.get("analysis") or ""),
@@ -381,8 +393,8 @@ class FenbiBindStore:
                 "SELECT COUNT(*) FROM fenbi_wrong_questions WHERE user_id=?",
                 (user_id,)).fetchone()[0]
             rows = conn.execute(
-                "SELECT id, question_id, module, keypoint, content, options,"
-                " answer, analysis, difficulty, source, created_at"
+                "SELECT id, question_id, module, keypoint, content, material,"
+                " options, answer, analysis, difficulty, source, created_at"
                 " FROM fenbi_wrong_questions WHERE user_id=?"
                 " ORDER BY id DESC LIMIT ? OFFSET ?",
                 (user_id, limit, offset)).fetchall()
@@ -404,8 +416,8 @@ class FenbiBindStore:
                 "SELECT COUNT(*) FROM fenbi_collect_questions WHERE user_id=?",
                 (user_id,)).fetchone()[0]
             rows = conn.execute(
-                "SELECT id, question_id, module, keypoint, content, options,"
-                " answer, analysis, difficulty, source, created_at"
+                "SELECT id, question_id, module, keypoint, content, material,"
+                " options, answer, analysis, difficulty, source, created_at"
                 " FROM fenbi_collect_questions WHERE user_id=?"
                 " ORDER BY id DESC LIMIT ? OFFSET ?",
                 (user_id, limit, offset)).fetchall()
@@ -470,14 +482,15 @@ class FenbiBindStore:
                 conn.execute(
                     "INSERT OR IGNORE INTO fenbi_mock_answers"
                     "(user_id, exam_row_id, question_id, global_key, status,"
-                    " user_answer, correct_answer, content, analysis,"
-                    " keypoints) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    " user_answer, correct_answer, content, material,"
+                    " analysis, keypoints) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                     (user_id, eid, str(a.get("question_id") or ""),
                      str(a.get("global_key") or ""),
                      int(a.get("status") or 0),
                      str(a.get("user_answer") or ""),
                      str(a.get("correct_answer") or ""),
                      str(a.get("content") or ""),
+                     str(a.get("material") or ""),
                      str(a.get("analysis") or ""),
                      json.dumps(a.get("keypoints") or [], ensure_ascii=False)))
         return eid
@@ -504,7 +517,7 @@ class FenbiBindStore:
             d = dict(r)
             ans = conn.execute(
                 "SELECT question_id, global_key, status, user_answer,"
-                " correct_answer, content, analysis, keypoints"
+                " correct_answer, content, material, analysis, keypoints"
                 " FROM fenbi_mock_answers WHERE exam_row_id=?",
                 (exam_row_id,)).fetchall()
         for jk in ("report_json",):
@@ -1299,24 +1312,9 @@ def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
                 raw = raw_by_id.get(q)
                 if not raw:
                     continue
-                kps = ",".join(str(k.get("name") or "")
-                               for k in (raw.get("keypoints") or [])[:2])
-                try:
-                    d10 = int(raw.get("difficulty") or 0)
-                except (TypeError, ValueError):
-                    d10 = 0
-                rows.append({
-                    "question_id": q, "module": mod,
-                    "keypoint": point_of.get(q) or kps,
-                    "content": fenbi._strip_html(str(raw.get("content") or "")),
-                    "options": [fenbi._strip_html(o)
-                                for o in fenbi._options_of(raw)],
-                    "answer": fenbi._answer_letters(raw),
-                    "analysis": fenbi._strip_html(
-                        str(raw.get("solution") or "")),
-                    "difficulty": (d10 + 1) // 2 or 2,
-                    "source": str(raw.get("source") or
-                                  raw.get("shortSource") or "")})
+                # 批次28：统一走 _sol_row（图片本地化 + 材料采集），替代
+                # 此前的就地 strip（图片丢失 / 材料缺失的根因）
+                rows.append(_sol_row(raw, q, qid_paths))
         saved = store.save_wrong_questions(user_id, rows)
 
         _p("AI 生成提升计划", 70)
@@ -1378,6 +1376,17 @@ def run_analysis(store: FenbiBindStore, user_id: str, aid: int,
                 aid, status="done", stage="完成", progress=100,
                 report=json.dumps(report, ensure_ascii=False),
                 total_mistakes=len(qids), done_at=_now())
+        # 批次 J：任务书生成完成 → 自动同步到学习计划（失败不影响分析结果）
+        try:
+            if report.get("summary"):
+                from .study import get_study_store
+                plan = get_study_store().sync_fenbi_report_plan(
+                    "T001", user_id, report)
+                print(f"[fenbi_bind] 任务书已同步到学习计划 "
+                      f"plan_id={plan['plan_id']}", flush=True)
+        except Exception as se:  # noqa: BLE001
+            print(f"[fenbi_bind] 任务书同步学习计划失败（不影响分析）：{se}",
+                  flush=True)
         print(f"[fenbi_bind] 分析完成 user={user_id} aid={aid} "
               f"错题{len(qids)} 新快照{saved}", flush=True)
     except fenbi.FenbiAuthError as e:
@@ -1421,8 +1430,17 @@ def _tree_qid_paths(tree: list) -> dict[str, tuple[str, str]]:
     return out
 
 
+# 批次28 · 快照图片本地化目录（data/qimg/fenbi/，内容寻址幂等；与题库采集
+# 共用 /api/qimg/ 公开只读端点，文件名为 sha1 前缀，与学员身份无关联）
+_QIMG_DIR = "fenbi"
+
+
 def _sol_row(sol: dict, qid: str, qid_paths: dict) -> dict:
-    """粉笔 solution → 快照行（复用 17 号管线字段规整）。"""
+    """粉笔 solution → 快照行（复用 17 号管线字段规整）。
+
+    批次28：题干/材料/解析走图片本地化管线（fenbi._download_imgs →
+    data/qimg/fenbi/ 内容寻址落盘 → ![图N](/api/qimg/…) 标记，单张失败
+    降级 [图N] 占位），修复「图片未显示」「资料分析缺材料」「解析配图丢失」。"""
     mod, pt = qid_paths.get(qid, ("", ""))
     kps = ",".join(str(k.get("name") or "")
                    for k in (sol.get("keypoints") or [])[:2])
@@ -1430,13 +1448,26 @@ def _sol_row(sol: dict, qid: str, qid_paths: dict) -> dict:
         d10 = int(sol.get("difficulty") or 0)
     except (TypeError, ValueError):
         d10 = 0
+    raw_content = str(sol.get("content") or "")
+    m = sol.get("material")
+    raw_material = (str(m.get("content") or "") if isinstance(m, dict)
+                    else str(m or ""))
+    raw_solution = str(sol.get("solution") or "")
+    raw_content, _ = fenbi._download_imgs(raw_content, _QIMG_DIR)
+    raw_material, _ = fenbi._download_imgs(raw_material, _QIMG_DIR)
+    raw_solution, _ = fenbi._download_imgs(raw_solution, _QIMG_DIR)
+    content = fenbi._strip_html(raw_content)
+    material = fenbi._strip_html(raw_material)
+    # 批次28：材料不并入 content，独立存 material 列——端上分区块渲染
+    # （「资料」卡与题干卡分离），快照表结构即展示契约
     return {
         "question_id": qid, "module": mod,
         "keypoint": pt or kps,
-        "content": fenbi._strip_html(str(sol.get("content") or "")),
+        "content": content,
+        "material": material,
         "options": [fenbi._strip_html(o) for o in fenbi._options_of(sol)],
         "answer": fenbi._answer_letters(sol),
-        "analysis": fenbi._strip_html(str(sol.get("solution") or "")),
+        "analysis": fenbi._strip_html(raw_solution),
         "difficulty": (d10 + 1) // 2 or 2,
         "source": str(sol.get("source") or sol.get("shortSource") or "")}
 
@@ -1542,6 +1573,8 @@ def sync_mock(store: FenbiBindStore, user_id: str, progress=None,
             else:
                 n_un += 1
             raw = sol_by_id.get(qid) or {}
+            # 批次28：模考明细同走图片本地化 + 材料采集（与错题/收藏同管线）
+            _row = _sol_row(raw, qid, {}) if raw else {}
             answers.append({
                 "question_id": qid, "global_key": str(ua.get("key") or gk),
                 "status": st,
@@ -1549,9 +1582,9 @@ def sync_mock(store: FenbiBindStore, user_id: str, progress=None,
                                           ensure_ascii=False),
                 "correct_answer": json.dumps(raw.get("correctAnswer") or "",
                                              ensure_ascii=False),
-                "content": fenbi._strip_html(str(raw.get("content") or "")),
-                "analysis": fenbi._strip_html(
-                    str(raw.get("solution") or "")),
+                "content": _row.get("content") or "",
+                "material": _row.get("material") or "",
+                "analysis": _row.get("analysis") or "",
                 "keypoints": [str(k.get("name") or "")
                               for k in (raw.get("keypoints") or [])[:3]]})
         exam = {
@@ -1571,3 +1604,87 @@ def sync_mock(store: FenbiBindStore, user_id: str, progress=None,
         store.save_mock_exam(user_id, exam, answers)
         n_synced += 1
     return done_total, n_synced
+
+
+# ---------------- 批次28 · 快照联动系统错题本/收藏夹 ----------------
+
+_NOTE_MAX = 600            # 解析写入系统错题本/收藏夹的截断长度
+_SYS_TEACHER = "T001"      # 系统侧老师维度（错题本/收藏夹按此归属）
+_QLETTERS = "ABCDEFGH"
+
+
+def _snapshot_question_text(row: dict) -> str:
+    """快照行 → 系统错题本/收藏夹的 question 文本（材料+题干+选项）。"""
+    parts = []
+    material = str(row.get("material") or "").strip()
+    if material:
+        parts.append("【资料】" + material)
+    content = str(row.get("content") or "").strip()
+    if content:
+        parts.append(content)
+    opts = row.get("options") or []
+    if isinstance(opts, str):
+        try:
+            opts = json.loads(opts or "[]")
+        except ValueError:
+            opts = []
+    if opts:
+        parts.append("\n".join(
+            f"{_QLETTERS[i]}. {o}" for i, o in enumerate(opts[:8])))
+    return "\n".join(parts).strip()
+
+
+def _note_of(row: dict) -> str:
+    """快照行 → 答案+解析备注文本。"""
+    note = "答案：" + (str(row.get("answer") or "").strip() or "—")
+    ana = str(row.get("analysis") or "").strip()
+    if ana:
+        note += "\n解析：" + ana[:_NOTE_MAX]
+    return note
+
+
+def sync_into_system(store: "FenbiBindStore", study_store, user_id: str,
+                     progress=None) -> dict:
+    """批次28：粉笔快照（错题/收藏）联动写入系统错题本与收藏夹。
+
+    版权口径：付费内容以快照形式仅进学员本人的错题本/收藏夹（与快照表
+    同级隔离），不入共享题库。幂等：study 侧 ext_id 去重——
+    'fb:{qid}'=错题，'fbc:{qid}'=收藏。返回 {mistakes_new, favorites_new}。"""
+    with store._connect() as conn:
+        wrongs = [dict(r) for r in conn.execute(
+            "SELECT question_id, module, keypoint, content, material,"
+            " options, answer, analysis FROM fenbi_wrong_questions"
+            " WHERE user_id=? ORDER BY id DESC", (user_id,))]
+        collects = [dict(r) for r in conn.execute(
+            "SELECT question_id, module, keypoint, content, material,"
+            " options, answer, analysis FROM fenbi_collect_questions"
+            " WHERE user_id=? ORDER BY id DESC", (user_id,))]
+    have = study_store.ext_ids(user_id)
+    m_new = f_new = 0
+    total = len(wrongs) + len(collects)
+    for i, r in enumerate(wrongs + collects):
+        if progress and i % 200 == 0:
+            progress(f"写入系统错题本/收藏夹 {i}/{total}",
+                     80 + int(18 * i / max(total, 1)))
+        is_wrong = i < len(wrongs)
+        ext = ("fb:" if is_wrong else "fbc:") + str(r["question_id"])
+        if ext in have:
+            continue
+        q = _snapshot_question_text(r)
+        if not q:
+            continue
+        tag = (f"【粉笔错题 · {r['module']}{' · ' + r['keypoint'] if r['keypoint'] else ''}】\n"
+               if is_wrong else
+               f"【粉笔收藏 · {r['module']}{' · ' + r['keypoint'] if r['keypoint'] else ''}】\n")
+        if is_wrong:
+            study_store.add_mistake(user_id, _SYS_TEACHER, tag + q, "",
+                                    _note_of(r), [], session_id="fenbi",
+                                    ext_id=ext)
+            m_new += 1
+        else:
+            study_store.add_favorite(user_id, _SYS_TEACHER, tag + q,
+                                     _note_of(r), [], session_id="fenbi",
+                                     group="粉笔收藏", ext_id=ext)
+            f_new += 1
+        have.add(ext)
+    return {"mistakes_new": m_new, "favorites_new": f_new}
