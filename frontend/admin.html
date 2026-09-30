@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 管理后台</title>
 <!-- 书卷主题 · 工业实用风格：暖纸底 / 深墨字 / 金棕强调，延续前台官网视觉 -->
 <style>
@@ -14,7 +16,7 @@
   --card-2:     #fbf4e4;   /* 卡片悬浮 */
   --ink:        #3d3a33;   /* 深墨主文字 */
   --ink-2:      #6b655a;   /* 次级文字 */
-  --ink-3:      #98917f;   /* 弱文字 */
+  --ink-3:      #6E6657;   /* 弱文字 */
   --wood:       #8b5e3c;   /* 书卷木色 */
   --wood-deep:  #6f4a2d;   /* 深木 */
   --gold:       #c9a05a;   /* 金棕点缀 */
@@ -369,6 +371,13 @@ a { color: var(--wood-deep); text-decoration: none; }
   .modal-mask { padding: 10px; }
   .modal-box { width: 100%; }
 }
+/* 批次24 · 375 极小屏兜底：表格横滑不撑破、触控 40px */
+@media (max-width: 480px) {
+  .tbl-wrap, .table-wrap, table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .btn, button, .nav-item { min-height: 40px; }
+  #content { padding: 12px; }
+  .cards { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
@@ -381,19 +390,92 @@ a { color: var(--wood-deep); text-decoration: none; }
 .ac-log-model { color: #58a6ff; font-weight: 600; }
 .ac-log-base { color: #8b949e; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 220px; }
 .ac-log-detail { color: #8b949e; }
+
+/* ============ 批次26 · 后台设计系统升级（与前台 app.css 同源） ============ */
+:root {
+  --ease-out: cubic-bezier(.22,1,.36,1);
+  --dur-fast: .16s; --dur: .3s; --dur-slow: .55s;
+  --focus-ring: 0 0 0 3px rgba(201,160,90,.35);
+}
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 8px; }
+/* 按压反馈：所有可点元素统一微缩 */
+.btn:active, .nav-item:active, .pg-btn:active, .refresh-btn:active, .logout-btn:active,
+.subnav-btn:active, .ms-item:active { transform: scale(.96); transition-duration: var(--dur-fast); }
+/* 面板/图表悬浮层次 */
+@media (hover: hover) {
+  .panel, .chart-box { transition: box-shadow var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out); }
+  .panel:hover, .chart-box:hover { box-shadow: var(--shadow-2); border-color: var(--line-2); }
+}
+/* 进入动画：切页时页头与统计卡浮现（innerHTML 替换自动重放） */
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.page-head, .cards { animation: fadeSlide var(--dur-slow) var(--ease-out) both; }
+/* 骨架屏 shimmer */
+@keyframes shimmer { from { background-position: -200px 0; } to { background-position: calc(200px + 100%) 0; } }
+.skel { position: relative; overflow: hidden; background: var(--paper-2); border-radius: 8px; min-height: 12px; }
+.skel::after { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,250,240,.9), transparent);
+  background-size: 200px 100%; animation: shimmer 1.3s infinite; }
+.skel-line { height: 13px; margin: 10px 4px; }
+.skel-line.w50 { width: 50%; } .skel-line.w70 { width: 70%; } .skel-line.w85 { width: 85%; }
+.skel-block { height: 54px; margin: 10px 0; border-radius: 12px; }
+/* 条形生长（额度/占比进度条） */
+.pbar > i { transform-origin: left; animation: barGrow .7s var(--ease-out) both; }
+@keyframes barGrow { from { transform: scaleX(0); } }
+/* 数字滚动（JS countUp 配合） */
+.tnum { font-variant-numeric: tabular-nums; }
+/* 深色日志区滚动条融入 */
+.ac-logs::-webkit-scrollbar { width: 8px; }
+.ac-logs::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 </style>
 </head>
 <body>
 <div id="app"></div>
 <!-- GK 传输层（同主站已挂载 js/a4-request.js） -->
-<script src="js/a4-request.js?v=20260906" defer></script>
+<script src="js/a4-request.js?v=b27m2" defer></script>
 <!-- 自动采集功能目录（拆分后的子页模块；admin.js 路由分发时按全局函数调用） -->
 <script src="js/autocollect/ac-common.js?v=20260912b" defer></script>
-<script src="js/autocollect/ac-overview.js?v=20260912b" defer></script>
+<script src="js/autocollect/ac-overview.js?v=20260928a" defer></script>
 <script src="js/autocollect/ac-types.js?v=20260912b" defer></script>
-<script src="js/autocollect/ac-channels.js?v=20260912b" defer></script>
+<script src="js/autocollect/ac-channels.js?v=20260925a" defer></script>
 <script src="js/autocollect/ac-content.js?v=20260912c" defer></script>
 <script src="js/autocollect/ac-logs.js?v=20260912b" defer></script>
-<script src="admin.js?v=20260912c" defer></script>
+<script src="admin.js?v=20260928a" defer></script>
+<script>
+// 批次26 · 统计卡数字滚动（MutationObserver 覆盖所有子页渲染入口；.card-n 与 .value 通吃）
+(function () {
+  "use strict";
+  function countUp(el) {
+    if (el.dataset.counted) return;
+    var raw = (el.textContent || "").trim().replace(/,/g, "");
+    var n = parseInt(raw, 10);
+    if (isNaN(n) || n <= 0 || n > 1e12 || !/^\d+$/.test(raw)) return;  // 仅纯整数千展
+    el.dataset.counted = "1";
+    var t0 = performance.now(), dur = 900;
+    function step(ts) {
+      var p = Math.min((ts - t0) / dur, 1);
+      el.textContent = Math.round(n * (1 - Math.pow(1 - p, 3))).toLocaleString();
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  function scan(root) {
+    (root || document).querySelectorAll(".card-n, .card .value").forEach(countUp);
+  }
+  var mo = new MutationObserver(function (muts) {
+    muts.forEach(function (m) {
+      m.addedNodes && m.addedNodes.forEach(function (nd) {
+        if (nd.nodeType === 1) scan(nd);
+      });
+    });
+  });
+  function boot() {
+    scan(document);
+    var host = document.getElementById("content") || document.getElementById("app") || document.body;
+    mo.observe(host, { childList: true, subtree: true });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
 </body>
 </html>

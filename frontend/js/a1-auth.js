@@ -133,8 +133,21 @@
 
   // -----------------------------------------------------------------
   // 5. 提交登录/注册（走 GK.api，只调注册/登录接口；业务请求由 A4 带头）
+  //    批次27-M1：in-flight 锁——提交期间再调用（连点/回车/多入口）直接吞掉，
+  //    与 chat-boot.js 的按钮禁用双保险，杜绝重复鉴权请求。
   // -----------------------------------------------------------------
+  var authBusy = false;
   async function authAction() {
+    if (authBusy) return;
+    authBusy = true;
+    try {
+      await authActionInner();
+    } finally {
+      authBusy = false;
+    }
+  }
+
+  async function authActionInner() {
     var u = global.document.getElementById('authUsername').value.trim();
     var p = global.document.getElementById('authPassword').value;
     var errEl = getErrEl();
@@ -176,6 +189,11 @@
           closeAuthModal();
           renderAuthArea();
           checkMembershipReminder();
+          // #24 找回密码死路修复：新账号默认无密保，注册后引导设置一次
+          // （跳过也不阻塞——登录后仍可点「密保」补设）
+          global.GK.api('/me/security-question').then(function (sec) {
+            if (sec && sec.has_security === false) openSecuritySetup();
+          }).catch(function () { /* 查询失败不阻塞 */ });
         }, 900);
       } else {
         closeAuthModal();
@@ -188,6 +206,33 @@
       if (errEl) errEl.textContent = msg;
     }
   }
+
+  // -----------------------------------------------------------------
+  // 5.5 未登录功能引导弹层（批次27-M2：替代原生 alert）
+  //     站内视觉、说明用途、直达登录/注册；不阻塞主线程。
+  //     各功能模块统一调用 GK.promptLogin('收藏') 等。
+  // -----------------------------------------------------------------
+  function promptLogin(feature) {
+    var mask = global.document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.style.zIndex = '300';   // 盖过功能面板（c11/c12 z-index 200）
+    mask.innerHTML =
+      '<div class="modal" style="max-width:340px;text-align:center">' +
+        '<div style="font-size:38px;line-height:1.2">🔐</div>' +
+        '<h2 style="margin:6px 0 4px">登录后开始</h2>' +
+        '<p style="font-size:13.5px;color:var(--ink-2);margin:0 0 16px;line-height:1.7">' +
+          '登录后即可使用' + escapeHtml(feature || '此功能') + '，<br>学习记录与进度都会为你保留</p>' +
+        '<div class="row">' +
+          '<button class="cancel" id="plLater">稍后再说</button>' +
+          '<button class="submit" id="plGo">去登录 / 注册</button>' +
+        '</div>' +
+      '</div>';
+    global.document.body.appendChild(mask);
+    mask.querySelector('#plLater').onclick = function () { mask.remove(); };
+    mask.querySelector('#plGo').onclick = function () { mask.remove(); openAuthModal('login'); };
+    mask.addEventListener('click', function (e) { if (e.target === mask) mask.remove(); });
+  }
+  global.GK.promptLogin = promptLogin;
 
   // -----------------------------------------------------------------
   // 6. OAuth 回调：启动时解析 URL ?token= → 存 → 清地址栏 → 刷新
@@ -266,7 +311,7 @@
         var upgradeBtn = global.document.createElement('button');
         upgradeBtn.className = 'auth-btn';
         upgradeBtn.style.background = '#ffd700';
-        upgradeBtn.style.color = '#333';
+        upgradeBtn.style.color = 'var(--ink)';
         upgradeBtn.textContent = '开通会员';
         upgradeBtn.onclick = function () { openMembershipModal(); };
         area.appendChild(upgradeBtn);
@@ -293,7 +338,7 @@
       var anonUpgradeBtn = global.document.createElement('button');
       anonUpgradeBtn.className = 'auth-btn';
       anonUpgradeBtn.style.background = '#ffd700';
-      anonUpgradeBtn.style.color = '#333';
+      anonUpgradeBtn.style.color = 'var(--ink)';
       anonUpgradeBtn.textContent = '开通会员';
       anonUpgradeBtn.onclick = function () { openAuthModal('login'); };
       area.appendChild(anonUpgradeBtn);
@@ -343,13 +388,13 @@
   function showReminderToast(msg) {
     var toast = global.document.createElement('div');
     toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);' +
-      'background:#4a6cf7;color:#fff;padding:10px 20px;border-radius:10px;font-size:13.5px;' +
+      'background:var(--wood);color:#fff;padding:10px 20px;border-radius:10px;font-size:13.5px;' +
       'z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.18);display:flex;align-items:center;gap:12px;';
     var txt = global.document.createElement('span');
     txt.textContent = msg;
     var btn = global.document.createElement('button');
     btn.textContent = '去续费';
-    btn.style.cssText = 'background:#ffd700;color:#333;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12.5px;font-weight:600;';
+    btn.style.cssText = 'background:#ffd700;color:var(--ink);border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12.5px;font-weight:600;';
     btn.onclick = function () { toast.remove(); openMembershipModal(); };
     var close = global.document.createElement('button');
     close.textContent = '✕';
@@ -395,9 +440,9 @@
       var planList = mask.querySelector('#planList');
       plans.forEach(function (p) {
         var div = global.document.createElement('div');
-        div.style.cssText = 'padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;cursor:pointer;';
+        div.style.cssText = 'padding:12px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:8px;cursor:pointer;';
         div.innerHTML = '<strong>' + p.name + '</strong><br>' +
-          '<span style="color:#4a6cf7;font-size:18px">¥' + (p.price/100).toFixed(2) + '</span> · ' +
+          '<span style="color:var(--wood);font-size:18px">¥' + (p.price/100).toFixed(2) + '</span> · ' +
           p.duration_days + '天 · ' + p.benefits;
         div.onclick = function () {
           // 选择该方案，创建订单
@@ -427,7 +472,7 @@
         global.GK.api('/orders/recharge-code/activate', { method: 'POST', body: { code: code } })
           .then(function (d) {
             mask.querySelector('#membershipErr').textContent = '激活成功！会员有效期至 ' + d.membership.member_expire_at;
-            mask.querySelector('#membershipErr').style.color = '#30a46c';
+            mask.querySelector('#membershipErr').style.color = 'var(--good)';
             setTimeout(function () {
               mask.remove();
               GK.loadAuthUser(); // 刷新用户信息
@@ -435,7 +480,7 @@
           })
           .catch(function (e) {
             mask.querySelector('#membershipErr').textContent = '激活失败: ' + e.message;
-            mask.querySelector('#membershipErr').style.color = '#e5484d';
+            mask.querySelector('#membershipErr').style.color = 'var(--bad)';
             btn.disabled = false;
             btn.textContent = '激活';
           });
@@ -464,7 +509,7 @@
         '<h2>找回密码</h2>' +
         '<div class="err" id="fpErr"></div>' +
         '<div id="fpBody">' +
-          '<p style="font-size:13px;color:#555;margin:4px 0 8px">第 1 步 · 输入用户名</p>' +
+          '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">第 1 步 · 输入用户名</p>' +
           '<input id="fpUsername" type="text" placeholder="用户名">' +
         '</div>' +
         '<div class="row" style="margin-top:12px">' +
@@ -492,7 +537,7 @@
           }
           // 第 2 步：答密保问题
           mask.querySelector('#fpBody').innerHTML =
-            '<p style="font-size:13px;color:#555;margin:4px 0 8px">第 2 步 · 回答密保问题</p>' +
+            '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">第 2 步 · 回答密保问题</p>' +
             '<div style="font-size:14px;font-weight:600;margin-bottom:8px">' + escapeHtml(d.security_question) + '</div>' +
             '<input id="fpAnswer" type="text" placeholder="密保答案">';
           btn.textContent = '验证';
@@ -505,7 +550,7 @@
               .then(function (v) {
                 // 第 3 步：设新密码
                 mask.querySelector('#fpBody').innerHTML =
-                  '<p style="font-size:13px;color:#555;margin:4px 0 8px">第 3 步 · 设置新密码</p>' +
+                  '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">第 3 步 · 设置新密码</p>' +
                   '<input id="fpNewPass" type="password" placeholder="新密码（至少 6 位）">' +
                   '<input id="fpNewPass2" type="password" placeholder="再次输入新密码">';
                 btn.textContent = '重置密码';
@@ -519,7 +564,7 @@
                   global.GK.api('/password/forgot/reset', { method: 'POST', body: { ticket: v.ticket, new_password: p1 } })
                     .then(function () {
                       mask.querySelector('#fpBody').innerHTML =
-                        '<p style="color:#30a46c;font-size:14px;margin:8px 0">✅ 密码已重置，请用新密码登录</p>';
+                        '<p style="color:var(--good);font-size:14px;margin:8px 0">✅ 密码已重置，请用新密码登录</p>';
                       var cancelBtn = mask.querySelector('.cancel');
                       cancelBtn.textContent = '去登录';
                       cancelBtn.onclick = function () { mask.remove(); openAuthModal('login'); };
@@ -550,7 +595,7 @@
         '<div class="modal" style="max-width:420px">' +
           '<h2>设置密保问题</h2>' +
           '<div class="err" id="secErr"></div>' +
-          '<p style="font-size:13px;color:#555;margin:4px 0 8px">用于忘记密码时自助找回，请牢记答案</p>' +
+          '<p style="font-size:13px;color:var(--ink-2);margin:4px 0 8px">用于忘记密码时自助找回，请牢记答案</p>' +
           '<select id="secQuestion">' + options + '<option value="">自定义…</option></select>' +
           '<input id="secQuestionCustom" type="text" placeholder="自定义密保问题（选自定义时填写）" style="display:none">' +
           '<input id="secAnswer" type="text" placeholder="密保答案">' +

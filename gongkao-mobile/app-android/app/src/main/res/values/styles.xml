@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色：与学习平台金色主视觉一致 -->
+    <color name="brand_gold">#C9A227</color>
+    <color name="page_bg">#FFFFFF</color>
+
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/page_bg</item>
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

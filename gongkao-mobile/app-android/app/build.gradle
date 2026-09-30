@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.gongkao.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.gongkao.app'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../../gongkao-release.keystore')
+            storePassword 'gongkao2026'
+            keyAlias 'gongkao'
+            keyPassword 'gongkao2026'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // 零第三方依赖：WebView 承载站点，保持 APK 极小（~25KB）
+}

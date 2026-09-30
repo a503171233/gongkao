@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 学员论坛</title>
+<!-- 批次27-I4：引入全站设计系统（移动端底部 tabbar 组件复用） -->
+<link rel="stylesheet" href="/css/app.css?v=b27m1">
 <!-- 书卷主题 · 与前台官网/学习中心统一视觉；公开浏览，登录后发帖交流 -->
 <style>
 :root {
@@ -13,7 +17,7 @@
   --card-2:     #fbf4e4;
   --ink:        #3d3a33;
   --ink-2:      #6b655a;
-  --ink-3:      #98917f;
+  --ink-3:      #6E6657;
   --wood:       #8b5e3c;
   --wood-deep:  #6f4a2d;
   --gold:       #c9a05a;
@@ -41,7 +45,9 @@ body {
 a { color: var(--wood-deep); text-decoration: none; }
 .knav {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 18px;
-  padding: 12px 28px; background: rgba(246,241,231,.85); backdrop-filter: saturate(180%) blur(16px);
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 28px 12px;
+  background: rgba(246,241,231,.88); backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--ink); font-size: 16px; }
@@ -94,9 +100,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
   border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .chip:hover { border-color: var(--gold); color: var(--wood-deep); }
 .chip.on { background: var(--wood); border-color: var(--wood); color: #fffaf0; }
-.chip em { font-style: normal; opacity: .7; margin-left: 4px; font-size: 11px; }
+.chip em { font-style: normal; opacity: .7; margin-left: 4px; font-size: 12px; }
 
-.badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .badge.cat { background: var(--gold-soft); color: var(--wood-deep); }
 .badge.lz { background: rgba(122,158,109,.18); color: var(--good); }
 
@@ -128,7 +134,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
   background: linear-gradient(135deg, var(--gold-soft), var(--paper-2)); color: var(--wood-deep);
   display: grid; place-items: center; font-size: 14px; font-weight: 800; }
 .reply-item .who .un { font-size: 12px; color: var(--ink-2); word-break: break-all; }
-.reply-item .who .tm { font-size: 10.5px; color: var(--ink-3); }
+.reply-item .who .tm { font-size: 12px; color: var(--ink-3); }
 .reply-item .rbody { flex: 1; font-size: 14px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 .reply-form { padding: 14px 4px; }
 .reply-form textarea { width: 100%; min-height: 84px; resize: vertical; }
@@ -160,9 +166,36 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
 .notice-bar .notice-txt { flex: 1; word-break: break-word; }
 .rpt { margin-left: 10px; }
 @media (max-width: 820px) {
-  .knav { flex-wrap: wrap; padding: 10px 14px; }
+  .knav { flex-wrap: wrap; padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px; }
   .wrap { padding: 16px 12px 50px; }
   .detail { padding: 16px; }
+}
+
+/* ============ 批次24 · 移动端最高标准 ============ */
+@media (max-width: 480px) {
+  .knav { flex-wrap: nowrap; padding: calc(env(safe-area-inset-top, 0px) + 9px) 12px; gap: 10px; }
+  .brand { flex: 0 0 auto; font-size: 14.5px; gap: 8px; min-height: 40px; display: inline-flex; align-items: center; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
+  .knav .links {
+    margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; white-space: nowrap;
+    flex: 1 1 auto; min-width: 0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
+  }
+  .knav .links::-webkit-scrollbar { display: none; }
+  .knav .links a {
+    flex: 0 0 auto; white-space: nowrap; font-size: 13px;
+    padding: 8px 10px; min-height: 38px; display: inline-flex; align-items: center;
+  }
+  .wrap { padding: 14px 12px 46px; }
+  .detail { padding: 13px; border-radius: 12px; }
+  button, .head-btn, .btn { min-height: 40px; }
+  /* 批次25：搜索行自适应（toolbar 下限压破 375 导致 placeholder 截断） */
+  .toolbar { min-width: 0; }
+  .toolbar .grow { min-width: 0; flex: 1 1 100%; min-height: 40px; }
+  .toolbar .btn { flex: 0 0 auto; }
+  .seg button { min-height: 38px; }
+  .chips { gap: 6px; }
+  .chips .chip, .chips button { min-height: 34px; }
 }
 </style>
 </head>
@@ -312,7 +345,12 @@ async function apiReq(path, opts) {
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   const token = readToken();
-  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (token) {
+    headers['Authorization'] = 'Bearer ' + token;
+    // 27-N：公网发布代理会剥离 Authorization 头，冗余携带 X-Auth-Token
+    // （自建 nginx 侧转换回 Authorization 传给后端）——与主站 GK.api 口径一致
+    headers['X-Auth-Token'] = token;
+  }
   const init = { method: opts.method || 'GET', headers: headers };
   if (opts.body !== undefined && init.method !== 'GET') {
     init.body = (typeof opts.body === 'string' || isForm) ? opts.body : JSON.stringify(opts.body);
@@ -322,7 +360,11 @@ async function apiReq(path, opts) {
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
   if (!resp.ok) {
-    const detail = (json && (json.detail || json.message)) || text || ('HTTP ' + resp.status);
+    // 27-N P2-15：429 限流统一给可操作的提示——detail 可能是英文
+    // 或网关整页 HTML（直接透出会满屏标签）
+    const detail = resp.status === 429
+      ? '操作太频繁了，休息几秒再试吧'
+      : ((json && (json.detail || json.message)) || text || ('HTTP ' + resp.status));
     const err = new Error(String(detail));
     err.status = resp.status;
     throw err;
@@ -666,11 +708,14 @@ async function bootAuth() {
   if (!readToken()) return;
   try {
     const d = await apiReq('/me');
-    if (!d || d.anonymous) { setToken(''); return; }
+    // 27-N：anonymous 不再清 token——公网代理偶发剥头时 /me 会回 anonymous，
+    // 误清导致用户掉登录；仅 401/403（token 确认失效）才清。
+    if (!d || d.anonymous) { renderAuthArea(); return; }
     state.user = { user_id: '', username: d.username, role: d.role };
     renderAuthArea();
   } catch (e) {
-    setToken('');
+    if (e && (e.status === 401 || e.status === 403)) setToken('');
+    renderAuthArea();
   }
 }
 
@@ -743,6 +788,25 @@ function init() {
   });
 }
 init();
+</script>
+<!-- 批次27-I4 · 移动端底部 Tab（与 chat.html 同款五 tab；论坛为当前页高亮） -->
+<nav class="tabbar" id="tabbar" aria-label="底部导航">
+  <button data-tab="chat" onclick="location.href='/chat.html'"><i class="ti">📖</i>学习</button>
+  <button data-tab="bank" onclick="location.href='/chat.html?tab=bank'"><i class="ti">📚</i>题库</button>
+  <button data-tab="exam" onclick="location.href='/chat.html?tab=exam'"><i class="ti">📝</i>测考</button>
+  <button data-tab="forum" class="on" onclick="window.scrollTo({top:0,behavior:'smooth'})"><i class="ti">💬</i>论坛</button>
+  <button data-tab="me" onclick="location.href='/chat.html?tab=me'"><i class="ti">👤</i>我的</button>
+</nav>
+<script>
+// 仅移动端挂 tabbar 标记（CSS 据此显示底栏 + body 预留底部空间）
+(function () {
+  function mount() {
+    if (window.matchMedia("(max-width: 720px)").matches) document.body.classList.add("has-tabbar");
+    else document.body.classList.remove("has-tabbar");
+  }
+  mount();
+  window.addEventListener("resize", mount);
+})();
 </script>
 </body>
 </html>

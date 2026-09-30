@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 知识体系</title>
 <!-- 书卷主题 · 与前台官网/学习中心统一视觉；纯静态，公开只读，无需登录 -->
 <style>
@@ -13,7 +15,7 @@
   --card-2:     #fbf4e4;
   --ink:        #3d3a33;
   --ink-2:      #6b655a;
-  --ink-3:      #98917f;
+  --ink-3:      #6E6657;
   --wood:       #8b5e3c;
   --wood-deep:  #6f4a2d;
   --gold:       #c9a05a;
@@ -41,10 +43,12 @@ body {
 }
 a { color: var(--wood-deep); text-decoration: none; }
 
-/* 顶栏 */
+/* 顶栏（批次27-G：iOS 毛玻璃 + 刘海屏安全区） */
 .knav {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 18px;
-  padding: 12px 28px; background: rgba(246,241,231,.85); backdrop-filter: saturate(180%) blur(16px);
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 28px 12px;
+  background: rgba(246,241,231,.88); backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--ink); font-size: 16px; }
@@ -72,7 +76,7 @@ a { color: var(--wood-deep); text-decoration: none; }
 .card .cn { font-size: 30px; font-weight: 800; color: var(--wood-deep); font-variant-numeric: tabular-nums; }
 .card .cn.gold { color: var(--gold-deep); }
 .card .cn.green { color: var(--good); }
-.card .cs { font-size: 11.5px; color: var(--ink-3); }
+.card .cs { font-size: 12px; color: var(--ink-3); }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -96,7 +100,7 @@ a { color: var(--wood-deep); text-decoration: none; }
 .btn.ghost:hover { border-color: var(--gold); background: var(--gold-soft); }
 .btn.sm { padding: 4px 8px; font-size: 12px; border-radius: 7px; }
 
-.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
 .badge.blue { background: rgba(139,94,60,.14); color: var(--wood-deep); }
 
 /* 树 */
@@ -109,10 +113,53 @@ a { color: var(--wood-deep); text-decoration: none; }
 .kn-row .caret.leaf { visibility: hidden; }
 .kn-row .nm { font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
 .kn-row .nm:hover { color: var(--wood-deep); text-decoration: underline; }
-.kn-row .cnt { font-size: 11px; color: var(--ink-3); flex-shrink: 0; align-self: center; }
+.kn-row .cnt { font-size: 12px; color: var(--ink-3); flex-shrink: 0; align-self: center; }
 .kn-row .desc { font-size: 12px; color: var(--ink-3); margin-left: 4px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; max-width: 360px; flex-shrink: 999; min-width: 0; }
-.kn-row .path { font-size: 11px; color: var(--gold-deep); font-weight: 600; flex-shrink: 0; }
+.kn-row .path { font-size: 12px; color: var(--gold-deep); font-weight: 600; flex-shrink: 0; }
+.kn-row .prac { flex-shrink: 0; padding: 3px 10px; font-size: 12px; border-radius: 7px;
+  border: 1px solid var(--line-2); background: var(--card); color: var(--wood-deep);
+  cursor: pointer; font-family: inherit; font-weight: 600; }
+.kn-row .prac:hover { border-color: var(--gold); background: var(--gold-soft); }
+/* 批次20 掌握度徽标 */
+.mastery { flex-shrink: 0; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+.mastery.strong { background: rgba(122,158,109,.16); color: var(--good); }
+.mastery.mid { background: rgba(201,160,90,.18); color: var(--gold-deep); }
+.mastery.weak { background: rgba(180,90,74,.14); color: var(--bad); }
+.mastery.none { background: var(--paper-2); color: var(--ink-3); font-weight: 600; }
+.mlegend { font-size: 12px; color: var(--ink-3); font-weight: 600; display: none; }
+/* 批次23 节点说明块：默认 2 行截断，点击展开全文（white-space 保留【】分段换行） */
+.kn-desc {
+  font-size: 12px; line-height: 1.65; color: var(--ink-3);
+  background: rgba(201,160,90,.06); border-left: 2px solid rgba(201,160,90,.35);
+  padding: 5px 10px; margin: 4px 0 6px 30px; border-radius: 0 8px 8px 0;
+  white-space: pre-line; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  cursor: pointer;
+}
+.kn-desc.open { display: block; -webkit-line-clamp: unset; }
+/* 批次22 学习计划面板 */
+#plan-box { display: none; margin-top: 14px; }
+.plan-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.plan-head h3 { margin: 0; font-size: 15px; color: var(--ink); }
+.plan-progress { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.pbar { flex: 1; height: 8px; background: rgba(0,0,0,.07); border-radius: 99px; overflow: hidden; }
+.pbar > i { display: block; height: 100%; background: linear-gradient(90deg, #8a9a5b, #a3b06e); border-radius: 99px; transition: width .3s; }
+.plan-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.plan-day { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,.55); }
+.plan-day h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink); display: flex; gap: 6px; align-items: center; }
+.plan-day h4 .focus { font-size: 12px; padding: 1px 7px; border-radius: 99px; background: rgba(201,160,90,.14); color: #8a6d3b; }
+.plan-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px dashed rgba(0,0,0,.06); font-size: 12.5px; }
+.plan-item .note { flex-shrink: 0; font-size: 12px; color: var(--ink-3); }
+.plan-item .nm { flex: 1; min-width: 0; color: var(--ink); }
+.plan-item .nm small { display: block; color: var(--ink-3); font-size: 12px; }
+.plan-item.done .nm { text-decoration: line-through; color: var(--ink-3); }
+.plan-item .ck { flex-shrink: 0; border: 1px solid var(--line); background: #fff; border-radius: 99px; padding: 2px 10px; font-size: 12px; cursor: pointer; color: var(--ink-2); }
+.plan-item .ck.on { background: #8a9a5b; border-color: #8a9a5b; color: #fff; }
+.plan-item .go { flex-shrink: 0; border: none; background: none; color: #8a6d3b; font-size: 12px; cursor: pointer; padding: 2px 4px; }
+.plan-item .go:hover { text-decoration: underline; }
+.plan-empty { text-align: center; padding: 28px 0 18px; color: var(--ink-3); font-size: 13px; }
+.plan-empty .btn { margin-top: 10px; }
 
 .empty, .loading { text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13px; }
 .loading::before { content:''; display:inline-block; width:16px; height:16px; margin-right:8px;
@@ -135,16 +182,65 @@ a { color: var(--wood-deep); text-decoration: none; }
   padding: 8px 14px; background: rgba(251,244,228,.94); border-bottom: 1px solid var(--line);
   backdrop-filter: saturate(160%) blur(8px); }
 .map-tools .zm { min-width: 46px; text-align: center; font-size: 12px; color: var(--ink-3); font-weight: 700; }
-.map-tools .hint { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+.map-tools .hint { margin-left: auto; font-size: 12px; color: var(--ink-3); }
 #map-svg-holder svg { display: block; }
 #map-svg-holder .map-empty { text-align: center; padding: 44px 16px; color: var(--ink-3); font-size: 13px; }
 #map-svg-holder { background: var(--paper-2); }
 
 @media (max-width: 820px) {
-  .knav { flex-wrap: wrap; padding: 10px 14px; }
+  .knav { flex-wrap: wrap; padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px; }
   .wrap { padding: 18px 12px 50px; }
   .cards { grid-template-columns: 1fr 1fr; }
   .kn-row .desc { max-width: 120px; }
+}
+
+/* ============ 批次24 · 移动端最高标准（375px 零溢出） ============ */
+@media (max-width: 480px) {
+  /* 顶栏：单行 + 链接条横滑不折行（修按钮文字竖排） */
+  .knav { flex-wrap: nowrap; padding: calc(env(safe-area-inset-top, 0px) + 9px) 12px; gap: 10px; }
+  .brand { flex: 0 0 auto; font-size: 14.5px; gap: 8px; min-height: 40px; display: inline-flex; align-items: center; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
+  .knav .links {
+    margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; white-space: nowrap;
+    flex: 1 1 auto; min-width: 0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
+  }
+  .knav .links::-webkit-scrollbar { display: none; }
+  .knav .links a {
+    flex: 0 0 auto; white-space: nowrap; font-size: 13px;
+    padding: 8px 10px; min-height: 38px; display: inline-flex; align-items: center;
+  }
+  /* 页头紧凑 */
+  .page-head h1 { font-size: 20px; }
+  .page-head p { font-size: 12px; }
+  /* 统计卡：三列小卡（不再双列挤压） */
+  .cards { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .card { padding: 12px 12px; border-radius: 12px; }
+  .cards .card { padding: 11px 10px; }
+  .cards .cn { font-size: 23px; white-space: nowrap; letter-spacing: -0.5px; }  /* 「可检索」等文字卡防折行 */
+  .cards .cs { font-size: 12px; }
+  /* 工具栏：控件全宽、触控 40px */
+  .toolbar { gap: 8px; }
+  .toolbar select, .toolbar input[type=search], .toolbar .head-btn, .btn {
+    min-height: 40px; font-size: 16px;   /* 27-M9：≥16px 防 iOS 聚焦自动放大（批次25 注释误标 14px） */
+  }
+  .kn-row .caret, .kn-row .prac { min-height: 32px; }  /* 树行内紧凑触控（行高约束下 32px） */
+  .toolbar select, .toolbar input[type=search] { flex: 1 1 130px; }
+  .toolbar .grow { min-width: 0; flex: 1 1 100%; }
+  /* 树行：徽标紧凑、desc 字号微升保可读 */
+  .kn-row { gap: 6px; padding: 10px 8px; }
+  .kn-row .badge { white-space: nowrap; flex: 0 0 auto; max-width: 108px; overflow: hidden; text-overflow: ellipsis; }
+  /* 批次25：触控目标 32px+（caret 22→32 / 去练习 24→32）；隐藏子节点数省空间 */
+  .kn-row .caret { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
+  .kn-row .cnt { display: none; }
+  .kn-row .nm { font-size: 14px; line-height: 1.4; }
+  .kn-row .prac { padding: 6px 11px; font-size: 12px; min-height: 32px; display: inline-flex; align-items: center; }
+  .kn-row .mastery { font-size: 12px; padding: 3px 7px; white-space: nowrap; }
+  .kn-desc { font-size: 12.5px; line-height: 1.7; margin-left: 8px; }
+  /* 学习计划：7 天卡单列 */
+  .plan-days { grid-template-columns: 1fr; }
+  /* 掌握度图例换行更紧凑 */
+  .mlegend { font-size: 12px; }
 }
 </style>
 </head>
@@ -184,6 +280,9 @@ a { color: var(--wood-deep); text-decoration: none; }
           <button type="button" data-v="tree" class="on" onclick="setView('tree')">🌲 树状</button>
           <button type="button" data-v="map" onclick="setView('map')">🧠 导图</button>
         </div>
+        <button type="button" class="btn ghost sm" id="foldBtn" onclick="toggleFold()" title="在「展开全部」与「收起分支（只留模块层）」间切换">展开全部</button>
+        <span class="mlegend" id="mlegend"><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#7a9e6d;vertical-align:-1px"></i> ≥80% 扎实 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b08340;vertical-align:-1px"></i> 60-79% 一般 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#b45a4a;vertical-align:-1px"></i> &lt;60% 薄弱 · <i style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(139,94,60,.4);vertical-align:-1px;box-sizing:border-box"></i> 未练</span>
+        <button class="btn ghost sm" onclick="togglePlan()" title="根据你的掌握度生成 7 天冲刺学习计划">📋 学习计划</button>
         <div class="dl">
           <button class="btn ghost sm" onclick="downloadFmt('md')" title="下载 Markdown 大纲（可导入 XMind / 幕布）">⬇ .md</button>
           <button class="btn ghost sm" onclick="downloadFmt('mm')" title="下载 FreeMind .mm 思维导图">⬇ .mm</button>
@@ -191,6 +290,7 @@ a { color: var(--wood-deep); text-decoration: none; }
         </div>
       </div>
     </div>
+    <div id="plan-box"></div>
     <div id="tree-box"><div class="loading">加载中…</div></div>
     <div id="map-box" class="mapscroll" style="display:none">
       <div class="map-tools">
@@ -211,10 +311,14 @@ function esc(s){ if(s==null)return ''; return String(s).replace(/&/g,'&amp;').re
 
 let treeType = 'knowledge';
 let collapse = new Set();   // 手动折叠的 node_id
+let descOpen = new Set();   // 批次23：展开说明全文的 node_id
 let paths = {};             // 命中节点的完整路径缓存（点击时展示）
 let viewMode = 'tree';
 let lastNodes = [];
 let mapZoom = 1, mapW = 0, mapH = 0;
+// 批次20 掌握度：null=未加载/未登录（不渲染徽标）；{}=已登录无记录
+let mastery = null;
+let aggOut = null;          // 章节聚合 {node_id: {done, correct}}
 
 function api(path){ return fetch('/api' + path, { headers:{'Accept':'application/json'} }).then(r=>r.json()); }
 function tid(){ return ($('#teacher') && $('#teacher').value) || 'T001'; }
@@ -229,30 +333,55 @@ async function initTeacher() {
   } catch (e) { $('#teacher').innerHTML = '<option value="T001">默认老师（T001）</option>'; }
 }
 
+// 批次26 · 数字滚动动画（rAF + easeOutCubic）
+function countUp(el, target, dur) {
+  const start = performance.now();
+  function step(ts) {
+    const p = Math.min((ts - start) / (dur || 900), 1);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function skelStats() {
+  return `<div class="card">${'<div class="skel skel-line w50"></div>'.repeat(2)}<div class="skel skel-block"></div></div>`.repeat(3);
+}
+
 async function loadStats() {
   const box = $('#stats');
+  if (!box.innerHTML.includes('cn')) box.innerHTML = skelStats();  // 骨架占位（shimmer）
   try {
     const s = await api('/public/knowledge/stats?teacher_id=' + encodeURIComponent(tid()) + '&tree_type=' + treeType);
     const cats = (s.categories || []).slice(0, 5).map(c => `${esc(c.category)} ${c.count}`).join(' · ');
     const isQ = treeType === 'qtype';
     box.innerHTML = `
-      <div class="card"><div class="cl">${isQ ? '题型节点' : '知识节点'}</div><div class="cn">${s.total || 0}</div><div class="cs">${isQ ? '多级细分 · 如 行测/判断推理/图形推理' : cats || '暂无分类标签'}</div></div>
-      <div class="card"><div class="cl">分类 ${isQ ? '体系' : '标签'}</div><div class="cn gold">${(s.categories || []).length}</div><div class="cs">${cats || '—'}</div></div>
-      <div class="card"><div class="cl">检索模式</div><div class="cn green">${(s.total || 0) > 0 ? '可检索' : '建设中'}</div><div class="cs">单击节点显示完整路径</div></div>`;
+      <div class="card enter"><div class="cl">${isQ ? '题型节点' : '知识节点'}</div><div class="cn tnum">${s.total || 0}</div><div class="cs">${isQ ? '多级细分 · 如 行测/判断推理/图形推理' : cats || '暂无分类标签'}</div></div>
+      <div class="card enter enter-d1"><div class="cl">分类 ${isQ ? '体系' : '标签'}</div><div class="cn gold tnum">${(s.categories || []).length}</div><div class="cs">${cats || '—'}</div></div>
+      <div class="card enter enter-d2"><div class="cl">检索模式</div><div class="cn green">${(s.total || 0) > 0 ? '可检索' : '建设中'}</div><div class="cs">单击节点显示完整路径</div></div>`;
+    box.querySelectorAll('.cn.tnum').forEach(el => {
+      const n = parseInt(el.textContent, 10);
+      if (n > 0) countUp(el, n);
+    });
   } catch (e) { box.innerHTML = ''; }
 }
 
 async function loadTree() {
   const kw = (($('#kw') && $('#kw').value) || '').trim();
   const box = $('#tree-box');
-  box.innerHTML = '<div class="loading">加载中…</div>';
+  box.innerHTML = '<div class="skel skel-block"></div>'.repeat(4)
+    + '<div class="skel skel-line w70"></div><div class="skel skel-line w50"></div>';  // 批次26 骨架屏
   try {
+    await loadMastery();  // 批次20：先拉掌握度（未登录静默为 null）
     const r = await api('/public/knowledge/tree?teacher_id=' + encodeURIComponent(tid())
       + '&tree_type=' + treeType + '&keyword=' + encodeURIComponent(kw));
     lastNodes = r.nodes || [];
     paths = {};
     buildPaths(lastNodes, []);
-    if (!kw) collapse.clear();
+    aggOut = mastery ? aggStats(lastNodes) : null;  // 批次20 章节聚合
+    if (!kw) {  // 批次27-C：无搜索词恢复默认折叠态（模块展开、分类/知识点收起）；搜索时全展开保证结果可见
+      foldAll = false; collapse.clear(); seedCollapse(lastNodes, 0);
+      const fb = $('#foldBtn'); if (fb) fb.textContent = '展开全部';
+    }
     if (viewMode === 'map') { renderMap(); } else { render(lastNodes); }
     loadStats();
   } catch (e) {
@@ -260,13 +389,99 @@ async function loadTree() {
   }
 }
 
-// 记录每个节点的完整路径文字
-function buildPaths(nodes, anc) {
+// 记录每个节点的完整路径文字 + 顶层模块归属（批次21 申论/面试分流跳转）
+let modules = {};   // node_id -> 顶层模块名
+function buildPaths(nodes, anc, topName) {
   (nodes || []).forEach(n => {
+    const t = topName || n.name;               // 顶层节点名即模块名
+    if (!anc.length) modules[n.node_id] = t;
     const p = anc.concat(n.name);
     paths[n.node_id] = p.join(' / ');
-    buildPaths(n.children, p);
+    buildPaths(n.children, p, t);
   });
+}
+
+// 批次20：拉取掌握度（页面默认 fetch 不带 token，此处手动附；
+// 未登录/失败 → mastery 保持 null 不渲染徽标）
+let mlegendOrig = null;   // 27-M6：图例原始 HTML（登录提示替换后可恢复）
+async function loadMastery() {
+  const lg = $('#mlegend');
+  const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
+  // 批次27-M6：游客不再发必然 401 的请求（消除控制台网络报错），
+  // 图例位置改给一条「登录后可查看」的轻引导；token 过期(401)同样静默降级
+  if (!mlegendOrig && lg) mlegendOrig = lg.innerHTML;
+  if (!tk) {
+    mastery = null;
+    if (lg) {
+      lg.style.display = 'inline';
+      lg.innerHTML = '登录后可查看各知识点掌握度';
+      lg.style.cursor = 'default';
+    }
+    return;
+  }
+  try {
+    const resp = await fetch('/api/knowledge/mastery?teacher_id=' + encodeURIComponent(tid()), {
+      headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + tk,
+                 'X-Auth-Token': tk }   // 27-N：双头防公网代理剥 Authorization
+    });
+    mastery = null;
+    if (resp.ok) {
+      const j = await resp.json();
+      mastery = j.mastery || null;
+    }
+  } catch (e) { mastery = null; }
+  if (lg) {
+    lg.style.display = mastery ? 'inline' : 'none';
+    if (!mastery) lg.innerHTML = mlegendOrig;
+    lg.style.cursor = '';
+  }
+}
+
+// 批次20：后序聚合——章节掌握度 = 子叶累加；批次23 四层树：知识点层(d2)用明细、不进考点层(d3)
+function aggStats(nodes, depth) {
+  depth = depth || 0;
+  const out = {};
+  (nodes || []).forEach(n => {
+    if (depth === 2) {            // 知识点层：直接用掌握度明细（词根按知识点名匹配）
+      const m = (mastery || {})[n.node_id] || {};
+      out[n.node_id] = { done: m.done || 0, correct: m.correct || 0 };
+      return;
+    }
+    if (n.children && n.children.length) {
+      const childOut = aggStats(n.children, depth + 1);
+      let d = 0, c = 0;
+      Object.values(childOut).forEach(x => { d += x.done; c += x.correct; });
+      Object.assign(out, childOut);
+      out[n.node_id] = { done: d, correct: c };
+    } else {
+      const m = (mastery || {})[n.node_id] || {};
+      out[n.node_id] = { done: m.done || 0, correct: m.correct || 0 };
+    }
+  });
+  return out;
+}
+
+// 批次26 · 环形进度小环（SVG，替代 emoji 圆点——掌握度一眼可读）
+function ringSvg(pct, color) {
+  const r = 5, c = 2 * Math.PI * r;
+  const off = (c * (1 - pct / 100)).toFixed(1);
+  return `<svg class="ring" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">`
+    + `<circle cx="7" cy="7" r="${r}" fill="none" stroke="rgba(139,94,60,.18)" stroke-width="2.6"/>`
+    + `<circle class="ring-fg" cx="7" cy="7" r="${r}" fill="none" stroke="${color}" stroke-width="2.6"`
+    + ` stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off}"`
+    + ` transform="rotate(-90 7 7)"/></svg>`;
+}
+
+// 批次20：掌握度徽标（知识点层用后端明细，模块/章节用聚合；考点层不显示）
+function masteryBadge(nodeId, depth) {
+  if (!mastery || (depth !== undefined && depth > 2)) return '';
+  const st = (aggOut && aggOut[nodeId]) || {};
+  const done = st.done || 0, correct = st.correct || 0;
+  if (!done) return '<span class="mastery none">未练</span>';
+  const pct = Math.round(correct / done * 100);
+  const lv = (pct >= 80 && done >= 3) ? 'strong' : (pct >= 60 ? 'mid' : 'weak');
+  const col = lv === 'strong' ? '#7a9e6d' : (lv === 'mid' ? '#b08340' : '#b45a4a');
+  return `<span class="mastery ${lv}" title="做题 ${done} · 答对 ${correct}">${ringSvg(pct, col)} ${pct}% · ${done}题</span>`;
 }
 
 function render(nodes, depth) {
@@ -279,6 +494,7 @@ function render(nodes, depth) {
   const html = nodes.map(n => {
     const kids = (n.children || []).length;
     const collapsed = collapse.has(n.node_id);
+    const desc = n.description ? String(n.description).trim() : '';
     return `
       <div style="padding-left:${depth * 22}px">
       <div class="kn-row" data-id="${esc(n.node_id)}">
@@ -287,20 +503,44 @@ function render(nodes, depth) {
         <span class="nm" onclick="showPath('${esc(n.node_id)}')" title="点击查看完整路径">${esc(n.name)}</span>
         ${n.category ? `<span class="badge blue">${esc(n.category)}</span>` : ''}
         ${kids ? `<span class="cnt">${n.children.length}</span>` : ''}
-        ${n.description ? `<span class="desc" title="${esc(n.description)}">${esc(n.description)}</span>` : ''}
         <span style="flex:1"></span>
+        ${masteryBadge(n.node_id, depth)}
+        ${(depth === 2 && treeType === 'knowledge') ? `<button class="prac" onclick="goPractice('${esc(n.node_id)}')" title="按该知识点抽题练习">🎯 去练习</button>` : ''}
       </div>
+      ${desc ? `<div class="kn-desc ${descOpen.has(n.node_id) ? 'open' : ''}" onclick="toggleDesc('${esc(n.node_id)}')" title="${esc(desc)}">${esc(desc)}</div>` : ''}
       ${(!collapsed && kids) ? render(n.children, depth + 1) : ''}
       </div>`;
   }).join('');
   box.innerHTML = html;
+  return html;  // #23 嵌套渲染需要返回值（递归调用插值，缺 return 会输出 undefined）
 }
 
+// 批次23：说明展开/收起（默认折叠 2 行，点击看全文——小白直接可读）
+function toggleDesc(id){ descOpen.has(id) ? descOpen.delete(id) : descOpen.add(id); loadRaw(); }
+
 function toggle(id){ collapse.has(id) ? collapse.delete(id) : collapse.add(id); loadRaw(); }
+
+// 批次27-C：树层级折叠默认化——472 节点全展开页面高达 5.8 万 px（约 64 屏），移动端不可用。
+// 默认只展开顶层模块（depth≥1 折叠），点 caret 逐层展开；搜索时全展开保证结果可见；一键「展开全部/收起分支」。
+let foldAll = false;   // false=默认态（模块展开、深层折叠）；true=全部展开
+function seedCollapse(nodes, depth) {
+  (nodes || []).forEach(n => {
+    if (depth >= 1 && (n.children || []).length) collapse.add(n.node_id);
+    seedCollapse(n.children, depth + 1);
+  });
+}
+function toggleFold() {
+  foldAll = !foldAll;
+  collapse.clear();
+  if (!foldAll) seedCollapse(lastNodes, 0);
+  const fb = $('#foldBtn'); if (fb) fb.textContent = foldAll ? '收起分支' : '展开全部';
+  loadRaw();
+}
 // 重新渲染（不重拉服务器，避免折叠丢失；搜索词仍在框内）
 function loadRaw(){ const kw=($('#kw')&&$('#kw').value||'').trim();
   api('/public/knowledge/tree?teacher_id='+encodeURIComponent(tid())+'&tree_type='+treeType+'&keyword='+encodeURIComponent(kw))
     .then(r=>{ lastNodes=r.nodes||[]; paths={}; buildPaths(lastNodes,[]);
+      aggOut = mastery ? aggStats(lastNodes) : null;
       if(viewMode==='map'){ renderMap(); } else { render(lastNodes); } }); }
 
 function showPath(id) {
@@ -317,6 +557,141 @@ function switchType() {
   treeType = $('#tree-type').value;
   collapse.clear();
   loadTree();
+}
+
+// 批次21：知识点 → 练习联动按模块分流——
+// 行测模块：跳学习中心按知识点抽题；申论：跳申论 AI 批改；面试：跳面试练习。
+// 未登录则走平台登录模态框，登录后可在对应面板继续。
+function goPractice(nodeId) {
+  const mod = modules[nodeId] || '';
+  if (mod === '申论') location.href = '/chat.html?essay=1';
+  else if (mod === '面试') location.href = '/chat.html?interview=1';
+  else location.href = '/chat.html?kp=' + encodeURIComponent(nodeId);
+}
+
+// ==================== 批次22 个性化学习计划 ====================
+let planLoaded = false;
+
+function planApi(path, opts) {
+  const tk = localStorage.getItem('gk_token') || localStorage.getItem('authToken') || '';
+  opts = opts || {};
+  opts.headers = Object.assign({ 'Accept': 'application/json',
+    'Content-Type': 'application/json' }, tk ? {
+    'Authorization': 'Bearer ' + tk,
+    // 27-N：公网代理剥离 Authorization，冗余携带 X-Auth-Token（nginx 转换回传）
+    'X-Auth-Token': tk } : {});
+  return fetch('/api' + path, opts).then(async r => {
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+    return j;
+  });
+}
+
+function togglePlan() {
+  const box = $('#plan-box');
+  if (!box) return;
+  const show = box.style.display === 'none' || !box.style.display;
+  box.style.display = show ? 'block' : 'none';
+  if (show && !planLoaded) loadPlan();
+}
+
+async function loadPlan() {
+  const box = $('#plan-box');
+  box.innerHTML = '<div class="loading">加载计划…</div>';
+  try {
+    const j = await planApi('/study/plan?teacher_id=' + encodeURIComponent(tid()));
+    if (!j.plan) { renderPlanEmpty(); return; }
+    renderPlan(j.plan);
+  } catch (e) { renderPlanError(String(e.message || e)); }
+  planLoaded = true;
+}
+
+async function genPlan() {
+  const box = $('#plan-box');
+  box.innerHTML = '<div class="loading">正在根据你的掌握度生成 7 天计划…</div>';
+  try {
+    const j = await planApi('/study/plan/generate?teacher_id=' + encodeURIComponent(tid()), { method: 'POST' });
+    renderPlan(j);
+  } catch (e) { renderPlanError(String(e.message || e)); }
+  planLoaded = true;
+}
+
+async function checkinItem(planId, day, idx, btn) {
+  btn.disabled = true;
+  try {
+    const j = await planApi('/study/plan/checkin', {
+      method: 'POST', body: JSON.stringify({ plan_id: planId, day: day, idx: idx }) });
+    // 更新按钮态与划线
+    btn.classList.toggle('on', j.done);
+    btn.textContent = j.done ? '✓ 已完成' : '打卡';
+    const row = btn.closest('.plan-item');
+    if (row) row.classList.toggle('done', j.done);
+    const bar = $('#plan-pbar'), lbl = $('#plan-pct');
+    if (bar && lbl) {
+      bar.style.width = (j.progress.pct || 0) + '%';
+      lbl.textContent = `${j.progress.done}/${j.progress.total}（${j.progress.pct}%）`;
+    }
+  } catch (e) { alert('打卡失败：' + (e.message || e)); }
+  btn.disabled = false;
+}
+
+function planItemGo(it) {
+  if (it.kind === 'kp' && it.node_id) return goPractice(it.node_id);
+  if (it.kind === 'essay') location.href = '/chat.html?essay=1';
+  else if (it.kind === 'interview') location.href = '/chat.html?interview=1';
+  else if (it.kind === 'mock') location.href = '/chat.html?mt=mock';
+}
+
+function planGoLabel(kind) {
+  return { kp: '🎯 去练习', essay: '✍️ 去写作', interview: '🎤 去面试', mock: '📝 去模考' }[kind] || '';
+}
+
+function renderPlan(plan) {
+  const box = $('#plan-box');
+  const p = plan.progress || { done: 0, total: 0, pct: 0 };
+  const daysHtml = (plan.days || []).map(d => `
+    <div class="plan-day">
+      <h4>${esc(d.title)} <span class="focus">${esc(d.focus)}</span></h4>
+      ${(d.items || []).map((it, i) => `
+        <div class="plan-item ${it.done ? 'done' : ''}">
+          <button class="ck ${it.done ? 'on' : ''}" onclick="checkinItem(${plan.plan_id},${d.day},${i},this)">${it.done ? '✓ 已完成' : '打卡'}</button>
+          <span class="note">${esc(it.note || '')}</span>
+          <span class="nm">${esc(it.name)}${it.module ? `<small>${esc(it.module)}${it.level && it.level !== 'task' ? ' · ' + ({ weak: '薄弱', mid: '待巩固', none: '新学', strong: '巩固' }[it.level] || it.level) : ''}</small>` : ''}</span>
+          ${planGoLabel(it.kind) ? `<button class="go" onclick="planItemGo(planItems[${d.day}][${i}])">${planGoLabel(it.kind)}</button>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+  // 供按钮跳转取参（避免内联 onclick 传对象转义问题）
+  window.planItems = {};
+  (plan.days || []).forEach(d => { window.planItems[d.day] = d.items || []; });
+  box.innerHTML = `
+    <div class="plan-head">
+      <h3>📋 我的 7 天学习计划</h3>
+      <div class="plan-progress">
+        <div class="pbar"><i id="plan-pbar" style="width:${p.pct || 0}%"></i></div>
+        <span id="plan-pct">${p.done}/${p.total}（${p.pct || 0}%）</span>
+      </div>
+      <button class="btn ghost sm" onclick="genPlan()" title="按最新掌握度重新生成（旧计划作废）">🔄 重新生成</button>
+    </div>
+    <div class="plan-days">${daysHtml}</div>`;
+}
+
+function renderPlanEmpty() {
+  $('#plan-box').innerHTML = `
+    <div class="plan-empty">
+      暂无学习计划。系统会根据你的知识掌握度（薄弱优先）生成一份 7 天冲刺处方：<br>
+      Day1-5 行测弱项 · Day6 申论实战 · Day7 面试与模考收官。
+      <br><button class="btn primary sm" onclick="genPlan()">✨ 生成我的学习计划</button>
+    </div>`;
+}
+
+function renderPlanError(msg) {
+  const login = String(msg).indexOf('登录') >= 0;
+  $('#plan-box').innerHTML = `
+    <div class="plan-empty">
+      ${login ? '🔐 学习计划需要登录后使用。' : '⚠️ 加载失败：' + esc(msg)}
+      ${login ? '<br><a class="btn primary sm" href="/chat.html" style="margin-top:10px;display:inline-block">去登录</a>' : ''}
+    </div>`;
+  planLoaded = true;
 }
 
 function setView(mode) {
@@ -497,7 +872,6 @@ function downloadPng() {
   img.src = url;
 }
 
-initTeacher().then(loadTree);
-</script>
+initTeacher().then(loadTree);</script>
 </body>
 </html>

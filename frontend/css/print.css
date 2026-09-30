@@ -1,0 +1,45 @@
+/* =====================================================================
+ * print.css — 打印/导出 PDF 样式（零依赖方案）
+ * 两条路径共用：
+ *   1) 用户在页面上直接 Ctrl+P：本文件 @media print 隐藏应用外壳，
+ *      仅保留面板正文（#c4Panel / #c9Panel 铺满纸面）；
+ *   2) GK.printExport(title, html)：新窗口打印（样式内联，不依赖本文件）。
+ * ===================================================================== */
+
+@media print {
+  /* 隐藏导航/侧栏/全局按钮等应用外壳 */
+  nav, header, footer, aside,
+  .nav, .navbar, .sidebar,
+  #gkToasts, .toast,
+  button, .btn,
+  .no-print {
+    display: none !important;
+  }
+
+  /* 悬浮面板改为文档流，铺满纸面 */
+  #c4Panel, #c9Panel {
+    position: static !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* 面板里的关闭/导出按钮不打印 */
+  #c4Panel button, #c9Panel button { display: none !important; }
+
+  /* 正文排版：黑字白底、避免卡片分页断裂 */
+  body { background: #fff !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  #c4Panel > div, #c9Panel > div {
+    break-inside: avoid; page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+  h3 { break-after: avoid; page-break-after: avoid; }
+}

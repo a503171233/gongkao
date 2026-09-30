@@ -84,10 +84,32 @@ async function renderAcChannels() {
       <div class="field"><textarea id="ac-fallback" rows="3" placeholder="例如：glm-5.2&#10;deepseek-v4-pro">${esc((cfg.fallback_models || []).join('\n'))}</textarea></div>
       <div class="hint" id="ac-fallback-state"></div>
     </div>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <div class="panel-head">
+      <div class="toolbar" style="flex:1;flex-wrap:wrap"><b>粉笔题库直采（行测真题）</b><span class="hint" style="margin-left:8px">登录态 Cookie 走粉笔题库 API · 整卷结构化入库 · 守候窗口自动采集</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="hint" id="ac-fb-run"></span>
+        <button class="btn ghost sm" onclick="acFenbiLoad()">⟳</button>
+      </div>
+    </div>
+    <div style="padding:14px" id="ac-fenbi-box">加载中…</div>
+  </div>
+  <div class="panel" style="margin-top:14px">
+    <div class="panel-head">
+      <div class="toolbar" style="flex:1;flex-wrap:wrap"><b>公考真题库直采（gkzhenti.cn）</b><span class="hint" style="margin-left:8px">站方官方接口免凭据 · 728 卷行测真题 · 含答案/图片 · 解析页有验证码故不入库（AI 老师可补讲）</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="hint" id="ac-gzt-run"></span>
+        <button class="btn ghost sm" onclick="acGkztLoad()">⟳</button>
+      </div>
+    </div>
+    <div style="padding:14px" id="ac-gkzt-box">加载中…</div>
   </div>`;
   acRefreshControls();
   acChLoadTable();
   acChFillPlatform();
+  acFenbiLoad();
+  acGkztLoad();
 }
 
 // ---- 通道表格（含使用统计列，逻辑迁移自原「管理多通道」弹窗） ----
@@ -336,4 +358,223 @@ function acFallbackPick() {
   el.value = merged.join('\n');
   const state = $('#ac-fallback-state');
   if (state) { state.className = 'hint ok'; state.textContent = `✅ 已写入 ${checked.length} 个备用模型（共 ${merged.length} 个），点击「保存配置」生效`; }
+}
+
+// ---- 粉笔题库直采（批次9：登录态 Cookie → 题库 API → 整卷入库） ----
+let _fenbiPollTimer = null;
+
+function _fenbiFunnelHtml(lr) {
+  if (!lr || !lr.at) return '<span class="hint">尚未运行过</span>';
+  const err = (lr.papers_error || []).length
+    ? `<div class="hint err" style="margin-top:4px">⚠️ 失败卷：${esc(lr.papers_error.map(x => String(x).slice(0, 80)).join('；'))}</div>` : '';
+  return `<div class="hint ok" style="margin-top:4px">最近一轮 ${esc(String(lr.at).slice(0, 16))}：扫描 <b>${lr.papers_scanned || 0}</b> 卷 → 拉取 <b>${lr.papers_pulled || 0}</b> 卷 → 入库 <b>${lr.questions_added || 0}</b> 题（重复 ${lr.duplicates || 0} · 无效 ${lr.invalid || 0} · 过滤 ${lr.filtered || 0}）</div>${err}`;
+}
+
+async function acFenbiLoad() {
+  const box = $('#ac-fenbi-box');
+  const run = $('#ac-fb-run');
+  if (!box) return;
+  let d;
+  try { d = await admin('/admin/fenbi/config'); }
+  catch (e) { box.innerHTML = `<span class="hint err">读取失败：${esc(e.message || e)}</span>`; return; }
+  if (run) {
+    run.className = 'hint ' + (d.running ? 'ok' : '');
+    run.textContent = d.running ? '⏳ 采集中…' : (d.enabled ? '🟢 守候已开启' : '⚪ 未启用');
+  }
+  box.innerHTML = `
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <div class="field" style="min-width:150px"><label>采集开关（守候窗口自动跑）</label>
+      <select id="ac-fb-enabled"><option value="0"${d.enabled ? '' : ' selected'}>关闭</option><option value="1"${d.enabled ? ' selected' : ''}>开启</option></select></div>
+    <div class="field" style="min-width:110px"><label>单轮卷数上限</label><input id="ac-fb-papers" type="number" min="1" max="50" value="${d.max_papers_per_run || 3}"></div>
+    <div class="field" style="min-width:130px"><label>单轮题量预算</label><input id="ac-fb-questions" type="number" min="1" max="2000" value="${d.max_questions_per_run || 200}"></div>
+    <div class="field" style="min-width:130px"><label>请求间隔（秒）</label><input id="ac-fb-interval" type="number" min="1" max="30" value="${d.min_interval_secs || 2}"><div class="hint">≥2s 防风控</div></div>
+    <button class="btn primary sm" onclick="acFenbiSave()">💾 保存配置</button>
+  </div>
+  <div style="margin-top:10px">
+    <label class="field" style="margin:0"><label>粉笔 Cookie（浏览器 F12 → Console 输入 document.cookie 复制整段粘贴；留空 = 保持不变）</label>
+      <input id="ac-fb-cookie" type="password" placeholder="${d.cookie_set ? '已配置（' + esc(d.cookie_masked) + '），粘贴新值即覆盖' : '粘贴 document.cookie 整段内容'}" autocomplete="off"></label>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn ghost sm" onclick="acFenbiTest()" id="ac-fb-test-btn">🔗 试拉验证 Cookie</button>
+      <button class="btn ghost sm" onclick="acFenbiCollect()" id="ac-fb-col-btn">▶ 立即采集一轮</button>
+      <button class="btn ghost sm" onclick="acFenbiClear()">🗑 清除 Cookie</button>
+    </div>
+    <div class="hint" id="ac-fb-state" style="margin-top:6px"></div>
+    <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px" id="ac-fb-funnel">${_fenbiFunnelHtml(d.last_run)}</div>
+  </div>`;
+}
+
+async function acFenbiSave() {
+  const payload = {
+    enabled: ($('#ac-fb-enabled') || {}).value === '1',
+    max_papers_per_run: parseInt(($('#ac-fb-papers') || {}).value || '3', 10),
+    max_questions_per_run: parseInt(($('#ac-fb-questions') || {}).value || '200', 10),
+    min_interval_secs: parseInt(($('#ac-fb-interval') || {}).value || '2', 10),
+  };
+  const ck = ($('#ac-fb-cookie') || {}).value || '';
+  if (ck.trim()) payload.cookie = ck.trim();   // 留空=不变，不覆盖
+  const st = $('#ac-fb-state');
+  try {
+    await admin('/admin/fenbi/config', { method: 'POST', body: JSON.stringify(payload) });
+    if (st) { st.className = 'hint ok'; st.textContent = '✅ 已保存' + (ck.trim() ? '（Cookie 已更新）' : ''); }
+    toast('粉笔采集配置已保存', 'ok');
+    $('#ac-fb-cookie').value = '';
+    acFenbiLoad();
+  } catch (e) { if (st) { st.className = 'hint err'; st.textContent = '保存失败：' + (e.message || e); } }
+}
+
+async function acFenbiTest() {
+  const btn = $('#ac-fb-test-btn'), st = $('#ac-fb-state');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 试拉中…'; }
+  if (st) { st.className = 'hint'; st.textContent = '正在请求粉笔 API（约 5~10 秒）…'; }
+  try {
+    const r = await admin('/admin/fenbi/test', { method: 'POST' });
+    const sp = r.sample_paper || {};
+    const items = (r.sample_items || []).filter(Boolean);
+    const preview = items[0] ? `${String(items[0].question || '').slice(0, 60)}…` : '';
+    if (st) {
+      st.className = 'hint ok';
+      st.textContent = `✅ Cookie 有效：最近卷「${esc(sp.name || '')}」${sp.questionNums || 0} 题；样本第 1 题：${esc(preview)}`;
+    }
+    toast('✅ 粉笔 Cookie 验证通过', 'ok');
+  } catch (e) {
+    if (st) { st.className = 'hint err'; st.textContent = '❌ ' + (e.message || e); }
+    toast('粉笔试拉失败：' + (e.message || e), 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🔗 试拉验证 Cookie'; }
+}
+
+async function acFenbiCollect() {
+  const btn = $('#ac-fb-col-btn'), st = $('#ac-fb-state');
+  try {
+    const r = await admin('/admin/fenbi/collect', { method: 'POST' });
+    if (!r.started) { toast('已有粉笔采集在后台运行', 'err'); return; }
+    if (st) { st.className = 'hint ok'; st.textContent = '⏳ 采集已在后台启动（单轮按卷数/题量预算运行，数分钟内完成）…'; }
+    toast('▶ 粉笔采集已启动', 'ok');
+    let n = 0;
+    clearInterval(_fenbiPollTimer);
+    _fenbiPollTimer = setInterval(async () => {
+      n++;
+      try {
+        const d = await admin('/admin/fenbi/config');
+        const f = $('#ac-fb-funnel');
+        if (f) f.innerHTML = _fenbiFunnelHtml(d.last_run);
+        const run = $('#ac-fb-run');
+        if (run) { run.className = 'hint ' + (d.running ? 'ok' : ''); run.textContent = d.running ? '⏳ 采集中…' : (d.enabled ? '🟢 守候已开启' : '⚪ 未启用'); }
+        if (!d.running || n > 60) {
+          clearInterval(_fenbiPollTimer);
+          if (st && !d.running) { st.className = 'hint ok'; st.textContent = '✅ 采集结束，漏斗见下方统计'; }
+        }
+      } catch (e) { if (n > 3) clearInterval(_fenbiPollTimer); }
+    }, 5000);
+  } catch (e) { if (st) { st.className = 'hint err'; st.textContent = '启动失败：' + (e.message || e); } }
+}
+
+async function acFenbiClear() {
+  if (!confirm('清除已保存的粉笔 Cookie？（守候将自动跳过粉笔源）')) return;
+  try {
+    await admin('/admin/fenbi/config', { method: 'POST', body: JSON.stringify({ cookie: '__CLEAR__' }) });
+    toast('已清除粉笔 Cookie', 'ok');
+    acFenbiLoad();
+  } catch (e) { toast('清除失败：' + (e.message || e), 'err'); }
+}
+
+// ---- 公考真题库直采（批次13：gwy.gkzhenti.cn 官方接口，免凭据） ----
+let _gkztPollTimer = null;
+
+function _gkztFunnelHtml(lr) {
+  if (!lr || !lr.at) return '<span class="hint">尚未运行过</span>';
+  const f = lr.funnel || {};
+  const err = (f.errors || []).length
+    ? `<div class="hint err" style="margin-top:4px">⚠️ 失败卷：${esc(f.errors.map(x => String(x).slice(0, 80)).join('；'))}</div>` : '';
+  return `<div class="hint ok" style="margin-top:4px">最近一轮 ${esc(String(lr.at).slice(0, 16))}：扫描 <b>${f.papers_scanned || 0}</b> 卷 → 解析 <b>${f.questions_parsed || 0}</b> 题 → 有答案 <b>${f.with_answer || 0}</b> 题 → 入库 <b>${f.added || 0}</b> 题（重复 ${f.skipped || 0} · 无效 ${f.invalid || 0} · 过滤 ${f.filtered || 0} · 缺答案 ${f.missing_answer || 0}）</div>${err}`;
+}
+
+async function acGkztLoad() {
+  const box = $('#ac-gkzt-box');
+  const run = $('#ac-gzt-run');
+  if (!box) return;
+  let d;
+  try { d = await admin('/admin/gkzt/config'); }
+  catch (e) { box.innerHTML = `<span class="hint err">读取失败：${esc(e.message || e)}</span>`; return; }
+  if (run) {
+    run.className = 'hint ' + (d.running ? 'ok' : '');
+    run.textContent = d.running ? '⏳ 采集中…' : (d.enabled ? '🟢 守候已开启' : '⚪ 未启用');
+  }
+  box.innerHTML = `
+  <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <div class="field" style="min-width:150px"><label>采集开关（守候窗口自动跑）</label>
+      <select id="ac-gzt-enabled"><option value="0"${d.enabled ? '' : ' selected'}>关闭</option><option value="1"${d.enabled ? ' selected' : ''}>开启</option></select></div>
+    <div class="field" style="min-width:110px"><label>单轮卷数上限</label><input id="ac-gzt-papers" type="number" min="1" max="50" value="${d.max_papers_per_run || 3}"></div>
+    <div class="field" style="min-width:130px"><label>请求间隔（秒）</label><input id="ac-gzt-interval" type="number" min="1" max="30" value="${d.min_interval_secs || 2}"><div class="hint">≥2s 轻节流</div></div>
+    <div class="field" style="min-width:130px"><label>公式/图形图片</label>
+      <select id="ac-gzt-img"><option value="0"${d.with_images ? '' : ' selected'}>降级占位</option><option value="1"${d.with_images ? ' selected' : ''}>下载落盘</option></select></div>
+    <button class="btn primary sm" onclick="acGkztSave()">💾 保存配置</button>
+  </div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn ghost sm" onclick="acGkztTest()" id="ac-gzt-test-btn">🔗 试拉（解析 2 卷，不入库）</button>
+    <button class="btn ghost sm" onclick="acGkztCollect()" id="ac-gzt-col-btn">▶ 立即采集一轮</button>
+  </div>
+  <div class="hint" id="ac-gzt-state" style="margin-top:6px"></div>
+  <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px" id="ac-gzt-funnel">${_gkztFunnelHtml(d.last_run)}</div>`;
+}
+
+async function acGkztSave() {
+  const payload = {
+    enabled: ($('#ac-gzt-enabled') || {}).value === '1',
+    max_papers_per_run: parseInt(($('#ac-gzt-papers') || {}).value || '3', 10),
+    min_interval_secs: parseInt(($('#ac-gzt-interval') || {}).value || '2', 10),
+    with_images: ($('#ac-gzt-img') || {}).value === '1',
+  };
+  const st = $('#ac-gzt-state');
+  try {
+    await admin('/admin/gkzt/config', { method: 'POST', body: JSON.stringify(payload) });
+    if (st) { st.className = 'hint ok'; st.textContent = '✅ 已保存'; }
+    toast('公考真题库采集配置已保存', 'ok');
+    acGkztLoad();
+  } catch (e) { if (st) { st.className = 'hint err'; st.textContent = '保存失败：' + (e.message || e); } }
+}
+
+async function acGkztTest() {
+  const btn = $('#ac-gzt-test-btn'), st = $('#ac-gzt-state');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 试拉中…'; }
+  if (st) { st.className = 'hint'; st.textContent = '正在请求 gkzhenti.cn 官方接口（约 10~30 秒）…'; }
+  try {
+    const r = await admin('/admin/gkzt/test', { method: 'POST' });
+    const lines = (r.papers || []).map(p => `「${(p.paper || '').slice(0, 30)}」${p.parsed} 题/带图 ${p.with_images}`);
+    if (st) {
+      st.className = 'hint ok';
+      st.textContent = `✅ 接口正常：共 ${r.papers_total} 卷可采；样本：${esc(lines.join('；'))}`;
+    }
+    toast('✅ 公考真题库接口验证通过', 'ok');
+  } catch (e) {
+    if (st) { st.className = 'hint err'; st.textContent = '❌ ' + (e.message || e); }
+    toast('公考真题库试拉失败：' + (e.message || e), 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🔗 试拉（解析 2 卷，不入库）'; }
+}
+
+async function acGkztCollect() {
+  const btn = $('#ac-gzt-col-btn'), st = $('#ac-gzt-state');
+  try {
+    const r = await admin('/admin/gkzt/collect', { method: 'POST' });
+    if (!r.started) { toast('已有公考真题库采集在后台运行', 'err'); return; }
+    if (st) { st.className = 'hint ok'; st.textContent = '⏳ 采集已在后台启动（单轮按卷数预算运行，每卷 3 页 + 图片，约 2~5 分钟）…'; }
+    toast('▶ 公考真题库采集已启动', 'ok');
+    let n = 0;
+    clearInterval(_gkztPollTimer);
+    _gkztPollTimer = setInterval(async () => {
+      n++;
+      try {
+        const d = await admin('/admin/gkzt/config');
+        const f = $('#ac-gzt-funnel');
+        if (f) f.innerHTML = _gkztFunnelHtml(d.last_run);
+        const run = $('#ac-gzt-run');
+        if (run) { run.className = 'hint ' + (d.running ? 'ok' : ''); run.textContent = d.running ? '⏳ 采集中…' : (d.enabled ? '🟢 守候已开启' : '⚪ 未启用'); }
+        if (!d.running || n > 60) {
+          clearInterval(_gkztPollTimer);
+          if (st && !d.running) { st.className = 'hint ok'; st.textContent = '✅ 采集结束，漏斗见下方统计'; }
+        }
+      } catch (e) { if (n > 3) clearInterval(_gkztPollTimer); }
+    }, 5000);
+  } catch (e) { if (st) { st.className = 'hint err'; st.textContent = '启动失败：' + (e.message || e); } }
 }

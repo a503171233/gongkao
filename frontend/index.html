@@ -4,8 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="多老师专属公考智能助教平台 · 基于真实课件与讲义的 RAG 问答 · 言语理解 / 逻辑判断 / 申论">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 多老师智能助教平台</title>
-<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/app.css?v=b27m1">
 <style>
   /* 官网专属微调：书卷底纹 */
   .hero { position: relative; }
@@ -45,6 +47,43 @@
   .mod-body p { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); line-height: 1.7; }
   .mod-go { font-size: 12.5px; font-weight: 700; color: var(--wood-deep); }
   .mod-card:hover .mod-go { color: var(--gold-deep); }
+
+  /* ============ 批次24 · 移动端最高标准（375px 零溢出） ============ */
+  @media (max-width: 480px) {
+    /* 导航：链接条横滑不折行，CTA 提出横滑区固定右侧常显 */
+    .glass-nav { position: sticky; }
+    .nav-inner { padding: 10px 14px; gap: 10px; flex-wrap: nowrap; }
+    .brand { flex: 0 0 auto; }
+    .nav-links {
+      display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; white-space: nowrap; gap: 2px; flex-wrap: nowrap;
+      flex: 1 1 auto; min-width: 0;
+    }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a {
+      flex: 0 0 auto; white-space: nowrap; font-size: 13px;
+      padding: 9px 11px; min-height: 40px; display: inline-flex; align-items: center;
+    }
+    .nav-cta { flex: 0 0 auto; margin-left: 4px; font-size: 12.5px; padding: 9px 12px; min-height: 40px; display: inline-flex; align-items: center; }
+    /* Hero：字号节奏缩放 */
+    .hero { padding: 40px 18px 26px; }
+    .hero h1 { font-size: 30px; line-height: 1.25; }
+    .hero p { font-size: 14px; line-height: 1.75; }
+    .hero-actions { flex-direction: column; width: 100%; gap: 10px; }
+    .hero-actions .btn { width: 100%; min-height: 46px; font-size: 15px; }
+    /* 统计条：三列紧凑网格（修 minmax(140px) 撑破页面） */
+    .stat-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 28px; }
+    .stat { padding: 13px 6px; border-radius: 12px; }
+    .stat b { font-size: 21px; }
+    .stat span { font-size: 11px; }
+    /* 模块卡单列 */
+    .mod-grid { grid-template-columns: 1fr; gap: 12px; }
+    .section { padding: 34px 18px; }
+    .section h2 { font-size: 22px; }
+    /* footer 链接触控补齐 */
+    .site-foot a { display: inline-block; padding: 8px 2px; }
+    .site-foot { padding: 24px 18px 32px; }
+  }
 </style>
 </head>
 <body>
@@ -62,13 +101,13 @@
       <a href="#features">平台特色</a>
       <a href="#volumes">教材一览</a>
       <a href="#howto">使用说明</a>
-      <a class="nav-cta" href="/chat.html">进入学习中心 →</a>
     </div>
+    <a class="nav-cta" href="/chat.html">进入学习中心 →</a>
   </div>
 </nav>
 
 <!-- ===================== Hero ===================== -->
-<header class="hero">
+<section class="hero">
   <div class="seal"></div>
   <span class="hero-badge">📜 每位老师 · 一部专属智慧书卷</span>
   <h1>让<span>名师书卷</span>开口说话</h1>
@@ -85,7 +124,7 @@
     <div class="stat"><b id="statChunk">--</b><span>块知识切片</span></div>
     <div class="stat"><b id="statTeacher">--</b><span>位专属老师</span></div>
   </div>
-</header>
+</section>
 
 <!-- ===================== 首页轮播 Banner（#23） ===================== -->
 <section class="banner-zone" id="bannerZone" aria-label="轮播公告" style="display:none">

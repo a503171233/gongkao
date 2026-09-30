@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
+<title>学员中心 · 书山公考</title>
+<!-- 批次27-D · 学员中心：学员功能统一门户——聊天页回归纯 AI 问答，练习/测考/报告/粉笔/AI 实战收拢至此 -->
+<!-- 依赖：a4-request.js（GK.api）+ a1-auth.js（登录弹窗）。面板类功能跳 /chat.html?panel=xxx 直开对应浮层 -->
+<style>
+:root {
+  --paper:#f6f1e7; --paper-2:#efe7d6; --card:#fffaf0; --card-2:#fbf4e4;
+  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#6E6657;
+  --wood:#8b5e3c; --wood-deep:#6f4a2d; --gold:#c9a05a; --gold-deep:#a5813f; --gold-soft:#e6d3ac;
+  --good:#7a9e6d; --bad:#b45a4a; --line:#e2d9c6; --line-2:#d2c5ab;
+  --shadow-1:0 1px 3px rgba(93,72,41,.08),0 1px 2px rgba(93,72,41,.05);
+  --shadow-2:0 6px 20px rgba(93,72,41,.12),0 2px 6px rgba(93,72,41,.06);
+  --radius:16px; --radius-s:8px;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Serif SC",serif;
+  background:radial-gradient(1200px 500px at 85% -5%,rgba(201,160,90,.09),transparent 60%),
+  radial-gradient(900px 420px at -10% 10%,rgba(139,94,60,.07),transparent 55%),var(--paper);
+  color:var(--ink); line-height:1.75; -webkit-font-smoothing:antialiased; min-height:100vh; }
+a { color:var(--wood-deep); text-decoration:none; }
+
+/* ---- 顶部导航（与 knowledge/articles 同族；批次27-G iOS 毛玻璃 + 安全区） ---- */
+.knav { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:18px;
+  padding:calc(env(safe-area-inset-top, 0px) + 12px) 28px 12px;
+  background:rgba(246,241,231,.88); backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px); border-bottom:1px solid var(--line); }
+.brand { display:flex; align-items:center; gap:10px; font-weight:800; color:var(--ink); font-size:16px; min-height:40px; }
+.brand .mark { width:36px; height:36px; border-radius:11px; background:linear-gradient(135deg,var(--wood),var(--gold));
+  color:#fffaf0; display:grid; place-items:center; font-size:16px; font-weight:800; box-shadow:var(--shadow-1); }
+.knav .links { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+.knav .links a { padding:7px 14px; border-radius:9px; font-size:13.5px; color:var(--ink-2); font-weight:600; min-height:36px; display:inline-flex; align-items:center; }
+.knav .links a:hover { background:var(--paper-2); color:var(--wood-deep); }
+.knav .links a.active { background:var(--gold-soft); color:var(--wood-deep); font-weight:700; }
+
+.wrap { max-width:1020px; margin:0 auto; padding:26px 20px 70px; }
+
+/* ---- iOS Large Title（批次27-G） ---- */
+.ih-title-lg { font-size:27px; font-weight:800; letter-spacing:.01em; line-height:1.25; }
+
+/* ---- 用户信息卡 ---- */
+.user-card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow-1); padding:22px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.avatar { width:58px; height:58px; border-radius:16px; background:linear-gradient(135deg,var(--wood),var(--gold));
+  color:#fffaf0; display:grid; place-items:center; font-size:24px; font-weight:800; flex-shrink:0; box-shadow:var(--shadow-1); }
+.uc-main { min-width:0; }
+.uc-name { font-size:19px; font-weight:800; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.uc-sub { font-size:12.5px; color:var(--ink-3); margin-top:3px; }
+.uc-side { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.role-badge { display:inline-block; padding:2px 11px; border-radius:999px; font-size: 12px; font-weight:700; }
+.role-badge.admin { background:rgba(180,90,74,.14); color:var(--bad); }
+.role-badge.member { background:var(--gold-soft); color:var(--wood-deep); }
+.role-badge.free { background:var(--paper-2); color:var(--ink-2); }
+.quota { font-size:12.5px; color:var(--ink-2); background:var(--card-2); border:1px solid var(--line);
+  border-radius:9px; padding:5px 12px; }
+.quota b { color:var(--wood-deep); }
+
+/* ---- 数据总览 ---- */
+.sec-title { font-size:15px; font-weight:800; margin:26px 0 12px; display:flex; align-items:center; gap:8px; }
+.sec-title::before { content:""; width:4px; height:16px; border-radius:2px; background:linear-gradient(var(--wood),var(--gold)); }
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.stat { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-1);
+  padding:16px 18px; transition:transform .16s, box-shadow .16s; }
+.stat:hover { transform:translateY(-2px); box-shadow:var(--shadow-2); }
+.stat .n { font-size:24px; font-weight:800; color:var(--wood-deep); font-variant-numeric:tabular-nums; }
+.stat .l { font-size:12px; color:var(--ink-3); margin-top:2px; }
+.stat .s { font-size: 12px; color:var(--ink-3); margin-top:4px; }
+
+/* ---- 功能宫格 ---- */
+.grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.tile { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-1);
+  padding:16px 16px 14px; cursor:pointer; transition:transform .16s, box-shadow .16s, border-color .16s;
+  display:flex; flex-direction:column; gap:2px; font-family:inherit; text-align:left; }
+.tile:hover { transform:translateY(-2px); box-shadow:var(--shadow-2); border-color:var(--gold); }
+.tile:active { transform:scale(.97); }
+.tile .ico { font-size:24px; line-height:1.3; }
+.tile .tbody { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.tile .nm { font-size:14.5px; font-weight:700; color:var(--ink); }
+.tile .ds { font-size: 12px; color:var(--ink-3); line-height:1.5; }
+.tile.focus { border-color:var(--gold); background:linear-gradient(160deg,var(--card),var(--card-2)); }
+
+/* ---- 登录引导（未登录态覆盖数据区） ---- */
+.login-hint { background:var(--card); border:1px dashed var(--line-2); border-radius:var(--radius);
+  padding:34px 20px; text-align:center; color:var(--ink-2); }
+.login-hint .btn { margin-top:14px; }
+.btn { padding:9px 20px; border:1px solid transparent; border-radius:9px; cursor:pointer; font-size:13.5px;
+  font-weight:600; font-family:inherit; display:inline-flex; align-items:center; gap:6px; min-height:40px; }
+.btn:hover { box-shadow:var(--shadow-2); }
+.btn.primary { background:var(--wood); color:#fffaf0; }
+.btn.primary:hover { background:var(--wood-deep); }
+.btn.ghost { background:var(--card); color:var(--wood-deep); border-color:var(--line-2); }
+.btn.ghost:hover { border-color:var(--gold); background:var(--gold-soft); }
+
+.foot { text-align:center; color:var(--ink-3); font-size:12px; padding:26px 0 8px; }
+.foot a { padding:6px 10px; display:inline-block; }
+
+/* ---- 移动端（批次27-G iOS App 化：功能宫格 → iOS 分组列表） ---- */
+@media (max-width: 720px) {
+  .knav { padding:calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px; gap:10px; }
+  .brand { white-space:nowrap; font-size:15px; min-width:0; }
+  /* 移动端导航收窄：知识体系/论坛在宫格已有入口，只留 AI 问答 + 官网 */
+  .knav .links { gap:2px; }
+  .knav .links a:nth-child(2), .knav .links a:nth-child(3) { display:none; }
+  .knav .links a { padding:7px 10px; }
+  .wrap { padding:18px 14px calc(24px + env(safe-area-inset-bottom)); }
+  .user-card { padding:18px 16px; }
+  .uc-side { margin-left:0; width:100%; }
+  .stats { grid-template-columns:repeat(2,1fr); }
+  .stat .n { font-size:20px; }
+  /* 宫格 → iOS 分组列表（圆角卡 + 行 hairline + chevron） */
+  .grid { display:block; background:var(--card); border:1px solid var(--line);
+    border-radius:16px; box-shadow:var(--shadow-1); overflow:hidden; }
+  .tile { flex-direction:row; align-items:center; gap:12px; padding:12px 14px;
+    min-height:52px; border:none; border-radius:0; box-shadow:none; background:none;
+    transform:none; }
+  .tile + .tile { border-top:1px solid rgba(226,217,198,.55); }
+  .tile::after { content:'›'; margin-left:auto; color:var(--ink-3); font-size:15px; }
+  .tile:active { background:var(--paper-2); transform:none; box-shadow:none; }
+  .tile.focus { background:linear-gradient(90deg,var(--card),var(--card-2)); border-color:transparent; }
+  .tile .ico { width:30px; height:30px; border-radius:9px; background:var(--gold-050);
+    border:1px solid var(--gold-soft); display:grid; place-items:center;
+    font-size:16px; flex-shrink:0; line-height:1; }
+  .tile .tbody { flex:1; min-width:0; }
+  .tile .nm { font-size:14.5px; }
+  .tile .ds { font-size: 12px; }
+}
+</style>
+</head>
+<body>
+<nav class="knav">
+  <a class="brand" href="/chat.html" title="返回 AI 学习对话"><span class="mark">书</span>书山公考 · 学员中心</a>
+  <div class="links">
+    <a href="/chat.html">💬 AI 问答</a>
+    <a href="/knowledge.html">🧠 知识体系</a>
+    <a href="/forum.html">💬 论坛</a>
+    <a href="/">🏠 官网</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <!-- 批次27-G：iOS Large Title 大标题 -->
+  <div class="ih-title-lg" style="margin:0 2px 12px">学员中心</div>
+  <!-- 用户信息卡 -->
+  <div class="user-card" id="userCard">
+    <div class="avatar" id="ucAvatar">学</div>
+    <div class="uc-main">
+      <div class="uc-name"><span id="ucName">加载中…</span><span class="role-badge free" id="ucRole" style="display:none"></span></div>
+      <div class="uc-sub" id="ucSub">正在获取账号信息</div>
+    </div>
+    <div class="uc-side" id="ucSide"></div>
+  </div>
+
+  <!-- 未登录引导 -->
+  <div id="loginHint" style="display:none; margin-top:18px">
+    <div class="login-hint">
+      登录后可查看学习数据，并使用练习、模考、错题本、粉笔同步等全部学员功能
+      <br><button class="btn primary" onclick="GK.openAuthModal('login')">登录 / 免费注册</button>
+    </div>
+  </div>
+
+  <div id="mainArea" style="display:none">
+    <!-- 数据总览 -->
+    <div class="sec-title">我的学习数据</div>
+    <div class="stats" id="stats">
+      <div class="stat"><div class="n">—</div><div class="l">练习总量</div><div class="s" id="stPracticeSub">加载中</div></div>
+      <div class="stat"><div class="n">—</div><div class="l">客观题正确率</div><div class="s" id="stAccSub">加载中</div></div>
+      <div class="stat"><div class="n">—</div><div class="l">积分 / 等级</div><div class="s" id="stIncSub">加载中</div></div>
+      <div class="stat"><div class="n">—</div><div class="l">粉笔同步错题</div><div class="s" id="stFenbiSub">加载中</div></div>
+    </div>
+
+    <!-- 功能宫格（JS 渲染） -->
+    <div id="groups"></div>
+  </div>
+
+  <div class="foot">
+    <a href="/chat.html">💬 AI 问答</a> · <a href="/knowledge.html">知识体系</a> · <a href="/forum.html">论坛</a> · <a href="/articles.html">资讯</a> · <a href="/">官网首页</a>
+    <br>书山公考 · 让名师书卷开口说话
+  </div>
+</div>
+
+<script src="js/a4-request.js?v=b27m2" defer></script>
+<script src="js/a1-auth.js?v=b27m2" defer></script>
+<script>
+(function () {
+  'use strict';
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // 面板类：跳 chat.html?panel=key 直开浮层（chat 侧 PANEL_MAP 接力）
+  // 页面类：直接跳转
+  var GROUPS = [
+    { name: '练习', items: [
+      { icon: '📚', nm: '开始练习', ds: '按知识点 / 分类抽题', act: 'chat:practice', focus: true },
+      { icon: '📊', nm: '练习统计', ds: '正确率与 7 天趋势', act: 'chat:stats' },
+      { icon: '📌', nm: '我的收藏', ds: '收藏的题目', act: 'chat:favorites' },
+      { icon: '❌', nm: '错题本', ds: '练习判错的题', act: 'chat:mistakes' }
+    ] },
+    { name: '测考', items: [
+      { icon: '📝', nm: '模拟考试', ds: '整卷限时模考', act: 'chat:mock', focus: true },
+      { icon: '🧩', nm: '智能组卷', ds: '按考点自定义组卷', act: 'chat:smart' }
+    ] },
+    { name: '报告与成长', items: [
+      { icon: '📈', nm: '学习报告', ds: '掌握度与薄弱点', act: 'chat:report' },
+      { icon: '🎯', nm: '粉笔提升', ds: '绑定 / 同步 / 提升计划', act: 'chat:fenbi' },
+      { icon: '🏆', nm: '激励中心', ds: '积分 / 等级 / 成就', act: 'chat:incentive' }
+    ] },
+    { name: 'AI 实战', items: [
+      { icon: '✍️', nm: '申论批改', ds: 'AI 逐句点评', act: 'chat:essay' },
+      { icon: '🎤', nm: '面试练习', ds: 'AI 模拟问答', act: 'chat:interview' },
+      { icon: '🔁', nm: 'AI 问答', ds: '回到学习对话', act: 'go:/chat.html' }
+    ] },
+    { name: '更多', items: [
+      { icon: '🔔', nm: '消息中心', ds: '系统与互动消息', act: 'chat:messages' },
+      { icon: '🧠', nm: '知识体系', ds: '321 考点知识树', act: 'go:/knowledge.html' },
+      { icon: '💬', nm: '学习论坛', ds: '学员交流', act: 'go:/forum.html' },
+      { icon: '📰', nm: '备考资讯', ds: '文章与 AI 要点', act: 'go:/articles.html' }
+    ] }
+  ];
+
+  function tileHtml(it) {
+    // 批次27-G：tbody 包裹名称/描述（桌面纵向、移动端列表行横排复用同一 DOM）
+    return '<button type="button" class="tile' + (it.focus ? ' focus' : '') + '" data-act="' + esc(it.act) + '">' +
+      '<span class="ico">' + it.icon + '</span><span class="tbody"><span class="nm">' + esc(it.nm) + '</span>' +
+      '<span class="ds">' + esc(it.ds) + '</span></span></button>';
+  }
+
+  function renderGroups() {
+    var box = document.getElementById('groups');
+    box.innerHTML = GROUPS.map(function (g) {
+      return '<div class="sec-title">' + esc(g.name) + '</div><div class="grid">' +
+        g.items.map(tileHtml).join('') + '</div>';
+    }).join('');
+    box.addEventListener('click', function (e) {
+      var t = e.target.closest('.tile');
+      if (!t) return;
+      var act = t.getAttribute('data-act') || '';
+      if (act.indexOf('go:') === 0) { location.href = act.slice(3); return; }
+      if (act.indexOf('chat:') === 0) {
+        var key = act.slice(5);
+        location.href = key === 'chat' ? '/chat.html' : '/chat.html?panel=' + encodeURIComponent(key);
+      }
+    });
+  }
+
+  function roleBadge(role) {
+    var map = { admin: ['管理员', 'admin'], member: ['会员', 'member'], free: ['免费学员', 'free'] };
+    var m = map[role] || ['免费学员', 'free'];
+    return '<span class="role-badge ' + m[1] + '">' + m[0] + '</span>';
+  }
+
+  function fmtDate(s) {
+    return String(s || '').slice(0, 10);
+  }
+
+  function loadUser() {
+    GK.api('/me').then(function (r) {
+      if (!r || r.anonymous) { renderAnon(); return; }
+      document.getElementById('loginHint').style.display = 'none';
+      document.getElementById('mainArea').style.display = '';
+      var name = r.username || r.user_id || '学员';
+      document.getElementById('ucName').textContent = name;
+      document.getElementById('ucAvatar').textContent = name.slice(0, 1).toUpperCase();
+      var rb = document.getElementById('ucRole');
+      rb.outerHTML = roleBadge(r.role);
+      // 副行：会员到期 / 额度状态（/me 实际字段：is_member/member_expire_at/quota_left，-1=不限）
+      var memberLine = (r.is_member && r.member_expire_at) ? '会员至 ' + fmtDate(r.member_expire_at) : '';
+      document.getElementById('ucSub').textContent = memberLine ||
+        (r.quota_left === -1 ? '额度不限 · AI 问答随便问' :
+        (r.quota_left != null ? '今日剩余 ' + r.quota_left + ' 次 AI 问答' : ''));
+      // 侧边额度卡
+      var side = document.getElementById('ucSide');
+      if (r.quota_left === -1) {
+        side.innerHTML = '<span class="quota">AI 问答 <b>不限次</b></span>';
+      } else if (r.quota_left != null) {
+        side.innerHTML = '<span class="quota">今日剩余 <b>' + r.quota_left + '</b> 次</span>';
+      }
+      loadStats();
+    }).catch(function () { renderAnon(); });
+  }
+
+  function renderAnon() {
+    document.getElementById('ucName').textContent = '未登录';
+    document.getElementById('ucAvatar').textContent = '学';
+    document.getElementById('ucSub').textContent = '登录后同步你的学习进度';
+    document.getElementById('ucRole').style.display = 'none';
+    document.getElementById('loginHint').style.display = '';
+    // 数据总览与宫格仍展示（点击面板类会由 chat 侧登录守卫拦住）
+    document.getElementById('mainArea').style.display = '';
+    var stats = document.querySelectorAll('#stats .stat .n');
+    stats.forEach ? stats.forEach(function (n) { n.textContent = '—'; }) : null;
+    document.getElementById('stPracticeSub').textContent = '登录后可见';
+    document.getElementById('stAccSub').textContent = '登录后可见';
+    document.getElementById('stIncSub').textContent = '登录后可见';
+    document.getElementById('stFenbiSub').textContent = '登录后可见';
+  }
+
+  function setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+
+  function loadStats() {
+    // 练习统计
+    GK.api('/practice/stats').then(function (r) {
+      var n = document.querySelectorAll('#stats .stat .n');
+      if (n[0]) n[0].textContent = (r && r.total != null) ? r.total : '—';
+      var acc = (r && r.accuracy != null) ? Math.round(r.accuracy * 100) / 1 : null;
+      if (n[1]) n[1].textContent = acc != null ? acc + '%' : '—';
+      setText('stPracticeSub', r && r.graded ? '已判分 ' + r.graded + ' 题' : '开始第一题吧');
+      setText('stAccSub', r && r.graded ? '判分 ' + r.graded + ' · 对 ' + r.correct : '暂无判分记录');
+    }).catch(function () { setText('stPracticeSub', '加载失败'); });
+    // 激励（积分/等级）
+    GK.api('/me/incentive').then(function (r) {
+      var n = document.querySelectorAll('#stats .stat .n');
+      var pts = r && (r.points != null ? r.points : (r.summary && r.summary.points));
+      var lv = r && (r.level != null ? r.level : (r.summary && r.summary.level));
+      if (n[2]) n[2].textContent = pts != null ? pts : '—';
+      setText('stIncSub', lv != null ? 'Lv.' + lv + (r.streak ? ' · 连续 ' + r.streak + ' 天' : '') : '继续加油');
+    }).catch(function () { setText('stIncSub', '登录后可见'); });
+    // 粉笔绑定
+    GK.api('/me/fenbi/binding').then(function (r) {
+      var n = document.querySelectorAll('#stats .stat .n');
+      if (r && r.bound) {
+        if (n[3]) n[3].textContent = r.wrong_count != null ? r.wrong_count : '—';
+        setText('stFenbiSub', '收藏 ' + (r.collect_count || 0) + ' · 模考 ' + (r.mock_count || 0));
+      } else {
+        if (n[3]) n[3].textContent = '未绑定';
+        setText('stFenbiSub', '绑定粉笔自动同步');
+      }
+    }).catch(function () { setText('stFenbiSub', '登录后可见'); });
+  }
+
+  function boot() {
+    renderGroups();
+    if (window.GK && GK.api) { loadUser(); return; }
+    // a4 defer 加载竞态兜底
+    var tries = 0;
+    var t = setInterval(function () {
+      tries++;
+      if (window.GK && GK.api) { clearInterval(t); loadUser(); }
+      else if (tries > 40) { clearInterval(t); renderAnon(); }
+    }, 120);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

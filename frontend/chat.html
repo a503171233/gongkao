@@ -3,14 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 学习中心</title>
-<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/app.css?v=b28a1">
+<link rel="stylesheet" href="/css/print.css">
 <!-- 对话站专属内联微调（书卷主题下补充少量细节） -->
 <style>
   /* 侧栏书卷信息区已在 app.css 定义；此处补一个占位提示 */
 </style>
 </head>
 <body>
+<script>
+  // 批次27-I5：?tab= 跨页直达首帧即目标页 —— 同步预置视图 class，
+  // 避免「先渲染学习页 → 300ms 后才切走」的闪烁（DOM 解析到此处即执行，早于首帧绘制）
+  (function () {
+    var t = new URLSearchParams(location.search).get('tab');
+    if (t === 'bank' || t === 'exam' || t === 'me') document.body.classList.add('v-' + t);
+  })();
+</script>
 <div class="layout">
 <aside id="sidebar">
   <!-- 当前老师书卷信息（JS 渲染） -->
@@ -20,26 +31,38 @@
   </div>
   <h3>💬 会话历史</h3>
   <button id="newSessionBtn">＋ 新会话</button>
-  <div id="sessionList"></div>
+  <div id="sessionList"><div class="skel skel-line w85"></div><div class="skel skel-line w70"></div><div class="skel skel-line w50"></div></div>
 </aside>
 <div id="main">
 <header>
+  <!-- 批次27-C：移动端抽屉开关（桌面隐藏，≤720px 显示） -->
+  <button type="button" class="head-btn side-toggle" onclick="document.body.classList.add('side-open')" aria-label="打开会话栏">☰</button>
   <a class="home-link" href="/" title="返回官网首页">⌂ 官网首页</a>
   <div class="logo">书</div>
   <h1>书山公考 · 学习中心</h1>
   <div class="teacher-tabs" id="teacherTabs"></div>
   <div id="info">加载中…</div>
   <div id="authArea"></div>
-  <button id="c4StudyBtn" onclick="C4.openPractice()">📚 练习</button>
-  <button id="c4ReportBtn" onclick="C4.openReport()">📊 报告</button>
-  <button id="c4FavBtn" onclick="C4.openFavorites()">📌 收藏</button>
-  <button id="c4MistBtn" onclick="C4.openMistakes()">❌ 错题本</button>
-  <button id="c5MockBtn" onclick="C5.openMockExam()">📝 模考</button>
-  <button id="c6SmartBtn" onclick="C6.openSmartExam()">🧩 组卷</button>
-  <button id="c8Btn" onclick="C8.openIncentive()">🏆 激励</button>
-  <button id="c9ReportBtn" onclick="C9.openReport()">📈 报告</button>
-  <button id="c4ForumBtn" onclick="location.href='/forum.html'">💬 论坛</button>
-  <button id="c7MsgBtn" style="position:relative" onclick="C7.openMessages()" title="消息中心">🔔 消息<span id="msgBadge" style="display:none;position:absolute;top:-6px;right:-8px;background:#e03131;color:#fff;font-size:10.5px;line-height:16px;min-width:16px;padding:0 5px;border-radius:8px;text-align:center">0</span></button>
+  <div class="tool-strip">
+  <button id="c4StudyBtn" class="head-btn" onclick="C4.openPractice()">📚 练习</button>
+  <button id="c4ReportBtn" class="head-btn" onclick="C4.openReport()">📊 练习统计</button>
+  <button id="c4FavBtn" class="head-btn" onclick="C4.openFavorites()">📌 收藏</button>
+  <button id="c4MistBtn" class="head-btn" onclick="C4.openMistakes()">❌ 错题本</button>
+  <span class="ts-sep" aria-hidden="true"></span>
+  <button id="c5MockBtn" class="head-btn" onclick="C5.openMockExam()">📝 解析</button>
+  <button id="c6SmartBtn" class="head-btn" onclick="C6.openSmartExam()">🧩 组卷</button>
+  <span class="ts-sep" aria-hidden="true"></span>
+  <button id="c8Btn" class="head-btn" onclick="C8.openIncentive()">🏆 激励</button>
+  <button id="c9ReportBtn" class="head-btn" onclick="C9.openReport()">📈 报告</button>
+  <button id="c10FenbiBtn" class="head-btn" onclick="C10.openFenbi()">🎯 提升计划</button>
+  <span class="ts-sep" aria-hidden="true"></span>
+  <button id="c11EssayBtn" class="head-btn" onclick="C11.openEssay()">✍️ 申论</button>
+  <button id="c12IvBtn" class="head-btn" onclick="C12.openInterview()">🎤 面试</button>
+  <button id="c4ForumBtn" class="head-btn" onclick="location.href='/forum.html'">💬 论坛</button>
+  <button id="c7MsgBtn" class="head-btn" style="position:relative" onclick="C7.openMessages()" title="消息中心">🔔 消息<span id="msgBadge" style="display:none;position:absolute;top:-6px;right:-8px;background:#e03131;color:#fff;font-size:10.5px;line-height:16px;min-width:16px;padding:0 5px;border-radius:8px;text-align:center">0</span></button>
+  <span class="ts-sep" aria-hidden="true"></span>
+  <button id="studentCenterBtn" class="head-btn" onclick="location.href='/student.html'" title="学员中心：全部学员功能统一入口">🎓 学员中心</button>
+  </div>
 </header>
 <div id="chat">
   <div class="hint">我是老师的专属智能助教。<br>所有回答均基于对应老师的课件与讲义，杜绝凭空编造。<br>请选择上方老师，然后提问。</div>
@@ -53,204 +76,189 @@
   </div>
 </div>
 <div id="inputbar">
+  <div id="attachBar" style="display:none" aria-live="polite"></div>
   <div class="inner">
-    <input id="query" type="text" placeholder="输入你的问题…" autocomplete="off">
+    <button id="attachBtn" type="button" title="上传图片或资料（png/jpg/webp/gif/txt/md/pdf/docx，≤3 个）">📎</button>
+    <input id="query" type="text" placeholder="输入你的问题…（可点 📎 附图片/资料）" autocomplete="off">
     <button id="send">发送</button>
   </div>
+  <input type="file" id="attachInput" hidden multiple
+         accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.pdf,.docx">
 </div>
 
 <!-- 登录/注册模态框 -->
 <div id="authModal" class="modal-mask hidden">
-  <div class="modal">
+  <!-- #9 form 化：回车可提交，浏览器密码管理器可识别 -->
+  <form class="modal" id="authForm">
     <h2 id="authTitle">登录</h2>
     <div class="err" id="authErr"></div>
     <div class="ok hidden" id="authOk"></div>
-    <input id="authUsername" type="text" placeholder="用户名" autocomplete="off">
-    <input id="authPassword" type="password" placeholder="密码（至少 6 位）">
+    <input id="authUsername" type="text" placeholder="用户名" autocomplete="username">
+    <input id="authPassword" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
     <div class="row">
-      <button class="cancel" onclick="closeAuthModal()">取消</button>
-      <button class="submit" id="authSubmitBtn">登录</button>
+      <button class="cancel" type="button" onclick="closeAuthModal()">取消</button>
+      <button class="submit" id="authSubmitBtn" type="submit">登录</button>
     </div>
     <div class="divider"><span>或</span></div>
-    <button class="gitee-btn" id="giteeLoginBtn" onclick="giteeLogin()">🦊 使用 Gitee 登录</button>
+    <button class="gitee-btn" id="giteeLoginBtn" type="button" onclick="giteeLogin()">🦊 使用 Gitee 登录</button>
     <div class="switch" id="authSwitch">没有账号？去注册</div>
     <div class="switch" style="margin-top:2px;font-size:12px;color:#888;cursor:pointer" onclick="GK.openForgotPassword()">忘记密码？找回</div>
-  </div>
+  </form>
 </div>
 
-<script src="js/a4-request.js?v=20260906" defer></script>
+<script src="js/a4-request.js?v=b28a1" defer></script>
 <script src="js/a2-teacher.js?v=20260905" defer></script>
-<script src="js/a5-render.js?v=20260906b" defer></script>
-<script src="js/a1-auth.js?v=20260908a" defer></script>
-<script src="js/a3-session.js?v=20260906" defer></script>
-<script src="js/c4-study.js?v=20260908a" defer></script>
-<script src="js/c5-mockexam.js?v=20260907a" defer></script>
-<script src="js/c6-smartexam.js?v=20260908a" defer></script>
-<script src="js/c7-messages.js?v=20260908a" defer></script>
-<script src="js/c8-incentive.js?v=20260908a" defer></script>
-<script src="js/c9-learning-report.js?v=20260908b" defer></script>
+<script src="js/a5-render.js?v=b28a1" defer></script>
+<script src="js/a1-auth.js?v=b28a1" defer></script>
+<script src="js/a3-session.js?v=b28a2" defer></script>
+<script src="js/a6-attach.js?v=b28a1" defer></script>
+<script src="js/c4-study.js?v=b27m2" defer></script>
+<script src="js/c5-mockexam.js?v=b27m2" defer></script>
+<script src="js/c6-smartexam.js?v=b27m2" defer></script>
+<script src="js/c7-messages.js?v=b27m2" defer></script>
+<script src="js/c8-incentive.js?v=b27m2" defer></script>
+<script src="js/c9-learning-report.js?v=b27m2" defer></script>
+<script src="js/c10-fenbi-bind.js?v=b27m2" defer></script>
+<script src="js/c11-essay.js?v=b27m2" defer></script>
+<script src="js/c12-interview.js?v=b27m2" defer></script>
+<script src="js/chat-boot.js?v=b27m2" defer></script>
+<script src="js/chat-tabs.js?v=b27m2" defer></script>
 <script>
 // 会话编排由 A3 模块（js/a3-session.js）负责：列表/新建/删除/历史加载/发送，
 // 全部走 GK.api/GK.sse，通过 GK.bus 广播渲染协议事件。
 // 结果渲染由 A5 模块（js/a5-render.js）负责：订阅 render:clear / history:loaded
 // / ask:* 事件，实现流式增量、引用、幻觉拦截、拒答样式、历史回放，本文件不再拼渲染 DOM。
 </script>
-<script>
-// ---------- 知识库管理（B2/上传入库，保留原逻辑；会话/问答由 A3/A5 接管） ----------
-document.getElementById('uploadBtn').onclick = async () => {
-  const f = document.getElementById('fileInput').files[0];
-  if (!f) return;
-  const st = document.getElementById('uploadStatus');
-  st.textContent = '上传中…';
-  const fd = new FormData();
-  fd.append('file', f);
+<!-- 批次26/27-G/27-H · 移动端底部 Tab（App 化导航）：四平级页面 = 学习/题库/测考/我的 -->
+<div class="ms-sheet-mask" id="msMask" onclick="TAB.closeMore()"></div>
+<nav class="tabbar" id="tabbar" aria-label="底部导航">
+  <button data-tab="chat" class="on" onclick="TAB.go('chat')"><i class="ti">📖</i>学习</button>
+  <button data-tab="bank" onclick="TAB.go('bank')"><i class="ti">📚</i>题库</button>
+  <button data-tab="exam" onclick="TAB.go('exam')"><i class="ti">📝</i>测考</button>
+  <button data-tab="forum" onclick="location.href='/forum.html'"><i class="ti">💬</i>论坛</button>
+  <button data-tab="me" onclick="TAB.go('me')"><i class="ti">👤</i>我的</button>
+</nav>
 
-  const doUpload = async (secret) => {
-    const headers = {};
-    if (secret) headers['X-Upload-Secret'] = secret;
-    const r = await fetch(`/api/upload?teacher_id=${GK.store.teacherId}`, {
-      method: 'POST', body: fd, headers
-    });
-    if (r.status === 403 && !secret) return null;  // 需要密钥
-    if (r.status === 403) throw new Error('密钥无效');
-    return r.json();
-  };
+<!-- 批次27-H · 题库页面视图（粉笔练习页式：数据条+专项模块卡+快捷入口） -->
+<div class="tab-page" id="viewBank" aria-label="题库">
+  <div class="tp-head"><span class="ih-title-lg">题库</span></div>
+  <div class="bank-stats" id="bankStats">
+    <div class="bstat"><b id="bkSt0">—</b><span>已练题数</span></div>
+    <div class="bstat"><b id="bkSt1">—</b><span>正确率</span></div>
+    <div class="bstat"><b id="bkSt2">—</b><span>已判分</span></div>
+  </div>
+  <div class="ios-group-title" style="margin-top:20px">专项练习</div>
+  <div class="bank-grid" id="bankGrid">
+    <div class="skel skel-block"></div><div class="skel skel-block"></div>
+    <div class="skel skel-block"></div><div class="skel skel-block"></div>
+  </div>
+  <div class="ios-group-title">我的练习</div>
+  <div style="padding:0 14px">
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C4.openMistakes()})"><i class="ric">❌</i><span class="rtxt">错题本<span class="rdesc">练习判错的题，可导出打印</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openFavorites()})"><i class="ric">📌</i><span class="rtxt">我的收藏<span class="rdesc">收藏的题目</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openReport()})"><i class="ric">📊</i><span class="rtxt">练习统计<span class="rdesc">正确率与 7 天趋势</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openReview()})"><i class="ric">📅</i><span class="rtxt">今日巩固<span class="rdesc">按记忆曲线安排的复习题</span></span><i class="chev">›</i></button>
+    </div>
+  </div>
+  <div class="tp-note">专项练习按题库分类抽题，交卷后自动判分并记入错题本；「今日练习」由 AI 按你的薄弱点推荐。</div>
+</div>
 
-  try {
-    let d = await doUpload(localStorage.getItem('uploadSecret') || '');
-    if (d === null) {
-      // 后端要求密钥：询问并记住
-      const secret = prompt('该平台上传需密钥（请向管理员索取）：');
-      if (!secret) { st.textContent = '已取消'; return; }
-      localStorage.setItem('uploadSecret', secret);
-      d = await doUpload(secret);
-    }
-    st.textContent = `✅ ${d.filename}: ${d.chunks} 块入库，共 ${d.total} 块`;
-    GK.loadInfo();  // 刷新当前老师知识库规模（A2）
-  } catch (e) {
-    if (e.message === '密钥无效') localStorage.removeItem('uploadSecret');
-    st.textContent = '❌ 上传失败: ' + e.message;
-  }
-};
+<!-- 批次27-H · 测考页面视图（模考中心） -->
+<div class="tab-page" id="viewExam" aria-label="测考">
+  <div class="tp-head"><span class="ih-title-lg">测考</span></div>
+  <div class="exam-hero">
+    <div class="eh-t">📝 真题模考</div>
+    <div class="eh-d">整卷限时作答 · 自动判分<br>交卷生成 AI 提升计划（含时间分配诊断）</div>
+    <button class="eh-btn" onclick="TAB.run(function(){C6.openSmartExam()})">开始模考</button>
+  </div>
+  <button class="bigrow" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="bic">🧩</i><span class="bt"><span class="bnm">智能组卷</span><span class="bds">按考点 / 题量自定义组卷练习</span></span><i class="chev">›</i></button>
+  <button class="bigrow" onclick="TAB.run(function(){C10.openFenbi()})"><i class="bic">🎯</i><span class="bt"><span class="bnm">粉笔模考报告</span><span class="bds">绑定粉笔同步模考成绩与解答</span></span><i class="chev">›</i></button>
+  <div class="tp-note">模考计时结束自动交卷；未作答模块会按性价比给出取舍建议，考后请到「我的 → 学习报告」复盘。</div>
+</div>
 
-// ---------- 全局薄封装（兼容 a1-auth.js logout 的联动调用） ----------
-function newSession() { if (window.GK && GK.newSession) GK.newSession(); }
-function loadSessions() { if (window.GK && GK.loadSessions) GK.loadSessions(); }
-
-// ================= 登录/注册/账号（A1 模块：js/a1-auth.js） =================
-// index.html 只保留模态框事件委托与启动调用；业务逻辑在 GK.* 方法内。
-// 兼容旧调用名：保留薄封装，保证行内历史代码/内联 onclick 仍可用。
-function openAuthModal(mode) { if (window.GK && GK.openAuthModal) GK.openAuthModal(mode); }
-function closeAuthModal() { if (window.GK && GK.closeAuthModal) GK.closeAuthModal(); }
-function authAction() { if (window.GK && GK.authAction) GK.authAction(); }
-function giteeLogin() { if (window.GK && GK.giteeLogin) GK.giteeLogin(); }
-function loadAuthUser() { if (window.GK && GK.loadAuthUser) GK.loadAuthUser(); }
-function renderAuthArea() { if (window.GK && GK.renderAuthArea) GK.renderAuthArea(); }
-function logout() { if (window.GK && GK.logout) GK.logout(); }
-
-// 模态框事件绑定（业务在 GK）
-const authSubmitBtn = document.getElementById('authSubmitBtn');
-const authSwitchEl = document.getElementById('authSwitch');
-const authPwdEl = document.getElementById('authPassword');
-const authModalEl = document.getElementById('authModal');
-if (authSubmitBtn) authSubmitBtn.onclick = authAction;
-if (authSwitchEl) authSwitchEl.onclick = () => openAuthModal(
-  (authSwitchEl.textContent || '').indexOf('去注册') !== -1 ? 'register' : 'login');
-if (authPwdEl) authPwdEl.onkeydown = e => { if (e.key === 'Enter') authAction(); };
-if (authModalEl) authModalEl.addEventListener('click', e => {
-  if (e.target.id === 'authModal') closeAuthModal();
-});
-
-// 启动编排（A2/A3/A5 defer 已先执行，DOM 就绪后绑定）
-document.addEventListener('DOMContentLoaded', function () {
-  if (window.GK && GK.initTeacher) GK.initTeacher();  // A2 自举兜底，此处幂等
-  if (window.GK && GK.initSession) GK.initSession();  // A3 编排（幂等）
-  if (window.C7 && typeof C7.init === 'function') { try { C7.init(); } catch (e) {} }  // #19 消息角标轮询
-  try {
-    var hasToken = !!(localStorage.getItem('gk_token') || localStorage.getItem('authToken'));
-    if (hasToken && new URLSearchParams(location.search).get('mt') === 'mock' &&
-        window.C5 && typeof C5.openMockExam === 'function') {
-      setTimeout(function () { try { C5.openMockExam(); } catch (e) {} }, 900);
-    }
-  } catch (e) {}
-});
-
-// ============ 侧栏书卷信息（官网→主站联动） ============
-// 监听 teacher:changed，拉取当前老师 /info + /documents，渲染 #sideVol 书卷区。
-(function () {
-  'use strict';
-  var svName = document.getElementById('svName');
-  var svBody = document.getElementById('svBody');
-  if (!svName || !svBody) return;  // 元素缺失则不启用（幂等）
-
-  function shortName(n) {
-    var s = String(n || '');
-    return s.replace(/^【[^】]*】/, '').replace(/\[副本\]/g, '').replace(/\.(pdf|md|docx?|pptx?)$/i, '').slice(0, 22);
-  }
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
-  async function renderSideVol(tid) {
-    var teacherId = tid || (window.GK && GK.store.teacherId) || 'T001';
-    svName.textContent = '书卷加载中…';
-    svBody.innerHTML = '';
-    try {
-      // 并行拉老师信息与书卷列表
-      var infoP = window.GK && GK.api
-        ? GK.api('/info?teacher_id=' + encodeURIComponent(teacherId))
-        : Promise.reject(new Error('no api'));
-      var docsP = window.GK && GK.api
-        ? GK.api('/documents?teacher_id=' + encodeURIComponent(teacherId))
-        : Promise.reject(new Error('no api'));
-      var info = null, docs = [];
-      try { info = await infoP; } catch (e) {}
-      try { var d = await docsP; docs = (d && d.documents) || []; } catch (e) {}
-
-      svName.textContent = info && info.teacher_name
-        ? info.teacher_name + ' · ' + (info.teacher_subject || '')
-        : teacherId;
-      svName.title = teacherId;
-
-      if (!docs.length) {
-        svBody.innerHTML = '<div class="sv-empty">该老师书卷编目中，先来提问吧。</div>';
-        return;
-      }
-      var html = '';
-      var shown = 0;
-      docs.forEach(function (doc) {
-        if (!doc || !doc.doc_name) return;
-        if (shown >= 8) return;
-        shown++;
-        html +=
-          '<div class="sv-vol">' +
-            '<span class="sv-vname" title="' + esc(doc.doc_name) + '">' + esc(shortName(doc.doc_name)) + '</span>' +
-            '<span class="sv-vchunks">' + (doc.chunks || 0) + ' 块</span>' +
-          '</div>';
-      });
-      if (docs.length > shown) {
-        html += '<div class="sv-more">… 等 ' + docs.length + ' 部书卷</div>';
-      }
-      svBody.innerHTML = html;
-    } catch (e) {
-      console.warn('[sideVol] 渲染失败:', e && e.message ? e.message : e);
-      svBody.innerHTML = '<div class="sv-empty">书卷加载失败，请稍后刷新。</div>';
-    }
-  }
-
-  // 监听切换事件（A2 在 switchTeacher 成功后广播）
-  if (window.GK && GK.bus) {
-    GK.bus.addEventListener('teacher:changed', function (ev) {
-      renderSideVol(ev && ev.detail && ev.detail.teacherId);
-    });
-  }
-  // 页面就绪后渲染一次（对应默认老师 / URL 直达老师）
-  setTimeout(function () { renderSideVol(); }, 50);
-})();
-</script>
+<!-- 批次27-G · 「我的」全屏视图（学员中心浓缩版；数据源与 student.html 同族） -->
+<div class="me-view" id="meView" aria-label="我的">
+  <div class="me-hero">
+    <div class="ih-title-lg" style="margin:0 2px 4px">我的</div>
+    <div class="me-user">
+      <div class="me-avatar" id="meAvatar">学</div>
+      <div class="me-uinfo">
+        <div class="me-uname"><span id="meName">未登录</span><span class="role-badge free" id="meRole" style="display:none"></span></div>
+        <div class="me-usub" id="meSub">登录后同步你的学习进度</div>
+      </div>
+    </div>
+    <button class="me-login-btn" id="meLoginBtn" style="display:none" onclick="openAuthModal('login')">登录 / 免费注册</button>
+    <div class="me-stats" id="meStats" style="display:none">
+      <div class="mstat"><b id="meSt0">—</b><span>练习总量</span></div>
+      <div class="mstat"><b id="meSt1">—</b><span>正确率</span></div>
+      <div class="mstat"><b id="meSt2">—</b><span>积分</span></div>
+      <div class="mstat"><b id="meSt3">—</b><span>粉笔错题</span></div>
+    </div>
+  </div>
+  <div class="me-body">
+    <div class="ios-group-title">练习</div>
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C4.openPractice()})"><i class="ric">📚</i><span class="rtxt">开始练习<span class="rdesc">按知识点 / 分类抽题</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openReport()})"><i class="ric">📊</i><span class="rtxt">练习统计<span class="rdesc">正确率与 7 天趋势</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openFavorites()})"><i class="ric">📌</i><span class="rtxt">我的收藏<span class="rdesc">收藏的题目</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C4.openMistakes()})"><i class="ric">❌</i><span class="rtxt">错题本<span class="rdesc">练习判错的题</span></span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">测考与报告</div>
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="ric">📝</i><span class="rtxt">模拟考试<span class="rdesc">整卷限时模考</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="ric">🧩</i><span class="rtxt">智能组卷<span class="rdesc">按考点自定义组卷</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C9.openReport()})"><i class="ric">📈</i><span class="rtxt">学习报告<span class="rdesc">掌握度与薄弱点</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C10.openFenbi()})"><i class="ric">🎯</i><span class="rtxt">粉笔提升<span class="rdesc">绑定 / 同步 / 提升计划</span></span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">AI 实战</div>
+    <div class="ios-list">
+      <button class="row" onclick="TAB.run(function(){C11.openEssay()})"><i class="ric">✍️</i><span class="rtxt">申论批改<span class="rdesc">AI 逐句点评</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C12.openInterview()})"><i class="ric">🎤</i><span class="rtxt">面试练习<span class="rdesc">AI 模拟问答</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){C7.openMessages()})"><i class="ric">🔔</i><span class="rtxt">消息中心<span class="rdesc">系统与互动消息</span></span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">账号</div>
+    <div class="ios-list">
+      <button class="row" id="meVipRow" onclick="TAB.run(function(){GK.openMembershipModal()})"><i class="ric">💎</i><span class="rtxt" id="meVipTxt">开通会员<span class="rdesc">AI 问答不限次 · 全功能畅用</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){GK.openSecuritySetup()})"><i class="ric">🔐</i><span class="rtxt">密保设置<span class="rdesc">用于找回密码</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.run(function(){logout();setTimeout(function(){location.reload();},300);})"><i class="ric">🚪</i><span class="rtxt" style="color:var(--bad)">退出登录</span><i class="chev">›</i></button>
+    </div>
+    <div class="ios-group-title">更多</div>
+    <div class="ios-list">
+      <button class="row" onclick="location.href='/student.html'"><i class="ric">🎓</i><span class="rtxt">学员中心<span class="rdesc">完整版功能门户</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="TAB.openMore()"><i class="ric">🧭</i><span class="rtxt">全部功能<span class="rdesc">激励中心等全部入口</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/knowledge.html'"><i class="ric">🧠</i><span class="rtxt">知识体系<span class="rdesc">321 考点知识树</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/forum.html'"><i class="ric">💬</i><span class="rtxt">学习论坛<span class="rdesc">学员交流</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/articles.html'"><i class="ric">📰</i><span class="rtxt">备考资讯<span class="rdesc">文章与 AI 要点</span></span><i class="chev">›</i></button>
+      <button class="row" onclick="location.href='/'"><i class="ric">🏠</i><span class="rtxt">官网首页</span><i class="chev">›</i></button>
+    </div>
+  </div>
+</div>
+<div class="more-sheet" id="moreSheet" role="dialog" aria-label="全部功能">
+  <div class="ms-head"><b>全部功能</b><button class="ms-close" onclick="TAB.closeMore()" aria-label="关闭">✕</button></div>
+  <div class="ms-grid">
+    <button class="ms-item ms-focus" onclick="TAB.run(function(){location.href='/student.html'})"><i class="mi">🎓</i>学员中心</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openPractice()})"><i class="mi">📚</i>练习</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openReport()})"><i class="mi">📊</i>练习统计</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openFavorites()})"><i class="mi">📌</i>收藏</button>
+    <button class="ms-item" onclick="TAB.run(function(){C4.openMistakes()})"><i class="mi">❌</i>错题本</button>
+    <button class="ms-item" onclick="TAB.run(function(){C5.openMockExam()})"><i class="mi">📝</i>模考解析</button>
+    <button class="ms-item" onclick="TAB.run(function(){C6.openSmartExam()})"><i class="mi">🧩</i>组卷</button>
+    <button class="ms-item" onclick="TAB.run(function(){C8.openIncentive()})"><i class="mi">🏆</i>激励</button>
+    <button class="ms-item" onclick="TAB.run(function(){C9.openReport()})"><i class="mi">📈</i>报告</button>
+    <button class="ms-item" onclick="TAB.run(function(){C10.openFenbi()})"><i class="mi">🎯</i>提升计划</button>
+    <button class="ms-item" onclick="TAB.run(function(){C11.openEssay()})"><i class="mi">✍️</i>申论批改</button>
+    <button class="ms-item" onclick="TAB.run(function(){C12.openInterview()})"><i class="mi">🎤</i>面试练习</button>
+    <button class="ms-item" onclick="TAB.run(function(){C7.openMessages()})"><i class="mi">🔔</i>消息中心</button>
+    <button class="ms-item" onclick="location.href='/knowledge.html'"><i class="mi">🧠</i>知识体系</button>
+    <button class="ms-item" onclick="location.href='/forum.html'"><i class="mi">💬</i>学习论坛</button>
+    <button class="ms-item" onclick="location.href='/'"><i class="mi">🏠</i>官网首页</button>
+    <button class="ms-item" onclick="location.href='/articles.html'"><i class="mi">📰</i>备考资讯</button>
+  </div>
+</div>
 </div><!-- /#main -->
 </div><!-- /.layout -->
+<!-- 批次27-C：侧栏抽屉遮罩（点击关闭；仅移动端 side-open 时显示） -->
+<div class="side-mask" id="sideMask" onclick="document.body.classList.remove('side-open')"></div>
 </body>
 </html>

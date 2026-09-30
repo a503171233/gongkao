@@ -1,0 +1,8 @@
+<view class="wrap">
+  <view class="logo">GK</view>
+  <view class="title">公考学习</view>
+  <view class="sub">登录后开始提问学习</view>
+  <input class="ipt" placeholder="账号" value="{{username}}" data-field="username" bindinput="onInput" />
+  <input class="ipt" password placeholder="密码" value="{{password}}" data-field="password" bindinput="onInput" />
+  <button class="btn" loading="{{loading}}" bindtap="submit">登 录</button>
+</view>

@@ -171,7 +171,7 @@
         return null;
       }
       setInfo(d.teacher_name + '（' + d.teacher_subject + '）· 已收录 ' +
-        d.chunk_count + ' 块知识 · 模型 ' + d.llm_model, false);
+        d.chunk_count + ' 块知识', false);  // 27-K：不对学员暴露内部模型名
       return d;
     } catch (e) {
       console.warn('[A2] 老师信息加载失败:', e && e.message ? e.message : e);

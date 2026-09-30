@@ -88,12 +88,12 @@
       document.body.appendChild(p);
     }
     p.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #eceef3">' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)">' +
         '<span style="font-size:16px;font-weight:700">🔔 消息中心</span>' +
-        '<span id="c7Unread" style="font-size:11.5px;color:#888"></span>' +
+        '<span id="c7Unread" style="font-size:11.5px;color:var(--ink-3)"></span>' +
         '<span style="flex:1"></span>' +
-        '<button onclick="C7.readAll()" style="padding:5px 10px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">全部已读</button>' +
-        '<button onclick="C7.close()" style="padding:5px 10px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer;font-size:12px">✕</button>' +
+        '<button onclick="C7.readAll()" style="padding:5px 10px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">全部已读</button>' +
+        '<button onclick="C7.close()" style="padding:5px 10px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer;font-size:12px">✕</button>' +
       '</div>' +
       '<div id="c7List" style="flex:1;overflow-y:auto;padding:10px 14px"></div>';
     return p;
@@ -105,46 +105,46 @@
     var listEl = document.getElementById('c7List');
     var unreadEl = document.getElementById('c7Unread');
     if (!listEl) return;
-    listEl.innerHTML = '<div style="padding:24px 0;text-align:center;color:#999;font-size:13px">加载中…</div>';
+    listEl.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--ink-3);font-size:13px">加载中…</div>';
     global.GK.api('/messages?page=1&size=50').then(function (d) {
       _loading = false;
       var msgs = (d && d.messages) || [];
       var unread = (d && d.unread) || 0;
       if (unreadEl) unreadEl.textContent = unread ? ('未读 ' + unread + ' 条') : '暂无未读';
       if (!msgs.length) {
-        listEl.innerHTML = '<div style="padding:36px 0;text-align:center;color:#999;font-size:13px">暂无消息，保持关注～</div>';
+        listEl.innerHTML = '<div style="padding:36px 0;text-align:center;color:var(--ink-3);font-size:13px">暂无消息，保持关注～</div>';
         return;
       }
       var html = '';
       msgs.forEach(function (m) {
         var read = m.read === 1;
         var dot = read
-          ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d5d9e2;margin-right:6px"></span>'
-          : '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#e5484d;margin-right:6px"></span>';
-        var unreadBg = read ? '' : 'background:#f7f9ff;border-color:#4a6cf7';
+          ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line-2);margin-right:6px"></span>'
+          : '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--bad);margin-right:6px"></span>';
+        var unreadBg = read ? '' : 'background:var(--card-2);border-color:var(--wood)';
         html +=
-          '<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:10px;' + unreadBg + '">' +
+          '<div style="border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;margin-bottom:10px;' + unreadBg + '">' +
             '<div style="display:flex;align-items:center;gap:6px">' + dot +
               '<b style="font-size:14px;flex:1">' + escapeHtml(m.title) + '</b>' +
-              '<span style="font-size:11px;color:#999">' + escapeHtml(fmtTime(m.created_at)) + '</span>' +
+              '<span style="font-size:11px;color:var(--ink-3)">' + escapeHtml(fmtTime(m.created_at)) + '</span>' +
             '</div>' +
             '<div style="font-size:13px;color:#444;line-height:1.7;margin:8px 0 10px;white-space:pre-wrap">' + escapeHtml(m.content) + '</div>' +
             (read
-              ? '<span style="font-size:11px;color:#999">✓ 已读</span>'
-              : '<button onclick="C7.readOne(' + m.id + ')" style="padding:4px 12px;border:1px solid #4a6cf7;color:#4a6cf7;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">标记已读</button>') +
+              ? '<span style="font-size:11px;color:var(--ink-3)">✓ 已读</span>'
+              : '<button onclick="C7.readOne(' + m.id + ')" style="padding:4px 12px;border:1px solid var(--wood);color:var(--wood);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">标记已读</button>') +
           '</div>';
       });
       listEl.innerHTML = html;
     }).catch(function (e) {
       _loading = false;
-      listEl.innerHTML = '<div style="padding:24px 0;text-align:center;color:#e5484d;font-size:13px">加载失败：' +
+      listEl.innerHTML = '<div style="padding:24px 0;text-align:center;color:var(--bad);font-size:13px">加载失败：' +
         escapeHtml(e.message || '网络异常') + '</div>';
     });
   }
 
   function openMessages() {
     if (!hasToken()) {
-      alert('请先登录后查看消息');
+      global.GK.promptLogin('消息中心');
       return;
     }
     ensurePanel();

@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>书山公考 · 备考文章</title>
 <!-- 书卷主题：热帖精选 + AI 要点提炼；浏览公开，AI 提炼需登录 -->
 <style>
 :root {
   --paper:#f6f1e7; --paper-2:#efe7d6; --card:#fffaf0; --card-2:#fbf4e4;
-  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#98917f;
+  --ink:#3d3a33; --ink-2:#6b655a; --ink-3:#6E6657;
   --wood:#8b5e3c; --wood-deep:#6f4a2d; --gold:#c9a05a; --gold-deep:#a5813f; --gold-soft:#e6d3ac;
   --good:#7a9e6d; --bad:#b45a4a; --line:#e2d9c6; --line-2:#d2c5ab;
   --shadow-1:0 1px 3px rgba(93,72,41,.08),0 1px 2px rgba(93,72,41,.05);
@@ -21,8 +23,10 @@ body { font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans
   radial-gradient(900px 420px at -10% 10%,rgba(139,94,60,.07),transparent 55%),var(--paper);
   color:var(--ink); line-height:1.75; -webkit-font-smoothing:antialiased; min-height:100vh; }
 a { color:var(--wood-deep); text-decoration:none; }
-.knav { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:18px; padding:12px 28px;
-  background:rgba(246,241,231,.85); backdrop-filter:saturate(180%) blur(16px); border-bottom:1px solid var(--line); }
+.knav { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:18px;
+  padding:calc(env(safe-area-inset-top, 0px) + 12px) 28px 12px;
+  background:rgba(246,241,231,.88); backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px); border-bottom:1px solid var(--line); }
 .brand { display:flex; align-items:center; gap:10px; font-weight:800; color:var(--ink); font-size:16px; }
 .brand .mark { width:36px; height:36px; border-radius:11px; background:linear-gradient(135deg,var(--wood),var(--gold));
   color:#fffaf0; display:grid; place-items:center; font-size:16px; font-weight:800; box-shadow:var(--shadow-1); }
@@ -43,7 +47,7 @@ a { color:var(--wood-deep); text-decoration:none; }
   border-radius:999px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
 .chip:hover { border-color:var(--gold); color:var(--wood-deep); }
 .chip.on { background:var(--wood); border-color:var(--wood); color:#fffaf0; }
-.chip em { font-style:normal; opacity:.7; margin-left:4px; font-size:11px; }
+.chip em { font-style:normal; opacity:.7; margin-left:4px; font-size: 12px; }
 .btn { padding:8px 16px; border:1px solid transparent; border-radius:9px; cursor:pointer; font-size:13px;
   font-weight:600; font-family:inherit; display:inline-flex; align-items:center; gap:6px; }
 .btn:hover { box-shadow:var(--shadow-2); }
@@ -56,7 +60,7 @@ a { color:var(--wood-deep); text-decoration:none; }
 input, textarea { font-family:inherit; font-size:14px; color:var(--ink); background:var(--card);
   border:1px solid var(--line-2); border-radius:9px; padding:8px 12px; outline:none; }
 input:focus, textarea:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgba(201,160,90,.16); }
-.badge { display:inline-block; padding:1px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+.badge { display:inline-block; padding:1px 9px; border-radius:999px; font-size: 12px; font-weight:700; }
 .badge.cat { background:var(--gold-soft); color:var(--wood-deep); }
 .badge.ai { background:rgba(122,158,109,.2); color:var(--good); }
 .badge.hot { background:rgba(180,90,74,.14); color:var(--bad); }
@@ -102,9 +106,29 @@ input:focus, textarea:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgb
 .rp-item b { color:var(--wood-deep); font-weight:600; }
 .rd-foot { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
 @media (max-width:820px) {
-  .knav { flex-wrap:wrap; padding:10px 14px; }
+  .knav { flex-wrap:wrap; padding:calc(env(safe-area-inset-top, 0px) + 10px) 14px; }
   .wrap { padding:16px 12px 50px; }
   .reader-scroll { padding:16px; }
+}
+
+/* ============ 批次24 · 移动端最高标准 ============ */
+@media (max-width:480px) {
+  .knav { flex-wrap:nowrap; padding:calc(env(safe-area-inset-top, 0px) + 9px) 12px; gap:10px; }
+  .brand { flex:0 0 auto; font-size:14.5px; gap:8px; min-height:40px; display:inline-flex; align-items:center; }
+  .brand .mark { width:30px; height:30px; border-radius:9px; font-size:13px; }
+  .knav .links {
+    margin-left:0; overflow-x:auto; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none; white-space:nowrap; flex-wrap:nowrap;
+    flex:1 1 auto; min-width:0;   /* 27-M3：显式允许收缩，横滑区不撑破顶栏 */
+  }
+  .knav .links::-webkit-scrollbar { display:none; }
+  .knav .links a {
+    flex:0 0 auto; white-space:nowrap; font-size:13px;
+    padding:8px 10px; min-height:38px; display:inline-flex; align-items:center;
+  }
+  .wrap { padding:14px 12px 46px; }
+  .reader-scroll { padding:14px; border-radius:12px; }
+  button, .head-btn, .btn { min-height:40px; }
 }
 </style>
 </head>
@@ -183,7 +207,12 @@ async function apiReq(path, opts) {
   const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData;
   if (opts.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   const token = readToken();
-  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (token) {
+    headers['Authorization'] = 'Bearer ' + token;
+    // 27-N：公网发布代理会剥离 Authorization 头，冗余携带 X-Auth-Token
+    // （自建 nginx 侧转换回 Authorization 传给后端）——与主站 GK.api 口径一致
+    headers['X-Auth-Token'] = token;
+  }
   const init = { method: opts.method || 'GET', headers: headers };
   if (opts.body !== undefined && init.method !== 'GET')
     init.body = (typeof opts.body === 'string' || isForm) ? opts.body : JSON.stringify(opts.body);
@@ -352,10 +381,14 @@ async function bootAuth() {
   if (!readToken()) return;
   try {
     const d = await apiReq('/me');
-    if (!d || d.anonymous) { setToken(''); return; }
+    // 27-N：anonymous 不再清 token（防公网代理偶发剥头误清）；仅 401/403 才清
+    if (!d || d.anonymous) { renderAuthArea(); return; }
     state.user = { user_id:'', username:d.username, role:d.role };
     renderAuthArea();
-  } catch (e) { setToken(''); }
+  } catch (e) {
+    if (e && (e.status === 401 || e.status === 403)) setToken('');
+    renderAuthArea();
+  }
 }
 function onClick(ev) {
   const btn = ev.target.closest('[data-act]');

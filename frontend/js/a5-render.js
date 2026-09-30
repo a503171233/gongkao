@@ -86,7 +86,7 @@
     avatar.className = 'avatar';
     avatar.textContent = '师';
     var bubble = document.createElement('div');
-    bubble.className = 'bubble';
+    bubble.className = 'bubble streaming';   // 批次26：流式输出中，末尾打字机光标
     // 思考占位：首个 delta 到达时移除（非整段重绘）
     var thinking = document.createElement('span');
     thinking.className = 'thinking';
@@ -159,6 +159,7 @@
   function finish() {
     state.done = true;
     if (state.bubble) removeThinking(state.bubble);
+    if (state.bubble) state.bubble.classList.remove('streaming');  // 批次26：输出结束移除光标
     // 拒答检测：完整回答含拒答标志 → 浅橙拒答样式（现状 .rejected 类）
     if (state.bubble && !state.blocked && state.answer.indexOf(REJECT_MARK) !== -1) {
       state.bubble.classList.add('rejected');
@@ -220,7 +221,7 @@
       'padding:3px 10px;font-size:12px;cursor:pointer;color:#666;';
     fav.onclick = function () {
       if (global.C4 && global.C4.bookmarkCurrent) global.C4.bookmarkCurrent();
-      else alert('请先登录后使用收藏功能');
+      else if (global.GK && global.GK.promptLogin) global.GK.promptLogin('收藏');
     };
     bar.appendChild(fav);
     bubble.appendChild(bar);
@@ -236,6 +237,7 @@
     var names = list.map(function (r) { return REASON_CN[r] || r; }).filter(Boolean).join('、');
     // 替换当前回答内容（清空增量文本与 refs，避免残留）
     state.bubble.textContent = '';
+    state.bubble.classList.remove('streaming');  // 批次26：拦截为终态，移除光标
     var tip = '⚠️ 回答被幻觉检测拦截：未能通过教学资料校验';
     if (names) tip += '（' + names + '）';
     state.bubble.appendChild(document.createTextNode(tip));
@@ -274,6 +276,7 @@
     if (status) text += ' (HTTP ' + status + ')';
     errDiv.textContent = text;
     state.bubble.appendChild(errDiv);
+    state.bubble.classList.remove('streaming');  // 批次26：错误为终态，移除光标
     state.done = true;   // 错误后不再接受迟到 delta
     scrollToBottom();
   }
@@ -281,7 +284,7 @@
   // -----------------------------------------------------------------
   // 6. 用户气泡 / 历史回放 / 清空
   // -----------------------------------------------------------------
-  function addUserMsg(text) {
+  function addUserMsg(text, atts) {
     var c = chatEl();
     if (!c) return;
     var m = document.createElement('div');
@@ -291,7 +294,23 @@
     avatar.textContent = '我';
     var bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.textContent = text || '';
+    // 批次28：附件 chips（🖼 图片 / 📄 文档）置于提问文本上方
+    if (atts && atts.length) {
+      var bar = document.createElement('div');
+      bar.className = 'msg-atts';
+      atts.forEach(function (a) {
+        var chip = document.createElement('span');
+        chip.className = 'msg-att';
+        chip.textContent = (a && a.kind === 'image' ? '🖼 ' : '📄 ') + (a && a.name ? a.name : '附件');
+        bar.appendChild(chip);
+      });
+      bubble.appendChild(bar);
+    }
+    if (text) {
+      var t = document.createElement('div');
+      t.textContent = text;
+      bubble.appendChild(t);
+    }
     m.appendChild(avatar);
     m.appendChild(bubble);
     c.appendChild(m);
@@ -363,7 +382,7 @@
     bus.addEventListener('ask:user', function (e) {
       var d = (e && e.detail) || {};
       state.lastQuestion = d.text || '';
-      addUserMsg(state.lastQuestion);
+      addUserMsg(state.lastQuestion, d.attachments);   // 批次28：附件元数据上屏
     });
     bus.addEventListener('ask:start', function () { newBubble(); });
     bus.addEventListener('ask:delta', function (e) {
@@ -388,6 +407,14 @@
     bus.addEventListener('ask:error', function (e) {
       var d = (e && e.detail) || {};
       showError(d.message || '服务异常', d.status);
+    });
+    // 断线自动重连（A3 广播）：提示条告知状态，恢复/失败有各自终态
+    bus.addEventListener('ask:reconnect', function (e) {
+      var d = (e && e.detail) || {};
+      showError('网络中断，正在自动重连（第 ' + (d.attempt || '?') + ' 次）…');
+    });
+    bus.addEventListener('ask:reconnected', function () {
+      showError('已恢复连接，继续回答中');
     });
   }
 

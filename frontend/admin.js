@@ -71,7 +71,7 @@ function admin(path, opts = {}) {
   if (!token) throw new Error('未登录');
   return GK.api(path, {
     ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+    headers: { Authorization: `Bearer ${token}`, 'X-Auth-Token': token, ...(opts.headers || {}) },
   });
 }
 
@@ -249,7 +249,9 @@ function toggleNavGroup(id) {
   if (p) p.classList.toggle('open', !open);
 }
 
+let _tabSeq = 0;   // 切页时序令牌：慢渲染/慢 catch 不得覆盖新页面（修「登录后快速切用户管理报加载失败」竞态）
 async function switchTab(tab) {
+  const seq = ++_tabSeq;
   if (NAV_IDS[tab] && ('#/' + tab) !== (location.hash || '') && tab !== 'autocollect') {
     try { history.pushState(null, '', '#/' + tab); } catch (e) { location.hash = '#/' + tab; }
   }
@@ -288,7 +290,8 @@ async function switchTab(tab) {
     else if (tab === 'ac-content')   await renderAcContent();
     else if (tab === 'ac-logs')      await renderAcLogs();
   } catch (e) {
-    c.innerHTML = `<p class="err-tip">加载失败：${esc(e.message)}</p>`;
+    // 仅当本次切换仍是最新时才展示错误——旧页面的迟到崩溃不得覆盖新页面
+    if (seq === _tabSeq) c.innerHTML = `<p class="err-tip">加载失败：${esc(e.message)}</p>`;
   }
 }
 
@@ -329,6 +332,7 @@ async function loadDashboard() {
     admin('/admin/stats/teachers').catch(() => null),
     admin('/admin/questions/stats').catch(() => null),
   ]);
+  if (currentTab !== 'dashboard') return;   // 已切走：放弃渲染（元素已被新页替换，写回会 null 崩 + 覆盖新页）
 
   // 统计卡片
   const s = stats || { users: {}, teachers: {}, knowledge: {} };
@@ -343,6 +347,7 @@ async function loadDashboard() {
 
   // 图表：需要 Chart.js
   await ensureChartJs();
+  if (currentTab !== 'dashboard') return;   // Chart.js 网络加载期间可能已切页
   const chartData = [];
 
   // 1) 今日新增用户：用 overview 的今日数值 + 额度 by_day 做近似趋势
@@ -395,8 +400,8 @@ async function loadDashboard() {
           tooltip: { backgroundColor: '#3d3a33', titleColor: '#fffaf0', bodyColor: '#f6f1e7' },
         },
         scales: isDonut ? {} : {
-          x: { grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#98917f', font: { size: 10.5 } } },
-          y: { beginAtZero: true, grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#98917f', font: { size: 10.5 } } },
+          x: { grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#6E6657', font: { size: 10.5 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(226,217,198,.5)' }, ticks: { color: '#6E6657', font: { size: 10.5 } } },
         },
       },
     });
@@ -800,25 +805,12 @@ async function renderAiModels() {
       </table>
     </div>
   </div>
-  <div class="panel" style="margin-top:16px">
-    <div class="panel-head">
-      <div class="toolbar" style="flex:1"><b>🪄 内置模型目录</b><span style="font-size:11.5px;color:var(--ink-3)">OpenAI 兼容协议 · 一键登记进注册表，或点击「获取模型」从远端拉取</span></div>
-      <button class="btn ghost sm" onclick="aimLoadBuiltin()">⟳ 刷新内置</button>
-    </div>
-    <div class="tbl-wrap">
-      <table class="tbl">
-        <thead><tr><th>模型标识</th><th>名称</th><th>提供方</th><th>Base URL</th><th>操作</th></tr></thead>
-        <tbody id="aim-builtin-body"><tr><td colspan="5" class="loading">加载中…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
   <div id="aim-modal" class="modal-mask"></div>`;
   await aimLoad();
   acLlmLoad();
 }
 
 let _aimCache = [];
-let _aimBuiltin = [];
 
 async function aimLoad() {
   const [mr, er] = await Promise.all([
@@ -837,40 +829,6 @@ async function aimLoad() {
     <div class="card"><div class="card-label">输出上限</div><div class="card-n">${eff.max_tokens ?? '—'}</div><div class="card-sub">tokens</div></div>
     <div class="card"><div class="card-label">已注册</div><div class="card-n">${_aimCache.length}</div><div class="card-sub">个候选模型</div></div>`;
   renderAiRows(_aimCache);
-  aimLoadBuiltin();
-}
-
-// 加载内置模型目录并渲染（含一键登记）
-async function aimLoadBuiltin() {
-  const tbody = $('#aim-builtin-body');
-  if (!tbody) return;
-  try {
-    const r = await admin('/admin/ai-models/builtin');
-    _aimBuiltin = (r.models || []);
-    tbody.innerHTML = _aimBuiltin.map(m => `
-      <tr>
-        <td><code>${esc(m.model_id)}</code></td>
-        <td><b>${esc(m.name)}</b></td>
-        <td>${esc(m.provider)}</td>
-        <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.base_url)}">${esc(m.base_url)}</td>
-        <td>${m.registered
-          ? '<span class="badge green">已登记</span>'
-          : `<button class="btn ghost sm" onclick="aimRegisterBuiltin('${esc(m.model_id)}')">一键登记</button>`}</td>
-      </tr>`).join('');
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="5" class="err-tip">加载失败：${esc(e.message)}</td></tr>`; }
-}
-
-// 一键登记内置模型
-async function aimRegisterBuiltin(modelId) {
-  const m = _aimBuiltin.find(x => x.model_id === modelId);
-  if (!m) return;
-  try {
-    await admin('/admin/ai-models', { method: 'POST', body: JSON.stringify({
-      name: m.name, model_id: m.model_id, provider: m.provider, base_url: m.base_url,
-      api_key: '', temperature: 0.3, max_tokens: 2000, remark: '内置目录一键登记',
-    })});
-    toast(`已登记 ${modelId}`, 'ok'); aimLoad();
-  } catch (e) { toast('登记失败：' + e.message, 'err'); }
 }
 
 // 获取模型：弹窗 → 填 Base URL → 调远端拉取，失败自动兜底内置目录
@@ -878,7 +836,7 @@ function aimFetchModal() {
   const effBase = (_aimCache.find(x => x.is_default) || {}).base_url || '';
   openModal('aim-modal', `
     <h3>📥 获取模型</h3>
-    <p style="font-size:12.5px;color:var(--ink-3);margin-bottom:12px">按 <b>OpenAI 兼容协议</b> 请求 <code>{Base URL}/models</code> 拉取可用模型；<br>跨域/网络/鉴权失败时自动<b>降级展示内置目录</b>并给出原因。<br>⚠️ 填写 API Key 后，<b>一键登记的模型将保存该密钥</b>（留空 = 平台全局密钥）；不同密钥可见/可用的模型不同。</p>
+    <p style="font-size:12.5px;color:var(--ink-3);margin-bottom:12px">按 <b>OpenAI 兼容协议</b> 请求 <code>{Base URL}/models</code> 拉取可用模型；<br>跨域/网络/鉴权失败时会<b>明示错误原因</b>（模型一律以注册表为准，不再内置兜底）。<br>⚠️ 填写 API Key 后，<b>一键登记的模型将保存该密钥</b>（留空 = 平台全局密钥）；不同密钥可见/可用的模型不同。</p>
     <div class="field"><label>Base URL</label><input id="aimf-base" value="${esc(effBase || 'https://ai.anyyds.cn/v1')}" placeholder="https://provider/v1"></div>
     <div class="field"><label>提供方（可选）</label><input id="aimf-provider" placeholder="anyyds / openai / deepseek …"></div>
     <div class="field"><label>API Key（可选，读取平台 .env 缺省）</label><input id="aimf-key" type="password" placeholder="sk-…"></div>
@@ -905,11 +863,11 @@ async function aimFetchList() {
     const r = await admin('/admin/ai-models/list-remote', {
       method: 'POST', body: JSON.stringify({ base_url: base, provider, api_key: key }),
     });
-    const isFallback = r.used_fallback === true;
+    const isFallback = r.used_fallback === true;  // 27-L：后端已不回退内置目录，此分支仅防御
     // 记录 base_url / 密钥用于一键登记（r.base_url 是 API 根地址，不含 /models）
     window._aimLast = { base: r.base_url || base, provider, key };
     box.innerHTML = (isFallback
-      ? `<div class="err-tip" style="margin-bottom:10px">⚠️ 远端获取失败，已降级展示内置目录：${esc(r.error || '')}</div>`
+      ? `<div class="err-tip" style="margin-bottom:10px">⚠️ 远端获取失败：${esc(r.error || '')}</div>`
       : `<p class="hint ok" style="margin-bottom:10px">✅ 获取到 ${r.models.length} 个模型（${esc(r.base_url || base)}）</p>`)
       + `<table class="tbl"><thead><tr><th>模型标识</th><th>操作</th></tr></thead><tbody>`
       + r.models.map(id => {
@@ -918,7 +876,7 @@ async function aimFetchList() {
             ? '<span class="badge green">已登记</span>'
             : `<button class="btn ghost sm" onclick="aimRegisterRemote('${esc(id)}', '${esc(window._aimLast.provider)}')">一键登记</button>`}</td></tr>`;
         }).join('') + `</tbody></table>`;
-    hint.textContent = isFallback ? `${r.models.length} 个（内置兜底）` : `${r.models.length} 个（远端）`;
+    hint.textContent = isFallback ? '远端获取失败' : `${r.models.length} 个（远端）`;
     hint.className = isFallback ? 'hint err' : 'hint ok';
   } catch (e) {
     box.innerHTML = `<div class="err-tip">拉取失败：${esc(e.message)}</div>`;
@@ -1266,16 +1224,29 @@ async function showUserDetail(userId) {
   openModal('u-modal', `<h3>用户详情</h3><div class="loading">加载中…</div>`);
   try {
     const u = await admin(`/admin/users/${userId}`);
+    const fb = u.fenbi;
+    const st = u.study || {};
+    const acc = st.graded_count ? Math.round((st.correct_count || 0) * 100 / st.graded_count) : null;
     const box = $('#u-modal .modal-box');
     box.innerHTML = `
       <h3>用户详情 · ${esc(u.username)}</h3>
       <div class="detail-row"><span class="k">用户 ID</span><span class="v"><code>${esc(u.user_id)}</code></span></div>
       <div class="detail-row"><span class="k">用户名</span><span class="v">${esc(u.username)}</span></div>
       <div class="detail-row"><span class="k">角色</span><span class="v">${u.role === 'admin' ? '<span class="badge purple">管理员</span>' : u.role === 'member' ? '<span class="badge green">会员</span>' : '<span class="badge gray">免费</span>'}</span></div>
-      <div class="detail-row"><span class="k">今日已用</span><span class="v">${u.today_count ?? 0} 次</span></div>
-      <div class="detail-row"><span class="k">会员到期</span><span class="v">${u.member_expire_at ? fmtTime(u.member_expire_at) : '—'}</span></div>
-      <div class="detail-row"><span class="k">剩余天数</span><span class="v">${u.days_remaining ?? 0} 天</span></div>
+      <div class="detail-row"><span class="k">状态</span><span class="v">${(u.status || 'active') === 'active' ? '<span class="badge green">正常</span>' : '<span class="badge red">已禁用</span>'}</span></div>
+      <div class="detail-row"><span class="k">今日已用</span><span class="v">${u.today_count ?? 0} / ${u.daily_limit ?? 20} 次</span></div>
+      <div class="detail-row"><span class="k">会员到期</span><span class="v">${u.member_expire_at ? fmtTime(u.member_expire_at) : '—'}${u.days_remaining ? ` <span class="badge green">剩${u.days_remaining}天</span>` : ''}</span></div>
       <div class="detail-row"><span class="k">创建时间</span><span class="v">${fmtTime(u.created_at)}</span></div>
+      <div style="border-top:1px solid var(--line);margin:12px 0 8px;padding-top:10px;font-weight:700;font-size:13px">📚 学习数据</div>
+      <div class="detail-row"><span class="k">练习次数</span><span class="v">${st.practice_count ?? 0} 次</span></div>
+      <div class="detail-row"><span class="k">判分正确率</span><span class="v">${acc == null ? '—（暂无判分记录）' : acc + '%（对 ' + (st.correct_count ?? 0) + ' / 判 ' + st.graded_count + '）'}</span></div>
+      <div class="detail-row"><span class="k">错题本</span><span class="v">${st.mistake_count ?? 0} 题</span></div>
+      <div style="border-top:1px solid var(--line);margin:12px 0 8px;padding-top:10px;font-weight:700;font-size:13px">🎯 粉笔账号</div>
+      ${fb ? `
+      <div class="detail-row"><span class="k">绑定状态</span><span class="v">${fb.status === 'bound' ? '<span class="badge green">已绑定</span>' : fb.status === 'expired' ? '<span class="badge red">已失效</span>' : '<span class="badge gray">未绑定</span>'}${fb.phone ? ' <span class="mono">' + esc(fb.phone) + '</span>' : ''}</span></div>
+      ${fb.status === 'bound' ? `
+      <div class="detail-row"><span class="k">绑定时间</span><span class="v">${fb.bound_at ? fmtTime(fb.bound_at) : '—'}</span></div>
+      <div class="detail-row"><span class="k">同步数据</span><span class="v">错题 ${fb.wrong_count} · 收藏 ${fb.collect_count} · 模考卷 ${fb.mock_count} 份</span></div>` : ''}` : '<div class="detail-row"><span class="k">绑定状态</span><span class="v"><span class="badge gray">未绑定</span></span></div>'}
       <div class="modal-actions"><button class="btn ghost sm" onclick="closeModal('u-modal')">关闭</button></div>
     `;
   } catch (e) {
@@ -1632,7 +1603,7 @@ async function doUploadDoc(file) {
   const tid = _docTeacher || 'T001';
   try {
     // 直接 fetch 带 token（upload 接口本身不需 Bearer，但需可能存在的 X-Upload-Secret）
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = { Authorization: `Bearer ${token}`, 'X-Auth-Token': token };
     const secret = localStorage.getItem('uploadSecret');
     if (secret) headers['X-Upload-Secret'] = secret;
     let r = await fetch(`/api/upload?teacher_id=${encodeURIComponent(tid)}`, { method: 'POST', body: fd, headers });
@@ -1641,7 +1612,7 @@ async function doUploadDoc(file) {
       const s = prompt('该平台上传需密钥（请向管理员索取）：');
       if (!s) { hint.textContent = '已取消'; return; }
       localStorage.setItem('uploadSecret', s);
-      const h2 = { Authorization: `Bearer ${token}`, 'X-Upload-Secret': s };
+      const h2 = { Authorization: `Bearer ${token}`, 'X-Auth-Token': token, 'X-Upload-Secret': s };
       r = await fetch(`/api/upload?teacher_id=${encodeURIComponent(tid)}`, { method: 'POST', body: fd, headers: h2 });
     }
     if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || ('HTTP ' + r.status)); }
@@ -1792,6 +1763,7 @@ async function renderQList() {
         <button class="btn ghost sm" onclick="qbBatchDelete()">🗑 批量删除</button>
         <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" onclick="qbAiCategorize()">🏷 AI 补充分类</button>
         <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" onclick="qbAiAnalysisBatch()">✨ 批量 AI 解析</button>
+        <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" onclick="qbMoaBatch()">🔬 MoA 解析（学员可见）</button>
       </div>
       <button class="btn ghost sm" onclick="exportQuestions()">📤 导出当前筛选(CSV)</button>
     </div>
@@ -2954,6 +2926,7 @@ function showQuestionDetail(qid) {
       <div class="modal-actions">
         <button class="btn ghost sm" onclick="closeModal('qb-modal')">关闭</button>
         <button class="btn sm" style="background:var(--gold-soft);border-color:var(--gold)" id="qd-ai-btn" onclick="qbAiAnalysis(${q.id})">✨ AI 解析（多角度）</button>
+        <button class="btn sm ghost" onclick="qbMoaOne(${q.id})">🔬 MoA 解析（学员可见）</button>
       </div>`;
   }).catch(e => {
     $('#qb-modal .modal-box').innerHTML = `<h3>加载失败</h3><p class="err-tip">${esc(e.message)}</p>
@@ -3017,6 +2990,48 @@ async function qbAiAnalysisBatch() {
   } catch (e) {
     toast('批量 AI 解析失败：' + e.message, 'err');
   }
+}
+
+// 批次26-I · MoA 解析（后台生产 → 学员前台免费查看缓存）
+async function qbMoaOne(qid) {
+  if (!confirm('将用 MoA 多模型协同（3 模型并行出稿+聚合）生成本题五节解析，\n约 1~2 分钟。生成后学员在题目页「AI 多角度解析」免费查看。是否继续？')) return;
+  toast('MoA 解析生成中（约 1~2 分钟）…', 'info');
+  try {
+    const r = await admin('/admin/ai-analysis/moa', { method: 'POST', timeout: 300000,
+      body: JSON.stringify({ question_id: qid }) });
+    toast(r.cached ? '该题已有 MoA 解析缓存（无需重复生成）' : '✅ MoA 解析已生成，学员端可直接查看', r.cached ? 'info' : 'ok');
+  } catch (e) { toast('MoA 解析失败：' + e.message, 'err'); }
+}
+
+let _moaPollTimer = null;
+async function qbMoaBatch() {
+  const qids = [...(_qbChecked || [])];
+  const msg = qids.length
+    ? `将用 MoA 多模型协同生成勾选的 ${qids.length} 道题解析（后台执行，每题约 1 分钟）。\n生成后学员在题目页「AI 多角度解析」免费查看。是否继续？`
+    : '未勾选题目：将自动选取无 MoA 解析的可解析题（≤10 题）批量生成（后台执行）。\n是否继续？';
+  if (!confirm(msg)) return;
+  try {
+    const r = await admin('/admin/ai-analysis/moa-batch', { method: 'POST', timeout: 60000,
+      body: JSON.stringify({ qids, limit: 10 }) });
+    if (!r.started) { toast(r.message || '没有需要生成的题目', 'info'); return; }
+    toast(`MoA 批量解析已启动（共 ${r.total} 题，后台执行）`, 'ok');
+    qbMoaPoll();
+  } catch (e) { toast('MoA 批量启动失败：' + e.message, 'err'); }
+}
+
+function qbMoaPoll() {
+  if (_moaPollTimer) clearInterval(_moaPollTimer);
+  _moaPollTimer = setInterval(async () => {
+    try {
+      const s = await admin('/admin/ai-analysis/moa-batch/status');
+      if (s.running) { toast(`MoA 批量解析进行中：${s.done}/${s.total}…`, 'info'); return; }
+      clearInterval(_moaPollTimer); _moaPollTimer = null;
+      const ok = (s.results || []).filter(x => x.ok).length;
+      toast(`MoA 批量解析完成：成功 ${ok} 题${(s.results || []).length > ok ? `，失败 ${s.results.length - ok} 题` : ''}`,
+        s.results && s.results.length > ok ? 'info' : 'ok');
+      loadQuestions();
+    } catch (e) { clearInterval(_moaPollTimer); _moaPollTimer = null; }
+  }, 15000);
 }
 
 // 手动录入题目
@@ -4376,7 +4391,7 @@ async function rcExportCsv() {
     if (rcPage.batch) params.set('batch_id', rcPage.batch);
     if (rcPage.channel) params.set('channel', rcPage.channel);
     const resp = await fetch(`/api/admin/recharge-codes/export?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` } });
+      headers: { Authorization: `Bearer ${token}`, 'X-Auth-Token': token } });
     if (!resp.ok) { const j = await resp.json().catch(() => ({})); throw new Error(j.detail || ('HTTP ' + resp.status)); }
     const text = await resp.text();
     const a = document.createElement('a');
@@ -4534,7 +4549,7 @@ async function createBackup() {
 async function downloadBackup(name) {
   try {
     const resp = await fetch(`/api/admin/backups/${encodeURIComponent(name)}/download`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: token ? { Authorization: `Bearer ${token}`, 'X-Auth-Token': token } : {},
     });
     if (!resp.ok) { toast('下载失败 HTTP ' + resp.status, 'err'); return; }
     const blob = await resp.blob();

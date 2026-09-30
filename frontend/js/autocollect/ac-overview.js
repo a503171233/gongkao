@@ -15,6 +15,30 @@ async function renderAcOverview() {
   try { st = await admin('/admin/autocollect/status') || {}; } catch (e) {}
   let chInfo = [];
   try { const r = await admin('/admin/autocollect/llm/channels'); chInfo = r.channels || []; } catch (e) {}
+  let capInfo = {};
+  try { capInfo = await admin('/admin/capabilities/status') || {}; } catch (e) {}
+  const _cap = (capInfo.capabilities || {}).fetch || {};
+  const _capProv = ['mcp', 'scrapling', 'builtin'].map(p => `${p}${_cap[p] ? '✓' : '✗'}`).join(' · ');
+  const _capTxt = `${esc(capInfo.fetch_provider_env || 'auto')}（${_capProv}）` +
+    ` <button onclick="acTestFetch()" style="margin-left:6px;padding:2px 8px;border:1px solid #d8dce6;border-radius:5px;background:#fff;cursor:pointer;font-size:11px">⚡ 试抓</button>` +
+    `<span id="acFetchTestOut" style="font-size:11px;color:#888;margin-left:6px"></span>`;
+
+  window.acTestFetch = async function () {  // 27-L：浏览器无 global 裸引用（admin 页 renderAcOverview 崩溃根因）
+    var out = document.getElementById('acFetchTestOut');
+    if (out) { out.textContent = '试抓中…'; out.style.color = '#888'; }
+    try {
+      var r = await admin('/admin/capabilities/fetch-test', { method: 'POST' });
+      var parts = (r.results || []).map(function (x) {
+        return x.provider + (x.ok ? '✅' : '❌') + ' ' + x.elapsed_ms + 'ms/' + x.chars + '字';
+      });
+      if (out) {
+        out.textContent = parts.join(' · ');
+        out.style.color = (r.results || []).every(x => x.ok) ? '#16a34a' : '#e5484d';
+      }
+    } catch (e) {
+      if (out) { out.textContent = '试抓失败: ' + (e && e.message ? e.message : e); out.style.color = '#e5484d'; }
+    }
+  };
   const go = (id, label) => `<button class="btn ghost sm" onclick="acSubTab('${id}')">${label}</button>`;
   const line = (k, v) => `<div class="detail-row"><div class="k">${esc(k)}</div><div class="v">${v == null || v === '' ? '<span class="hint">未配置</span>' : v}</div></div>`;
   const listTxt = (arr) => (arr && arr.length) ? arr.map(x => esc(x)).join('、') : '';
@@ -35,6 +59,7 @@ async function renderAcOverview() {
     <div class="panel" style="margin:0">
       <div class="panel-head"><h3>🛰️ 多通道</h3>${go('ac-channels', '编辑 ›')}</div>
       <div class="panel-body">
+        ${line('抓取通道', _capTxt)}
         ${line('采集模型通道', chInfo.length ? chInfo.map((c, i) => `${esc(c.model)}${i === 0 ? '(主)' : ''}`).join(' · ') : '回落平台默认模型')}
         ${line('并发线程', cfg.threads + ' 线程' + (cfg.threads > 1 && chInfo.length ? '（并行提取已启用）' : '（串行）'))}
         ${line('备用模型', listTxt(cfg.fallback_models) || '仅主模型')}

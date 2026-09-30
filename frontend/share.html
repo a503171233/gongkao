@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="256x256" href="/img/favicon-256.png">
 <title>老师专属答疑 · 公考智能助教</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Serif SC", serif; background: radial-gradient(1200px 500px at 85% -5%, rgba(201,160,90,.12), transparent 60%), radial-gradient(900px 420px at -10% 10%, rgba(139,94,60,.10), transparent 55%), #f6f1e7; color: #3d3a33; min-height: 100vh; display: flex; flex-direction: column; }
-  header { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; padding: 14px 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  header { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; padding: calc(env(safe-area-inset-top, 0px) + 14px) 24px 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   header .logo { width: 40px; height: 40px; background: #fffaf0; color: #8b5e3c; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
   header h1 { font-size: 16px; }
   header .sub { font-size: 12px; opacity: .85; }
@@ -22,9 +24,9 @@
 
   .card { background: #fffaf0; border: 1px solid #e2d9c6; border-radius: 14px; box-shadow: 0 2px 16px rgba(93,72,41,.10); padding: 20px; margin-bottom: 16px; }
   .qbar { display: flex; gap: 10px; }
-  #query { flex: 1; border: 1px solid #d2c5ab; border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; background: #fffaf0; color: #3d3a33; }
+  #query { flex: 1; min-width: 0; border: 1px solid #d2c5ab; border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; background: #fffaf0; color: #3d3a33; }
   #query:focus { border-color: #c9a05a; box-shadow: 0 0 0 3px rgba(201,160,90,.18); }
-  #send { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; border: none; border-radius: 10px; padding: 0 24px; font-size: 15px; cursor: pointer; }
+  #send { background: linear-gradient(135deg, #8b5e3c, #6f4a2d); color: #fffaf0; border: none; border-radius: 10px; padding: 0 24px; font-size: 15px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
   #send:disabled { opacity: .5; cursor: not-allowed; }
   .qlimit { font-size: 12px; color: #999; margin-top: 8px; }
 
@@ -37,8 +39,8 @@
   .bubble { background: #fffaf0; border-radius: 12px; padding: 11px 14px; max-width: 82%; box-shadow: 0 1px 3px rgba(93,72,41,.08); line-height: 1.75; font-size: 14.5px; white-space: pre-wrap; word-break: break-word; margin: 0 10px; border: 1px solid #e2d9c6; }
   .msg.user .bubble { background: #6f4a2d; color: #fffaf0; }
   .rejected { color: #c05621; background: #fff8f0 !important; }
-  .thinking { color: #98917f; font-size: 13px; }
-  .refs { margin-top: 8px; font-size: 12px; color: #98917f; border-top: 1px dashed #d2c5ab; padding-top: 6px; }
+  .thinking { color: #6E6657; font-size: 13px; }
+  .refs { margin-top: 8px; font-size: 12px; color: #6E6657; border-top: 1px dashed #d2c5ab; padding-top: 6px; }
   .ref { display: inline-block; background: #e6d3ac; border-radius: 6px; padding: 2px 8px; margin: 2px 6px 2px 0; color: #6f4a2d; }
 
   .fb-bar { margin-top: 10px; display: flex; gap: 8px; }
@@ -49,8 +51,24 @@
 
   .foot { text-align: center; color: #999; font-size: 12px; padding: 18px 20px 28px; }
   .foot a { color: #8b5e3c; text-decoration: none; }
+
+  /* ============ 批次25 · 移动端触控达标 ============ */
+  @media (max-width: 480px) {
+    header { padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px; gap: 10px; }
+    .brand-link { min-height: 40px; display: inline-flex; align-items: center; }
+    .foot a { display: inline-block; padding: 8px 0; }
+    .fb-btn { min-height: 34px; }
+  }
   .err-tip { color: #e5484d; font-size: 13px; margin-top: 8px; }
   .hidden { display: none !important; }
+
+  /* 批次24 · 移动端兜底（分享页） */
+  @media (max-width: 480px) {
+    #main { padding: 18px 12px 26px; }
+    .bubble { max-width: 92%; font-size: 14px; }
+    button, .fb-btn { min-height: 40px; }
+    pre { overflow-x: auto; }
+  }
 </style>
 </head>
 <body>
@@ -84,7 +102,7 @@
   由 <a href="/">多老师专属智能助教平台</a> 提供 · 所有回答均基于对应老师课件与讲义生成
 </div>
 
-<script src="js/a4-request.js?v=20260906"></script>
+<script src="js/a4-request.js?v=b27m2"></script>
 <script>
 (function () {
   'use strict';

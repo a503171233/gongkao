@@ -11,7 +11,7 @@
 
   if (!global.GK) global.GK = {};
 
-  var state = { view: 'list', paperId: 0, paper: null, answers: {} };
+  var state = { view: 'list', paperId: 0, paper: null, answers: {}, mockTimer: null };
 
   function escapeHtml(s) {
     return String(s == null ? '' : s)
@@ -36,7 +36,7 @@
 
   function requireLogin() {
     if (currentUserId() === 'anonymous') {
-      alert('请先登录后使用智能组卷');
+      global.GK.promptLogin('智能组卷');
       return false;
     }
     return true;
@@ -45,7 +45,7 @@
   function showToast(msg, type) {
     var div = document.createElement('div');
     div.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;box-shadow:0 2px 12px rgba(0,0,0,.15);';
-    div.style.background = type === 'error' ? '#e5484d' : (type === 'success' ? '#30a46c' : '#4a6cf7');
+    div.style.background = type === 'error' ? 'var(--bad)' : (type === 'success' ? 'var(--good)' : 'var(--wood)');
     div.textContent = msg;
     document.body.appendChild(div);
     setTimeout(function () { div.remove(); }, 3000);
@@ -64,7 +64,7 @@
 
   function closeBtnHtml() {
     return '<div style="margin-top:14px;text-align:center">' +
-      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="padding:8px 20px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button></div>';
+      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="padding:8px 20px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button></div>';
   }
 
   var CATEGORIES = ['言语理解', '判断推理', '数量关系', '资料分析', '常识判断', '申论', '面试', '综合'];
@@ -82,16 +82,22 @@
   }
 
   function renderList() {
+    stopMockTimer();
     var container = getPanel();
     container.innerHTML =
       '<h3 style="margin:0 0 4px">🧩 智能组卷</h3>' +
-      '<div style="font-size:12px;color:#888;margin-bottom:10px">按分类/题型/难度/知识点自助组卷，提交后客观题自动评分</div>' +
-      '<button id="seNewBtn" style="width:100%;padding:9px;border:1px dashed #7c3aed;color:#7c3aed;border-radius:8px;background:#faf8ff;cursor:pointer;font-size:14px">＋ 生成新试卷</button>' +
-      '<div id="seNewBox" style="display:none;margin-top:10px;border:1px solid #e5e7eb;border-radius:8px;padding:10px"></div>' +
-      '<div id="seListArea" style="margin-top:12px"><p style="color:#999">加载中...</p></div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">按分类/题型/难度/知识点自助组卷，提交后客观题自动评分</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="seNewBtn" style="flex:1;padding:9px;border:1px dashed var(--gold-deep);color:var(--gold-deep);border-radius:8px;background:#faf8ff;cursor:pointer;font-size:14px">＋ 生成新试卷</button>' +
+        '<button id="seMockBtn" style="flex:1;padding:9px;border:1px solid var(--bad);color:var(--bad);border-radius:8px;background:#fff8f8;cursor:pointer;font-size:14px">⏱ 在线模考</button>' +
+      '</div>' +
+      '<div id="seNewBox" style="display:none;margin-top:10px;border:1px solid var(--line-2);border-radius:8px;padding:10px"></div>' +
+      '<div id="seMockBox" style="display:none;margin-top:10px;border:1px solid #fecaca;border-radius:8px;padding:10px"></div>' +
+      '<div id="seListArea" style="margin-top:12px"><p style="color:var(--ink-3)">加载中...</p></div>' +
       closeBtnHtml();
 
     document.getElementById('seNewBtn').onclick = renderNewBox;
+    document.getElementById('seMockBtn').onclick = toggleMockBox;
     loadList();
   }
 
@@ -110,21 +116,21 @@
     }).join('');
 
     box.innerHTML =
-      '<div style="font-size:13px;color:#555;margin-bottom:4px">组卷条件（老师随当前选中 Tab）</div>' +
+      '<div style="font-size:13px;color:var(--ink-2);margin-bottom:4px">组卷条件（老师随当前选中 Tab）</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
-        '<select id="seCat" style="flex:1;min-width:120px;padding:6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;font-size:13px"><option value="">📚 全部分类</option>' + catOpts + '</select>' +
-        '<select id="seType" style="flex:1;min-width:110px;padding:6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;font-size:13px">' + qtypeOpts + '</select>' +
+        '<select id="seCat" style="flex:1;min-width:120px;padding:6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;font-size:13px"><option value="">📚 全部分类</option>' + catOpts + '</select>' +
+        '<select id="seType" style="flex:1;min-width:110px;padding:6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;font-size:13px">' + qtypeOpts + '</select>' +
       '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
-        '<select id="seDiff" style="flex:1;min-width:100px;padding:6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;font-size:13px">' +
+        '<select id="seDiff" style="flex:1;min-width:100px;padding:6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;font-size:13px">' +
           '<option value="">不限难度</option><option value="1">难度 1</option><option value="2">难度 2</option><option value="3">难度 3</option><option value="4">难度 4</option><option value="5">难度 5</option>' +
         '</select>' +
-        '<select id="seCount" style="flex:1;min-width:90px;padding:6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;font-size:13px">' +
+        '<select id="seCount" style="flex:1;min-width:90px;padding:6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;font-size:13px">' +
           '<option value="5">5 题</option><option value="10" selected>10 题</option><option value="15">15 题</option><option value="20">20 题</option><option value="30">30 题</option>' +
         '</select>' +
       '</div>' +
-      '<input id="seKp" type="text" placeholder="知识点（可选，如：图形推理）" style="width:100%;box-sizing:border-box;padding:6px;border:1px solid #d0d4de;border-radius:6px;font-size:13px;margin-bottom:8px">' +
-      '<button id="seGenBtn" style="width:100%;padding:8px;border:none;border-radius:6px;background:#7c3aed;color:#fff;cursor:pointer;font-size:14px">🎯 生成试卷</button>';
+      '<input id="seKp" type="text" placeholder="知识点（可选，如：图形推理）" style="width:100%;box-sizing:border-box;padding:6px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;margin-bottom:8px">' +
+      '<button id="seGenBtn" style="width:100%;padding:8px;border:none;border-radius:6px;background:var(--gold-deep);color:#fff;cursor:pointer;font-size:14px">🎯 生成试卷</button>';
 
     document.getElementById('seGenBtn').onclick = function () {
       var btn = this;
@@ -153,18 +159,104 @@
     };
   }
 
+  // -----------------------------------------------------------------
+  // 批次12b 在线模考
+  // -----------------------------------------------------------------
+  var MOCK_CATS = [['判断推理', 40], ['言语理解', 40], ['常识判断', 20], ['数量关系', 10], ['资料分析', 20]];
+
+  function toggleMockBox() {
+    var box = document.getElementById('seMockBox');
+    if (!box) return;
+    var show = box.style.display === 'none';
+    box.style.display = show ? 'block' : 'none';
+    if (!show) return;
+    box.innerHTML = '<p style="color:var(--ink-3);font-size:12px">加载可考卷…</p>';
+    global.GK.api('/smartexam/mock/options').then(function (d) {
+      var opts = (d.papers || []).map(function (x) {
+        return '<option value="' + escapeHtml(x.source) + '">' + escapeHtml(x.source) + '（' + x.count + ' 题）</option>';
+      }).join('');
+      var mixRows = MOCK_CATS.map(function (m, i) {
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)">' + m[0] +
+          ' <input id="seMix' + i + '" type="number" min="0" max="99" value="' + ((d.default_mix || {})[m[0]] != null ? (d.default_mix || {})[m[0]] : m[1]) + '" style="width:52px;padding:3px;border:1px solid var(--line-2);border-radius:5px">' + '题</label>';
+      }).join('');
+      box.innerHTML =
+        '<div style="font-size:12.5px;font-weight:700;color:var(--bad);margin-bottom:6px">考试模式（限时一次交卷）</div>' +
+        '<div style="font-size:12px;color:var(--ink-2);margin-bottom:4px">.mode 真题卷（整卷原序）</div>' +
+        '<select id="seMockPaper" style="width:100%;padding:6px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;margin-bottom:8px">' +
+          '<option value="">— 结构组卷（按下方配比）—</option>' + opts + '</select>' +
+        '<div style="font-size:12px;color:var(--ink-2);margin:6px 0 3px">结构配比（选「结构组卷」时生效）</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">' + mixRows + '</div>' +
+        '<div style="font-size:12px;color:var(--ink-2);margin-bottom:4px">考试时长</div>' +
+        '<select id="seMockDur" style="width:100%;padding:6px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;margin-bottom:8px">' +
+          '<option value="90">90 分钟</option><option value="120" selected>120 分钟</option><option value="150">150 分钟</option></select>' +
+        '<button id="seMockStart" style="width:100%;padding:8px;border:none;border-radius:6px;background:var(--bad);color:#fff;cursor:pointer;font-size:13.5px">🎯 开始模考</button>' +
+        '<div style="font-size:11.5px;color:var(--ink-3);margin-top:5px">到时未交卷将自动提交，未答题按错误计分</div>';
+      document.getElementById('seMockStart').onclick = startMock;
+    }).catch(function (e) {
+      box.innerHTML = '<p style="color:var(--bad);font-size:12.5px">加载失败: ' + escapeHtml(String(e && e.message || e)) + '</p>';
+    });
+  }
+
+  function startMock() {
+    var source = document.getElementById('seMockPaper').value;
+    var mix = {};
+    MOCK_CATS.forEach(function (m, i) {
+      var el = document.getElementById('seMix' + i);
+      var v = el ? parseInt(el.value, 10) || 0 : 0;
+      if (v > 0) mix[m[0]] = v;
+    });
+    var body = { source: source, mix: source ? {} : mix, duration_mins: parseInt(document.getElementById('seMockDur').value, 10) || 120 };
+    if (!source && !Object.keys(mix).length) { showToast('请选择真题卷或填写结构配比', 'error'); return; }
+    global.GK.api('/smartexam/mock/generate', { method: 'POST', body: body, timeout: 30000 }).then(function (p) {
+      showToast('模考开始，计时中 ⏱', 'success');
+      openPaper(p.id, p);
+    }).catch(function (e) {
+      showToast('生成失败: ' + (e && e.message ? e.message : e), 'error');
+    });
+  }
+
+  function isMockPaper(p) {
+    return !!(p && p.config && p.config.exam_mode === 'mock' && p.status !== 'graded');
+  }
+
+  function stopMockTimer() {
+    if (state.mockTimer) { clearInterval(state.mockTimer); state.mockTimer = null; }
+  }
+
+  function startMockCountdown(deadline) {
+    stopMockTimer();
+    var el = function () { return document.getElementById('seCountdown'); };
+    function tick() {
+      var node = el();
+      if (!node) { stopMockTimer(); return; }
+      var left = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
+      var h = String(Math.floor(left / 3600)).padStart(2, '0');
+      var m2 = String(Math.floor((left % 3600) / 60)).padStart(2, '0');
+      var s2 = String(left % 60).padStart(2, '0');
+      node.textContent = '⏱ 剩余 ' + h + ':' + m2 + ':' + s2;
+      node.style.color = left < 300 ? 'var(--bad)' : '#b45309';
+      if (left <= 0) {
+        stopMockTimer();
+        showToast('考试时间到，自动交卷', 'error');
+        submitAnswers(true);
+      }
+    }
+    tick();
+    state.mockTimer = setInterval(tick, 1000);
+  }
+
   function loadList() {
     global.GK.api('/smartexam/papers').then(function (d) {
       var papers = d.papers || [];
       var area = document.getElementById('seListArea');
       if (!area) return;
       if (!papers.length) {
-        area.innerHTML = '<div style="padding:26px 10px;text-align:center;color:#aaa;font-size:13px">还没有组卷记录<br>点击上方「生成新试卷」开始</div>';
+        area.innerHTML = '<div style="padding:26px 10px;text-align:center;color:var(--ink-3);font-size:13px">还没有组卷记录<br>点击上方「生成新试卷」开始</div>';
         return;
       }
       var html = papers.map(function (p) {
         var statusHtml = p.status === 'graded'
-          ? '<span style="display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:11px;background:#30a46c">已评分</span>'
+          ? '<span style="display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:11px;background:var(--good)">已评分</span>'
           : '<span style="display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:11px;background:#f59e0b">待作答</span>';
         var scoreHtml = p.score != null
           ? ' · 得分 ' + Math.round(p.score * 100) + '%' : '';
@@ -172,14 +264,14 @@
         var opts = [];
         if (cfg.category) opts.push(cfg.category);
         if (cfg.qtype) opts.push(QTYPES.filter(function (t) { return t[0] === cfg.qtype; }).map(function (t) { return t[1]; })[0] || cfg.qtype);
-        return '<div class="se-paper-row" data-pid="' + p.id + '" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;background:#fff">' +
+        return '<div class="se-paper-row" data-pid="' + p.id + '" style="border:1px solid var(--line-2);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;background:#fff">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
             '<div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(p.title || '未命名') + '</div>' +
             statusHtml +
           '</div>' +
-          '<div style="font-size:12px;color:#888;margin-top:4px">' + p.total + ' 题' + scoreHtml +
+          '<div style="font-size:12px;color:var(--ink-3);margin-top:4px">' + p.total + ' 题' + scoreHtml +
             (opts.length ? ' · ' + opts.join(' / ') : '') + '</div>' +
-          '<div style="font-size:12px;color:#999;margin-top:2px">' + escapeHtml((p.updated_at || '').slice(5, 16).replace('T', ' ')) + '</div>' +
+          '<div style="font-size:12px;color:var(--ink-3);margin-top:2px">' + escapeHtml((p.updated_at || '').slice(5, 16).replace('T', ' ')) + '</div>' +
         '</div>';
       }).join('');
       area.innerHTML = html;
@@ -188,7 +280,7 @@
       });
     }).catch(function (e) {
       var area = document.getElementById('seListArea');
-      if (area) area.innerHTML = '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>';
+      if (area) area.innerHTML = '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>';
     });
   }
 
@@ -218,8 +310,8 @@
       }
     }).catch(function (e) {
       getPanel().innerHTML =
-        '<h3>🧩 智能组卷</h3><p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>' +
-        '<button onclick="C6.openSmartExam()" style="padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">返回列表</button>' +
+        '<h3>🧩 智能组卷</h3><p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>' +
+        '<button onclick="C6.openSmartExam()" style="padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">返回列表</button>' +
         closeBtnHtml();
     });
   }
@@ -236,7 +328,7 @@
       if (q.qtype === 'choice' && q.options && q.options.length) {
         inputHtml = '<div style="margin-top:6px">' + q.options.map(function (o) {
           var letter = String(o).trim().charAt(0);
-          return '<label style="display:block;padding:5px 10px;margin-bottom:5px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:13px">' +
+          return '<label style="display:block;padding:5px 10px;margin-bottom:5px;border:1px solid var(--line-2);border-radius:6px;cursor:pointer;font-size:13px">' +
             '<input type="radio" name="se_opt_' + qid + '" value="' + escapeHtml(letter) + '" style="margin-right:6px">' +
             '<span style="display:inline-block;max-width:86%">' + renderQText(String(o)) + '</span></label>';
         }).join('') + '</div>';
@@ -245,72 +337,109 @@
           '<label style="margin-right:16px"><input type="radio" name="se_opt_' + qid + '" value="对" style="margin-right:4px">对</label>' +
           '<label><input type="radio" name="se_opt_' + qid + '" value="错" style="margin-right:4px">错</label></div>';
       } else {
-        inputHtml = '<textarea data-essay="' + qid + '" placeholder="请输入作答…" style="width:100%;box-sizing:border-box;height:70px;border:1px solid #d0d4de;border-radius:6px;padding:8px;font-size:13px;resize:vertical;margin-top:6px"></textarea>';
+        inputHtml = '<textarea data-essay="' + qid + '" placeholder="请输入作答…" style="width:100%;box-sizing:border-box;height:70px;border:1px solid var(--line-2);border-radius:6px;padding:8px;font-size:13px;resize:vertical;margin-top:6px"></textarea>';
       }
-      return '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:10px;background:#fff">' +
-        '<div style="font-size:12px;color:#888;margin-bottom:4px">第 ' + (i + 1) + ' 题 · ' + (typeLabel[q.qtype] || q.qtype) +
-          (q.category ? ' · <span style="color:#4a6cf7">' + escapeHtml(q.category) + '</span>' : '') + '</div>' +
+      return '<div style="border:1px solid var(--line-2);border-radius:8px;padding:10px;margin-bottom:10px;background:#fff">' +
+        '<div style="font-size:12px;color:var(--ink-3);margin-bottom:4px">第 ' + (i + 1) + ' 题 · ' + (typeLabel[q.qtype] || q.qtype) +
+          (q.category ? ' · <span style="color:var(--wood)">' + escapeHtml(q.category) + '</span>' : '') + '</div>' +
         '<div style="font-weight:600;font-size:14px;white-space:pre-wrap;line-height:1.6">' + renderQText(q.question) + '</div>' +
         inputHtml +
       '</div>';
     }).join('');
 
+    var mockOn = isMockPaper(p);
+    var countdownHtml = mockOn
+      ? '<div id="seCountdown" style="position:sticky;top:0;z-index:5;margin:0 -20px 10px;padding:8px 20px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:14px;font-weight:700;text-align:center;color:#b45309"></div>'
+      : '';
     container.innerHTML =
+      countdownHtml +
       '<h3 style="margin:0 0 4px">🧩 ' + escapeHtml(p.title || '智能组卷') + '</h3>' +
-      '<div style="font-size:12px;color:#888;margin-bottom:8px">共 ' + qs.length + ' 题 · 提交后客观题自动评分</div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px">共 ' + qs.length + ' 题 · ' + (mockOn ? '限时作答，到时自动交卷' : '提交后客观题自动评分') + '</div>' +
       body +
       '<div style="display:flex;gap:8px;margin-top:4px">' +
-        '<button id="seSubmitBtn" style="flex:1;padding:9px;border:none;border-radius:6px;background:#7c3aed;color:#fff;cursor:pointer;font-size:14px">提交试卷</button>' +
-        '<button onclick="C6.openSmartExam()" style="padding:9px 14px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">返回</button>' +
+        '<button id="seSubmitBtn" style="flex:1;padding:9px;border:none;border-radius:6px;background:var(--gold-deep);color:#fff;cursor:pointer;font-size:14px">提交试卷</button>' +
+        '<button onclick="C6.openSmartExam()" style="padding:9px 14px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">返回</button>' +
       '</div>' +
       closeBtnHtml();
 
-    document.getElementById('seSubmitBtn').onclick = function () {
-      var answers = {};
-      var missing = 0;
-      qs.forEach(function (q) {
-        var qid = String(q.id);
-        if (q.qtype === 'choice' || q.qtype === 'judge') {
-          var checked = container.querySelector('input[name="se_opt_' + qid + '"]:checked');
-          if (checked) answers[qid] = checked.value;
-          else missing++;
-        } else {
-          var ta = container.querySelector('textarea[data-essay="' + qid + '"]');
-          answers[qid] = ta ? ta.value.trim() : '';
-        }
-      });
-      var btn = this;
-      btn.disabled = true;
-      btn.textContent = '评分中...';
-      global.GK.api('/smartexam/papers/' + state.paperId + '/submit', {
-        method: 'POST', body: { answers: answers }, timeout: 30000
-      }).then(function (r) {
-        showToast('评分完成', 'success');
-        fetchPaper();
-      }).catch(function (e) {
-        btn.disabled = false;
-        btn.textContent = '提交试卷';
-        showToast('提交失败: ' + (e && e.message ? e.message : e), 'error');
-      });
-    };
+    document.getElementById('seSubmitBtn').onclick = function () { submitAnswers(false); };
+    // 批次12b：模考卷启动倒计时（从 config.deadline 计算，重开页面也能续算）
+    if (mockOn && p.config && p.config.deadline) {
+      startMockCountdown(p.config.deadline);
+    }
+  }
+
+  function submitAnswers(auto) {
+    var p = state.paper;
+    if (!p) return;
+    var container = getPanel();
+    var qs = p.questions || [];
+    var answers = {};
+    var missing = 0;
+    qs.forEach(function (q) {
+      var qid = String(q.id);
+      if (q.qtype === 'choice' || q.qtype === 'judge') {
+        var checked = container.querySelector('input[name="se_opt_' + qid + '"]:checked');
+        if (checked) answers[qid] = checked.value;
+        else missing++;
+      } else {
+        var ta = container.querySelector('textarea[data-essay="' + qid + '"]');
+        answers[qid] = ta ? ta.value.trim() : '';
+      }
+    });
+    // #12 防误触：仍有未作答的客观题时二次确认（自动交卷不弹，超时强制收卷）
+    if (!auto && missing > 0 && !global.confirm('还有 ' + missing + ' 道题未作答，未答题将按错误计分。确定提交吗？')) {
+      return;
+    }
+    var btn = document.getElementById('seSubmitBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '评分中...'; }
+    global.GK.api('/smartexam/papers/' + state.paperId + '/submit', {
+      method: 'POST', body: { answers: answers }, timeout: 30000
+    }).then(function (r) {
+      showToast(auto ? '已到时自动交卷' : '评分完成', 'success');
+      fetchPaper();
+    }).catch(function (e) {
+      if (btn) { btn.disabled = false; btn.textContent = '提交试卷'; }
+      showToast('提交失败: ' + (e && e.message ? e.message : e), 'error');
+    });
   }
 
   function renderResult() {
+    stopMockTimer();
     var p = state.paper;
     var container = getPanel();
     var qs = p.questions || [];
     var answers = p.answers || {};
     var typeLabel = { choice: '选择', judge: '判断', essay: '简答' };
 
+    var mockCfg = (p.config && p.config.exam_mode === 'mock') ? p.config : null;
+    var catHtml = '';
+    if (mockCfg && (p.by_category || []).length) {
+      var catRows = p.by_category.map(function (c) {
+        var pctv = c.total ? Math.round(c.correct / c.total * 100) : 0;
+        var color = pctv >= 80 ? 'var(--good)' : (pctv >= 60 ? '#f59e0b' : 'var(--bad)');
+        return '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:4px">' +
+          '<span style="width:64px;color:var(--ink-2)">' + escapeHtml(c.category) + '</span>' +
+          '<div style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden">' +
+            '<div style="width:' + pctv + '%;height:100%;background:' + color + '"></div></div>' +
+          '<span style="width:74px;text-align:right;color:' + color + '">' + c.correct + '/' + c.total + ' · ' + pctv + '%</span></div>';
+      }).join('');
+      catHtml = '<div style="margin:0 0 10px;padding:10px;background:#fafbff;border:1px solid var(--line-2);border-radius:8px">' +
+        '<div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:6px">📊 模块正确率</div>' + catRows + '</div>';
+    }
+    var overtimeHtml = (mockCfg && mockCfg.overtime)
+      ? '<div style="margin:0 0 10px;padding:8px 10px;background:#fff8f0;border:1px solid #fed7aa;border-radius:8px;color:#b45309;font-size:12.5px">⏰ 超时交卷：超出考试时长，成绩仍计入</div>'
+      : '';
+
     var header =
       '<h3 style="margin:0 0 4px">🧩 ' + escapeHtml(p.title || '智能组卷') + '</h3>' +
-      '<div style="margin:6px 0 10px;padding:10px;background:#f8faff;border-radius:8px">' +
+      '<div style="margin:6px 0 10px;padding:10px;background:var(--card-2);border-radius:8px">' +
         '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
-          '<div><div style="font-size:12px;color:#888">总分</div><div style="font-size:22px;font-weight:700;color:#7c3aed">' + (p.score != null ? Math.round(p.score * 100) + '%' : '—') + '</div></div>' +
-          '<div><div style="font-size:12px;color:#888">答对</div><div style="font-size:22px;font-weight:700;color:#30a46c">' + p.correct + '</div></div>' +
-          '<div><div style="font-size:12px;color:#888">客观题</div><div style="font-size:22px;font-weight:700">' + (qs.length - (p.essay_pending || 0)) + '</div></div>' +
+          '<div><div style="font-size:12px;color:var(--ink-3)">总分</div><div style="font-size:22px;font-weight:700;color:var(--gold-deep)">' + (p.score != null ? Math.round(p.score * 100) + '%' : '—') + '</div></div>' +
+          '<div><div style="font-size:12px;color:var(--ink-3)">答对</div><div style="font-size:22px;font-weight:700;color:var(--good)">' + p.correct + '</div></div>' +
+          '<div><div style="font-size:12px;color:var(--ink-3)">客观题</div><div style="font-size:22px;font-weight:700">' + (qs.length - (p.essay_pending || 0)) + '</div></div>' +
         '</div>' +
-      '</div>';
+      '</div>' + overtimeHtml + catHtml;
 
     var body = qs.map(function (q, i) {
       var qid = String(q.id);
@@ -323,21 +452,21 @@
           var norm = { '对': '对', '错': '错', '正确': '对', '错误': '错', 'T': '对', 'F': '错' };
           ok = (norm[String(ua).trim().toUpperCase()] || String(ua).trim()) === String(correct).trim();
         }
-        resultHtml = '<div style="margin-top:8px;padding:8px;border-radius:6px;font-size:13px;background:' + (ok ? '#e6f9f0' : '#fff8f0') + '">' +
+        resultHtml = '<div style="margin-top:8px;padding:8px;border-radius:6px;font-size:13px;background:' + (ok ? '#e3ecda' : '#fff8f0') + '">' +
           '<div><strong>' + (ok ? '✓ 正确' : '✗ 错误') + '</strong> 我的答案：' + escapeHtml(ua || '未作答') + '</div>' +
-          (!ok ? '<div style="color:#30a46c">正确答案：' + escapeHtml(correct) + '</div>' : '') +
-          (q.analysis ? '<div style="margin-top:4px;color:#666;white-space:pre-wrap">' + renderQText(q.analysis) + '</div>' : '') +
+          (!ok ? '<div style="color:var(--good)">正确答案：' + escapeHtml(correct) + '</div>' : '') +
+          (q.analysis ? '<div style="margin-top:4px;color:var(--ink-2);white-space:pre-wrap">' + renderQText(q.analysis) + '</div>' : '') +
         '</div>';
       } else {
-        resultHtml = '<div style="margin-top:8px;padding:8px;border-radius:6px;font-size:13px;background:#f5f0ff">' +
-          '<div style="color:#7c3aed">✍ 主观题 · 待批改</div>' +
-          (ua ? '<div style="margin-top:4px;color:#555;white-space:pre-wrap">作答：' + escapeHtml(ua) + '</div>' : '') +
-          (q.answer ? '<div style="margin-top:4px;color:#30a46c">参考要点：' + escapeHtml(q.answer) + '</div>' : '') +
+        resultHtml = '<div style="margin-top:8px;padding:8px;border-radius:6px;font-size:13px;background:var(--gold-soft)">' +
+          '<div style="color:var(--gold-deep)">✍ 主观题 · 待批改</div>' +
+          (ua ? '<div style="margin-top:4px;color:var(--ink-2);white-space:pre-wrap">作答：' + escapeHtml(ua) + '</div>' : '') +
+          (q.answer ? '<div style="margin-top:4px;color:var(--good)">参考要点：' + escapeHtml(q.answer) + '</div>' : '') +
         '</div>';
       }
-      return '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:10px;background:#fff">' +
-        '<div style="font-size:12px;color:#888;margin-bottom:4px">第 ' + (i + 1) + ' 题 · ' + (typeLabel[q.qtype] || q.qtype) +
-          (q.category ? ' · <span style="color:#4a6cf7">' + escapeHtml(q.category) + '</span>' : '') + '</div>' +
+      return '<div style="border:1px solid var(--line-2);border-radius:8px;padding:10px;margin-bottom:10px;background:#fff">' +
+        '<div style="font-size:12px;color:var(--ink-3);margin-bottom:4px">第 ' + (i + 1) + ' 题 · ' + (typeLabel[q.qtype] || q.qtype) +
+          (q.category ? ' · <span style="color:var(--wood)">' + escapeHtml(q.category) + '</span>' : '') + '</div>' +
         '<div style="font-weight:600;font-size:14px;white-space:pre-wrap;line-height:1.6">' + renderQText(q.question) + '</div>' +
         resultHtml +
       '</div>';
@@ -345,8 +474,8 @@
 
     container.innerHTML = header + body +
       '<div style="display:flex;gap:8px;margin-top:4px">' +
-        '<button onclick="C6.openSmartExam()" style="flex:1;padding:8px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">返回列表</button>' +
-        '<button id="seDelBtn" style="padding:8px 14px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff;cursor:pointer">删除</button>' +
+        '<button onclick="C6.openSmartExam()" style="flex:1;padding:8px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">返回列表</button>' +
+        '<button id="seDelBtn" style="padding:8px 14px;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff;cursor:pointer">删除</button>' +
       '</div>' +
       closeBtnHtml();
 

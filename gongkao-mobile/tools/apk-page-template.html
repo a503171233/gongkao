@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>公考学习 App 下载</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+background:linear-gradient(160deg,#fdf9ee 0%,#f7efdb 100%);min-height:100vh;
+display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.icon{width:96px;height:96px;border-radius:22px;background:#C9A227;color:#fff;
+font-size:40px;font-weight:700;display:flex;align-items:center;justify-content:center;
+box-shadow:0 8px 24px rgba(201,162,39,.35)}
+h1{font-size:22px;color:#222;margin:16px 0 4px}
+.sub{font-size:14px;color:#888;margin-bottom:28px}
+.btn{display:block;width:100%;max-width:320px;text-align:center;text-decoration:none;
+background:#C9A227;color:#fff;font-size:17px;font-weight:600;padding:14px 0;
+border-radius:12px;box-shadow:0 6px 16px rgba(201,162,39,.35);border:none;cursor:pointer}
+.btn:active{opacity:.85}
+.alt{margin-top:14px;font-size:13px;color:#666;text-align:center;line-height:1.8}
+.alt a{color:#8a6d1a}
+.tip{font-size:12px;color:#999;margin-top:18px;text-align:center;line-height:1.8}
+#mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9;
+color:#fff;padding:70px 28px;text-align:center}
+#mask .arrow{font-size:52px;line-height:1;display:block;margin-bottom:8px;transform:rotate(-35deg)}
+#mask p{font-size:17px;line-height:2;margin-top:6px}
+#mask b{color:#FFD966}
+#ok{display:none;margin-top:14px;font-size:14px;color:#2e7d32}
+</style>
+</head>
+<body>
+<div class="icon">GK</div>
+<h1>公考学习</h1>
+<div class="sub" id="ver">__VN__ 在线更新版 · Android 安装包（独立客户端，非网页壳）（约 148KB）</div>
+<button class="btn" id="dl">下载安装包</button>
+<div id="ok">已开始下载，请到通知栏/下载列表查看 ⬇</div>
+<div class="alt">没有开始下载？<a href="gongkao.apk">点此直链下载</a></div>
+<div class="tip">安装时如提示「禁止安装未知应用」<br>请允许后再继续 · 支持 Android 7.0 及以上</div>
+
+<div id="mask">
+  <span class="arrow">⤴</span>
+  <p>微信内无法下载 App<br>请点右上角 <b>···</b><br>选择 <b>「在浏览器打开」</b><br>再点下载按钮</p>
+</div>
+
+<script>
+var B64 = "__B64__";
+var ua = navigator.userAgent || '';
+if (/MicroMessenger/i.test(ua) || /QQ\//i.test(ua)) {
+  document.getElementById('mask').style.display = 'block';
+  document.getElementById('dl').style.display = 'none';
+  document.getElementById('ver').textContent = '__VN__ · 请先在浏览器中打开本页';
+} else {
+  document.getElementById('dl').addEventListener('click', function () {
+    var a = document.createElement('a');
+    a.href = 'data:application/vnd.android.package-archive;base64,' + B64;
+    a.download = 'gongkao-__VN__.apk';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    document.getElementById('ok').style.display = 'block';
+  });
+}
+</script>
+</body>
+</html>

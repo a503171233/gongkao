@@ -36,7 +36,7 @@
 
   function requireLogin() {
     if (currentUserId() === 'anonymous') {
-      alert('请先登录后使用模考解析');
+      global.GK.promptLogin('模考解析');
       return false;
     }
     return true;
@@ -45,7 +45,7 @@
   function showToast(msg, type) {
     var div = document.createElement('div');
     div.style.cssText = 'position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;box-shadow:0 2px 12px rgba(0,0,0,.15);';
-    div.style.background = type === 'error' ? '#e5484d' : (type === 'success' ? '#30a46c' : '#4a6cf7');
+    div.style.background = type === 'error' ? 'var(--bad)' : (type === 'success' ? 'var(--good)' : 'var(--wood)');
     div.textContent = msg;
     document.body.appendChild(div);
     setTimeout(function () { div.remove(); }, 3200);
@@ -56,7 +56,7 @@
     if (!container) {
       container = document.createElement('div');
       container.id = 'c4Panel';
-      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:440px;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
+      container.style.cssText = 'position:fixed;right:0;top:60px;bottom:0;width:440px;max-width:100vw;background:#fff;box-shadow:-2px 0 12px rgba(0,0,0,.1);z-index:100;overflow-y:auto;padding:20px;';
       document.body.appendChild(container);
     }
     return container;
@@ -64,7 +64,7 @@
 
   function closeBtnHtml() {
     return '<div style="margin-top:14px;text-align:center">' +
-      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="padding:8px 20px;border:none;border-radius:6px;background:#f0f2f7;cursor:pointer">关闭</button></div>';
+      '<button onclick="document.getElementById(\'c4Panel\').remove()" style="padding:8px 20px;border:none;border-radius:6px;background:var(--paper-2);cursor:pointer">关闭</button></div>';
   }
 
   function stopPoll() {
@@ -80,18 +80,18 @@
 
   function statusChip(p) {
     var map = { pending: '排队中', extracting: '识别题目中', answering: '作答解析中', ready: '已完成', failed: '已失败' };
-    var colors = { pending: '#8b8fa3', extracting: '#f59e0b', answering: '#4a6cf7', ready: '#30a46c', failed: '#e5484d' };
+    var colors = { pending: 'var(--ink-3)', extracting: '#f59e0b', answering: 'var(--wood)', ready: 'var(--good)', failed: 'var(--bad)' };
     var t = map[p.status] || p.status;
-    return '<span style="display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:11px;background:' + (colors[p.status] || '#999') + '">' + t + '</span>';
+    return '<span style="display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:11px;background:' + (colors[p.status] || 'var(--ink-3)') + '">' + t + '</span>';
   }
 
   function progressHtml(p) {
     if (!p.total_questions) return '';
     var pct = Math.round((p.done_questions + p.failed_questions) / p.total_questions * 100);
     pct = Math.max(0, Math.min(100, pct));
-    return '<div style="height:8px;border-radius:4px;background:#eef0f6;overflow:hidden;margin:6px 0 4px">' +
-      '<div style="height:100%;width:' + pct + '%;background:#4a6cf7;transition:width .4s"></div></div>' +
-      '<div style="font-size:12px;color:#666">' + p.done_questions + ' 题已作答 · ' + p.failed_questions + ' 题失败 · 共 ' + p.total_questions + ' 题（' + pct + '%）</div>';
+    return '<div style="height:8px;border-radius:4px;background:var(--paper-2);overflow:hidden;margin:6px 0 4px">' +
+      '<div style="height:100%;width:' + pct + '%;background:var(--wood);transition:width .4s"></div></div>' +
+      '<div style="font-size:12px;color:var(--ink-2)">' + p.done_questions + ' 题已作答 · ' + p.failed_questions + ' 题失败 · 共 ' + p.total_questions + ' 题（' + pct + '%）</div>';
   }
 
   // -----------------------------------------------------------------
@@ -110,10 +110,10 @@
     var container = getPanel();
     container.innerHTML =
       '<h3 style="margin:0 0 4px">📝 模考解析</h3>' +
-      '<div style="font-size:12px;color:#888;margin-bottom:10px">上传/粘贴整套行测或申论试卷，由对应题型老师逐题作答并解析</div>' +
-      '<button id="mockNewBtn" style="width:100%;padding:9px;border:1px dashed #4a6cf7;color:#4a6cf7;border-radius:8px;background:#f7f9ff;cursor:pointer;font-size:14px">＋ 新建模考解析</button>' +
-      '<div id="mockNewBox" style="display:none;margin-top:10px;border:1px solid #e5e7eb;border-radius:8px;padding:10px"></div>' +
-      '<div id="mockListArea" style="margin-top:12px"><p style="color:#999">加载中...</p></div>' +
+      '<div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">上传/粘贴整套行测或申论试卷，由对应题型老师逐题作答并解析</div>' +
+      '<button id="mockNewBtn" style="width:100%;padding:9px;border:1px dashed var(--wood);color:var(--wood);border-radius:8px;background:var(--card-2);cursor:pointer;font-size:14px">＋ 新建模考解析</button>' +
+      '<div id="mockNewBox" style="display:none;margin-top:10px;border:1px solid var(--line-2);border-radius:8px;padding:10px"></div>' +
+      '<div id="mockListArea" style="margin-top:12px"><p style="color:var(--ink-3)">加载中...</p></div>' +
       closeBtnHtml();
 
     document.getElementById('mockNewBtn').onclick = toggleNewBox;
@@ -127,17 +127,17 @@
     if (!show) return;
     box.innerHTML =
       '<div style="display:flex;gap:6px;margin-bottom:8px">' +
-        '<button id="mockTabFile" style="flex:1;padding:6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:13px">📄 上传文件</button>' +
-        '<button id="mockTabText" style="flex:1;padding:6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:13px">📋 粘贴整卷</button>' +
+        '<button id="mockTabFile" style="flex:1;padding:6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer;font-size:13px">📄 上传文件</button>' +
+        '<button id="mockTabText" style="flex:1;padding:6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer;font-size:13px">📋 粘贴整卷</button>' +
       '</div>' +
       '<div id="mockFormBody" style="margin-top:8px"></div>' +
       '<div style="margin-top:8px;display:flex;align-items:center;gap:8px">' +
-        '<select id="mockExamType" style="padding:5px 6px;border:1px solid #d0d4de;border-radius:6px;background:#fff;font-size:13px">' +
+        '<select id="mockExamType" style="padding:5px 6px;border:1px solid var(--line-2);border-radius:6px;background:#fff;font-size:13px">' +
           '<option value="">自动判断</option><option value="行测">行测</option><option value="申论">申论</option>' +
         '</select>' +
-        '<button id="mockStartBtn" style="padding:7px 16px;border:none;border-radius:6px;background:#4a6cf7;color:#fff;cursor:pointer;font-size:14px">开始解析</button>' +
+        '<button id="mockStartBtn" style="padding:7px 16px;border:none;border-radius:6px;background:var(--wood);color:#fff;cursor:pointer;font-size:14px">开始解析</button>' +
       '</div>' +
-      '<div style="margin-top:6px;font-size:12px;color:#888">整卷识别与逐题作答需数分钟，请耐心等待，可随时关闭面板稍后回来查看。</div>';
+      '<div style="margin-top:6px;font-size:12px;color:var(--ink-3)">整卷识别与逐题作答需数分钟，请耐心等待，可随时关闭面板稍后回来查看。</div>';
 
     var fileMode = true;
     var selFile = null;
@@ -147,17 +147,17 @@
     function paintTabs() {
       var bf = document.getElementById('mockTabFile');
       var bt = document.getElementById('mockTabText');
-      bf.style.background = fileMode ? '#4a6cf7' : '#fff';
-      bf.style.color = fileMode ? '#fff' : '#333';
-      bt.style.background = !fileMode ? '#4a6cf7' : '#fff';
-      bt.style.color = !fileMode ? '#fff' : '#333';
+      bf.style.background = fileMode ? 'var(--wood)' : '#fff';
+      bf.style.color = fileMode ? '#fff' : 'var(--ink)';
+      bt.style.background = !fileMode ? 'var(--wood)' : '#fff';
+      bt.style.color = !fileMode ? '#fff' : 'var(--ink)';
       var body = document.getElementById('mockFormBody');
       if (fileMode) {
         body.innerHTML = '<input type="file" id="mockFile" accept=".md,.txt,.docx,.pptx,.pdf,.text" style="font-size:13px;width:100%">' +
-          '<div style="font-size:12px;color:#999;margin-top:4px">支持 md/txt/docx/pptx/pdf · 单文件 ≤50MB · 图片随文档识别</div>';
+          '<div style="font-size:12px;color:var(--ink-3);margin-top:4px">支持 md/txt/docx/pptx/pdf · 单文件 ≤50MB · 图片随文档识别</div>';
         document.getElementById('mockFile').onchange = function () { selFile = this.files[0] || null; };
       } else {
-        body.innerHTML = '<textarea id="mockText" placeholder="将整卷试题文本粘贴到这里（含题号，客观题带选项，作文/简答保留全文）…" style="width:100%;height:150px;border:1px solid #d0d4de;border-radius:6px;padding:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>';
+        body.innerHTML = '<textarea id="mockText" placeholder="将整卷试题文本粘贴到这里（含题号，客观题带选项，作文/简答保留全文）…" style="width:100%;height:150px;border:1px solid var(--line-2);border-radius:6px;padding:8px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>';
       }
     }
     paintTabs();
@@ -210,7 +210,7 @@
       var area = document.getElementById('mockListArea');
       if (!area) return;
       if (!papers.length) {
-        area.innerHTML = '<div style="padding:26px 10px;text-align:center;color:#aaa;font-size:13px">还没有模考解析记录<br>点击上方「新建模考解析」开始</div>';
+        area.innerHTML = '<div style="padding:26px 10px;text-align:center;color:var(--ink-3);font-size:13px">还没有模考解析记录<br>点击上方「新建模考解析」开始</div>';
         return;
       }
       var hasBusy = false;
@@ -218,14 +218,14 @@
         if (!isTerminal(p.status)) hasBusy = true;
         var meta = p.exam_type ? escapeHtml(p.exam_type) + ' · ' : '';
         meta += escapeHtml(p.title || '未命名');
-        return '<div class="mock-paper-row" data-pid="' + p.id + '" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;background:#fff">' +
+        return '<div class="mock-paper-row" data-pid="' + p.id + '" style="border:1px solid var(--line-2);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;background:#fff">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
             '<div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>' +
             statusChip(p) +
           '</div>' +
           (isTerminal(p.status) ? '' : progressHtml(p)) +
-          (p.message && p.status === 'failed' ? '<div style="font-size:12px;color:#e5484d;margin-top:4px">' + escapeHtml(p.message) + '</div>' : '') +
-          '<div style="font-size:12px;color:#999;margin-top:4px">' + p.done_questions + ' 已作答 / ' + p.total_questions + ' 题 · ' + escapeHtml((p.updated_at || '').slice(5, 16).replace('T', ' ')) + '</div>' +
+          (p.message && p.status === 'failed' ? '<div style="font-size:12px;color:var(--bad);margin-top:4px">' + escapeHtml(p.message) + '</div>' : '') +
+          '<div style="font-size:12px;color:var(--ink-3);margin-top:4px">' + p.done_questions + ' 已作答 / ' + p.total_questions + ' 题 · ' + escapeHtml((p.updated_at || '').slice(5, 16).replace('T', ' ')) + '</div>' +
         '</div>';
       }).join('');
       area.innerHTML = html;
@@ -238,7 +238,7 @@
       }
     }).catch(function (e) {
       var area = document.getElementById('mockListArea');
-      if (area) area.innerHTML = '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>';
+      if (area) area.innerHTML = '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>';
     });
   }
 
@@ -268,8 +268,8 @@
     }).catch(function (e) {
       getPanel().innerHTML =
         '<h3>📝 模考解析</h3>' +
-        '<p style="color:#e5484d">加载失败: ' + escapeHtml(e.message) + '</p>' +
-        '<button onclick="C5.openMockExam()" style="padding:8px 16px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer">返回列表</button>' +
+        '<p style="color:var(--bad)">加载失败: ' + escapeHtml(e.message) + '</p>' +
+        '<button onclick="C5.openMockExam()" style="padding:8px 16px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer">返回列表</button>' +
         closeBtnHtml();
     });
   }
@@ -279,24 +279,24 @@
     var header =
       '<h3 style="margin:0 0 4px">📝 ' + escapeHtml(p.exam_type || '') + ' ' + escapeHtml(p.title || '模考解析') + '</h3>' +
       '<div style="margin:4px 0 8px">' + statusChip(p) + '</div>' +
-      (p.message && p.status === 'failed' ? '<div style="font-size:12px;color:#e5484d;margin-bottom:6px">' + escapeHtml(p.message) + '</div>' : '') +
+      (p.message && p.status === 'failed' ? '<div style="font-size:12px;color:var(--bad);margin-bottom:6px">' + escapeHtml(p.message) + '</div>' : '') +
       '<div id="mockProgress">' + progressHtml(p) + '</div>';
 
     var summaryHtml = '';
     var s = p.summary || {};
     if (p.status === 'ready' && s.total) {
-      summaryHtml = '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin:6px 0">' +
-        '<div style="font-size:12px;color:#888;margin-bottom:4px">按老师分布</div>' +
+      summaryHtml = '<div style="border:1px solid var(--line-2);border-radius:8px;padding:8px;margin:6px 0">' +
+        '<div style="font-size:12px;color:var(--ink-3);margin-bottom:4px">按老师分布</div>' +
         Object.keys(s.teachers || {}).map(function (tname) {
           var t = s.teachers[tname];
-          return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;border-bottom:1px dashed #eef0f6">' +
+          return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;border-bottom:1px dashed var(--paper-2)">' +
             '<span>👩‍🏫 ' + escapeHtml(tname) + '</span>' +
-            '<span style="color:#666">' + t.total + ' 题 · 解析 ' + t.ok + (t.failed ? ' · 失败 ' + t.failed : '') + '</span></div>';
+            '<span style="color:var(--ink-2)">' + t.total + ' 题 · 解析 ' + t.ok + (t.failed ? ' · 失败 ' + t.failed : '') + '</span></div>';
         }).join('') +
         (Object.keys(s.categories || {}).length
-          ? '<div style="font-size:12px;color:#888;margin:6px 0 4px">按题型</div>' +
+          ? '<div style="font-size:12px;color:var(--ink-3);margin:6px 0 4px">按题型</div>' +
             Object.keys(s.categories).map(function (c) {
-              return '<span style="display:inline-block;margin:2px 4px 0 0;padding:2px 8px;border-radius:10px;background:#eef4ff;color:#4a6cf7;font-size:11px">' +
+              return '<span style="display:inline-block;margin:2px 4px 0 0;padding:2px 8px;border-radius:10px;background:var(--gold-soft);color:var(--wood);font-size:11px">' +
                 escapeHtml(c) + ' · ' + s.categories[c] + '</span>';
             }).join('')
           : '') +
@@ -305,10 +305,10 @@
 
     var actions =
       '<div style="display:flex;gap:6px;margin:4px 0 10px">' +
-        '<button onclick="C5.openMockExam()" style="padding:5px 12px;border:1px solid #d0d4de;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">‹ 返回列表</button>' +
+        '<button onclick="C5.openMockExam()" style="padding:5px 12px;border:1px solid var(--line-2);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">‹ 返回列表</button>' +
         (isTerminal(p.status) && !state.questionsLoaded
           ? '<button id="mockRetryBtn" style="padding:5px 12px;border:1px solid #f59e0b;color:#b45309;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🔄 重新解析</button>' : '') +
-        '<button id="mockDelBtn" style="padding:5px 12px;border:1px solid #e5484d;color:#e5484d;border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🗑 删除</button>' +
+        '<button id="mockDelBtn" style="padding:5px 12px;border:1px solid var(--bad);color:var(--bad);border-radius:6px;background:#fff;cursor:pointer;font-size:12px">🗑 删除</button>' +
       '</div>';
 
     container.innerHTML = header + actions + '<div id="mockSummary">' + summaryHtml + '</div>' +
@@ -343,7 +343,7 @@
       var area = document.getElementById('mockQuestionArea');
       if (!area) return;
       if (!qs.length) {
-        area.innerHTML = '<div style="padding:18px;text-align:center;color:#999;font-size:13px">暂无题目</div>';
+        area.innerHTML = '<div style="padding:18px;text-align:center;color:var(--ink-3);font-size:13px">暂无题目</div>';
         return;
       }
       var typeLabel = { choice: '选择', judge: '判断', essay: '简答' };
@@ -355,26 +355,26 @@
           }).join('') + '</div>';
         }
         var answerHtml = q.status === 'ok'
-          ? '<div style="margin-top:8px;background:#f7faf8;border:1px solid #e3efe9;border-radius:6px;padding:8px">' +
-              '<div style="color:#1a7f4b;font-weight:600;margin-bottom:4px">✔ 参考答案：' + escapeHtml(q.answer || '') + '</div>' +
+          ? '<div style="margin-top:8px;background:var(--card-2);border:1px solid #e3efe9;border-radius:6px;padding:8px">' +
+              '<div style="color:#5f7d52;font-weight:600;margin-bottom:4px">✔ 参考答案：' + escapeHtml(q.answer || '') + '</div>' +
               (q.analysis ? '<div style="font-size:13px;white-space:pre-wrap;line-height:1.6">' + renderQText(q.analysis) + '</div>' : '') +
             '</div>'
           : q.status === 'failed'
             ? '<div style="margin-top:8px;background:#fdf0f0;border:1px solid #f3d3d3;border-radius:6px;padding:8px;color:#c0392b;font-size:13px">❌ 本题作答解析失败：' + escapeHtml(q.error || '') + '</div>'
             : '';
         var teacherBadge = q.teacher_name
-          ? '<span style="display:inline-block;padding:1px 8px;border-radius:9px;background:#f3f0ff;color:#7c3aed;font-size:11px;margin-right:4px">👩‍🏫 ' + escapeHtml(q.teacher_name) + '</span>' : '';
+          ? '<span style="display:inline-block;padding:1px 8px;border-radius:9px;background:var(--gold-soft);color:var(--gold-deep);font-size:11px;margin-right:4px">👩‍🏫 ' + escapeHtml(q.teacher_name) + '</span>' : '';
         var catBadge = q.category
-          ? '<span style="display:inline-block;padding:1px 8px;border-radius:9px;background:#eef4ff;color:#4a6cf7;font-size:11px;margin-right:4px">' + escapeHtml(q.category) + '</span>' : '';
-        return '<div class="mock-qcard" data-expand="0" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff">' +
-          '<div style="font-size:12px;color:#666;margin-bottom:4px">第 ' + q.idx + ' 题 · ' + (typeLabel[q.qtype] || q.qtype) + catBadge + teacherBadge +
-          '<span style="float:right;color:#4a6cf7;font-size:12px" class="mock-toggle">查看作答 ▾</span></div>' +
+          ? '<span style="display:inline-block;padding:1px 8px;border-radius:9px;background:var(--gold-soft);color:var(--wood);font-size:11px;margin-right:4px">' + escapeHtml(q.category) + '</span>' : '';
+        return '<div class="mock-qcard" data-expand="0" style="border:1px solid var(--line-2);border-radius:8px;padding:10px;margin-bottom:8px;background:#fff">' +
+          '<div style="font-size:12px;color:var(--ink-2);margin-bottom:4px">第 ' + q.idx + ' 题 · ' + (typeLabel[q.qtype] || q.qtype) + catBadge + teacherBadge +
+          '<span style="float:right;color:var(--wood);font-size:12px" class="mock-toggle">查看作答 ▾</span></div>' +
           '<div style="font-weight:600;font-size:14px;white-space:pre-wrap;line-height:1.6">' + renderQText(q.question) + '</div>' +
           optsHtml +
           '<div class="mock-answer" style="display:none">' + answerHtml + '</div>' +
         '</div>';
       }).join('');
-      area.innerHTML = '<div style="font-size:12px;color:#888;margin:2px 0 8px">共 ' + qs.length + ' 题 · 点击卡片展开/收起作答解析</div>' + html;
+      area.innerHTML = '<div style="font-size:12px;color:var(--ink-3);margin:2px 0 8px">共 ' + qs.length + ' 题 · 点击卡片展开/收起作答解析</div>' + html;
       area.querySelectorAll('.mock-qcard').forEach(function (card) {
         card.onclick = function () {
           var openNow = card.getAttribute('data-expand') !== '1';
@@ -387,7 +387,7 @@
       });
     }).catch(function (e) {
       var area = document.getElementById('mockQuestionArea');
-      if (area) area.innerHTML = '<p style="color:#e5484d">题目加载失败: ' + escapeHtml(e.message) + '</p>';
+      if (area) area.innerHTML = '<p style="color:var(--bad)">题目加载失败: ' + escapeHtml(e.message) + '</p>';
     });
   }
 

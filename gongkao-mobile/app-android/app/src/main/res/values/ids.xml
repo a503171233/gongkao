@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 批次28：代码内异步任务标记 id（ImgLoad 防串图 tag 键） -->
+<resources>
+    <item name="img_job" type="id" />
+</resources>

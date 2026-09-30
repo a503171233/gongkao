@@ -52,6 +52,25 @@
   var _sending = false;   // 防连点
   var _pageSize = 30;     // 会话分页：每页 30 条
   var _loadedAll = false; // 是否已加载全部
+  // 27-N P2-16：当前流的 AbortController 与发送态复位钩子。
+  // 此前 GK.sse 返回的 controller 全站无人调用 abort，a4 的 AbortError
+  // 分支成为死代码；且切老师/新会话后旧流仍在推送（污染新会话渲染）。
+  // 现在生命周期收口：新会话/删除会话时主动断旧流并复位发送态。
+  var _sseCtl = null;
+  var _finishSend = null;
+
+  function abortActiveStream() {
+    if (_sseCtl) {
+      var ctl = _sseCtl;
+      _sseCtl = null;
+      try { ctl.abort(); } catch (e) { /* abort 失败不影响后续 */ }
+    }
+    if (_finishSend) {
+      var fin = _finishSend;
+      _finishSend = null;
+      fin();   // 复位 _sending/按钮/焦点/列表（abort 不触发 done/error 回调）
+    }
+  }
 
   // -----------------------------------------------------------------
   // 3. 内部工具
@@ -189,9 +208,18 @@
   // 6. 新建会话：清空 session_id，下次 ask 由后端自动创建
   // -----------------------------------------------------------------
   function newSession(hint) {
+    // 27-N P2-16：旧流还在推送时先断开，防污染新会话
+    abortActiveStream();
     global.GK.store.sessionId = '';
     broadcast('render:clear', { hint: hint || '新会话已开始，请提问。' });
     if (queryEl) queryEl.focus();
+    // 27-N P2-12：「＋新会话」点击后的可感知反馈（一次性高亮）
+    if (newSessionBtn) {
+      newSessionBtn.classList.remove('gk-flash');
+      void newSessionBtn.offsetWidth;
+      newSessionBtn.classList.add('gk-flash');
+      setTimeout(function () { newSessionBtn.classList.remove('gk-flash'); }, 900);
+    }
     loadSessions(true);
   }
 
@@ -203,6 +231,7 @@
     try {
       await global.GK.api('/sessions/' + encodeURIComponent(sid), { method: 'DELETE' });
       if (sid === global.GK.store.sessionId) {
+        abortActiveStream();   // 27-N P2-16：删当前会话时断开仍在推送的旧流
         global.GK.store.sessionId = '';
         broadcast('render:clear', { hint: '会话已删除，开始新对话吧。' });
       }
@@ -219,14 +248,39 @@
   // -----------------------------------------------------------------
   function send() {
     var q = queryEl ? queryEl.value.trim() : '';
-    if (!q || _sending) return;
+    // 批次28：附件就绪数 >0 且输入为空 → 自动补问题文案（/ask 要求 query 非空）。
+    // 必须在空输入校验之前：有附件时空文本是合法发送，不应触发 shake 反馈。
+    var attCount = (global.GK.attach && global.GK.attach.count()) || 0;
+    if (!q && attCount > 0) {
+      q = '请结合我上传的内容进行讲解。';
+      if (queryEl) queryEl.value = q;
+    }
+    // 批次27-M10：空输入点「发送」给轻反馈（占位文案提示 + 输入框轻晃），不再静默
+    if (!q) {
+      if (queryEl) {
+        if (!queryEl.dataset.ph) queryEl.dataset.ph = queryEl.placeholder || '';
+        queryEl.classList.remove('gk-shake');
+        void queryEl.offsetWidth;   // 重启动画
+        queryEl.classList.add('gk-shake');
+        queryEl.placeholder = '先输入问题，再点发送哦';
+        queryEl.focus();
+        clearTimeout(send._phT);
+        send._phT = setTimeout(function () {
+          queryEl.classList.remove('gk-shake');
+          queryEl.placeholder = queryEl.dataset.ph || '';
+        }, 1800);
+      }
+      return;
+    }
+    if (_sending) return;
 
     _sending = true;
     if (sendBtn) sendBtn.disabled = true;
     if (queryEl) queryEl.value = '';
 
-    // 用户发言上屏（渲染层负责拼 DOM）
-    broadcast('ask:user', { text: q });
+    // 用户发言上屏（渲染层负责拼 DOM）；附件元数据一并列出（批次28）
+    var attMeta = (global.GK.attach && global.GK.attach.meta()) || [];
+    broadcast('ask:user', { text: q, attachments: attMeta });
 
     var body = {
       query: q,
@@ -234,6 +288,7 @@
       stream: true,
       session_id: global.GK.store.sessionId || '',
     };
+    if (attMeta.length) body.attachments = (global.GK.attach && global.GK.attach.ids()) || [];
 
     var finished = false;
     function finishSend() {
@@ -242,11 +297,14 @@
       _sending = false;
       if (sendBtn) sendBtn.disabled = false;
       if (queryEl) queryEl.focus();
+      _sseCtl = null; _finishSend = null;   // 27-N：流已终态，清引用
+      if (global.GK.attach) global.GK.attach.clear();   // 批次28：已发送的附件清空待发条
       loadSessions(true);   // 刷新历史栏（含后端新建/复用的会话）
     }
 
     // A4 传输（本模块不直接 fetch）；错误 detail 由 A4 抛到 error 回调
-    global.GK.sse('/ask', body, {
+    var reconnecting = false; // 断线重连状态：delta 恢复时广播 reconnected 清除提示
+    _sseCtl = global.GK.sse('/ask', body, {
       start: function (d) {
         // 收到 start → 后端已建/复用会话 → 回填 session_id
         if (d && d.session_id) {
@@ -257,6 +315,11 @@
         });
       },
       delta: function (d) {
+        // 断线重连后首个 delta：通知渲染层清除"重连中"提示
+        if (reconnecting) {
+          reconnecting = false;
+          broadcast('ask:reconnected', {});
+        }
         broadcast('ask:delta', { text: (d && d.text) || '' });
       },
       refs: function (d) {
@@ -290,13 +353,23 @@
       },
       error: function (d) {
         // 429/403/5xx 等：detail 已由 A4 透出
+        reconnecting = false;
         broadcast('ask:error', {
           message: (d && d.message) || '服务异常',
           status: d && d.status,
         });
         finishSend();
       },
+      on_reconnect: function (d) {
+        // SSE 断线自动重连（A4 指数退避）：渲染层提示，恢复由 delta 首包触发
+        reconnecting = true;
+        broadcast('ask:reconnect', {
+          attempt: (d && d.attempt) || 0,
+          delay: (d && d.delay) || 0,
+        });
+      },
     });
+    _finishSend = finishSend;   // 27-N P2-16：abortActiveStream 复位发送态用
   }
 
   // -----------------------------------------------------------------
