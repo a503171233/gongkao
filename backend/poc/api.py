@@ -45,9 +45,7 @@ from .mockexam import start_paper_job as _start_mockexam_job
 from .smartexam import get_smartexam_store as _get_smartexam
 from .forum import get_forum_store as _get_forum
 from .tracking import get_tracking_store as _get_tracking
-from .tracking import PROMO_TARGETS as _PROMO_TARGETS
 from .banner import get_banner_store as _get_banner
-from .banner import is_safe_url as _banner_safe_url
 from .messages import get_message_store as _get_messages
 from . import stats as stats_biz
 from . import autocollect as autocollect_mod
@@ -73,6 +71,9 @@ app = create_app()
 # _grade_llm_call / _extract_json_obj 曾被定义在 api.py 的 C4 练习批改区；现在归属
 # routers/study.py，但仍有 admin/articles 分析路由依赖它们作为模块级 helper。
 from .routers.study import _grade_llm_call, _extract_json_obj  # noqa: F401
+
+# re-export tracking state for test compatibility (test accesses api._track_limiter / api._TRACK_MAX)
+from .routers.tracking import _track_limiter, _TRACK_MAX  # noqa: F401
 
 # ---- 模块属性同步：当测试等代码对 api.X 赋值时，同步到 deps.X ----
 # 路由模块通过 "from ..deps import X" 引用共享状态（import 时绑定）；若仅修改
@@ -2246,214 +2247,6 @@ class AdminMindmapReq(BaseModel):
 def _knowledge_store():
     from .knowledge import get_knowledge_store
     return get_knowledge_store()
-
-
-# ---------- 行为埋点（首页宣传入口点击等，匿名可上报；管理端聚合统计） ----------
-class TrackPromoReq(BaseModel):
-    target: str = ""
-    page: str = ""
-
-
-_track_limiter: dict[str, list[float]] = {}
-_track_lock = threading.Lock()
-_TRACK_WINDOW = 60
-_TRACK_MAX = 20
-
-
-def _track_allowed(ip: str) -> bool:
-    now = _time.time()
-    with _track_lock:
-        if len(_track_limiter) > 4000:
-            _track_limiter.clear()
-        arr = [t for t in _track_limiter.get(ip, []) if now - t < _TRACK_WINDOW]
-        if len(arr) >= _TRACK_MAX:
-            _track_limiter[ip] = arr
-            return False
-        arr.append(now)
-        _track_limiter[ip] = arr
-        return True
-
-
-@app.post("/track/promo")
-def track_promo(req: TrackPromoReq, request: Request,
-                user_agent: str = Header(default="")):
-    """前台宣传卡点击上报（无登录要求，低频）：target ∈ mock/mind/forum/articles。"""
-    target = (req.target or "").strip().lower()
-    if target not in _PROMO_TARGETS:
-        raise HTTPException(status_code=400,
-                            detail="target 必须是 mock / mind / forum / articles 之一")
-    ip = _client_ip(request)
-    if not _track_allowed(ip):
-        raise HTTPException(status_code=429, detail="上报过于频繁，请稍后再试")
-    tracking_store.log("promo_click", target=target,
-                       page=(req.page or "").strip()[:40], ip=ip, ua=user_agent)
-    return {"ok": True}
-
-
-@app.get("/admin/tracking/promo")
-def admin_tracking_promo(authorization: str = Header(default="")):
-    """宣传入口点击统计：total / 按 target 汇总 / 近 14 天趋势。"""
-    _forum_require_admin(_resolve_user(authorization))
-    return tracking_store.promo_stats()
-
-
-# ---------- #23 首页 Banner 管理（banner.db：管理端配置轮播，前端展示） ----------
-class BannerReq(BaseModel):
-    title: str = ""
-    image: str = ""
-    link: str = ""
-    sort: int = 0
-    enabled: int = 1
-
-
-@app.get("/banners")
-def banners_public():
-    """公开：仅返回启用且按 sort 排序的轮播列表（首页展示用，无需登录）。"""
-    return {"banners": banner_store.list_enabled()}
-
-
-@app.get("/admin/banners")
-def admin_banners(authorization: str = Header(default="")):
-    """管理端：全量轮播（含停用）。"""
-    _forum_require_admin(_resolve_user(authorization))
-    return {"banners": banner_store.list_all()}
-
-
-@app.post("/admin/banners")
-def admin_banners_create(req: BannerReq, authorization: str = Header(default="")):
-    """新增轮播；image/link 仅接受 http(s)/站内相对路径（防 XSS 协议注入）。"""
-    _forum_require_admin(_resolve_user(authorization))
-    if not _banner_safe_url(req.image):
-        raise HTTPException(status_code=400, detail="图片地址仅支持 http(s) 或站内相对路径")
-    if not _banner_safe_url(req.link):
-        raise HTTPException(status_code=400, detail="链接地址仅支持 http(s) 或站内相对路径")
-    return banner_store.create(title=req.title, image=req.image, link=req.link,
-                               sort=req.sort, enabled=req.enabled)
-
-
-@app.put("/admin/banners/{banner_id}")
-def admin_banners_update(banner_id: int, req: BannerReq,
-                         authorization: str = Header(default="")):
-    """更新轮播（全字段覆盖式提交）。"""
-    _forum_require_admin(_resolve_user(authorization))
-    if not _banner_safe_url(req.image):
-        raise HTTPException(status_code=400, detail="图片地址仅支持 http(s) 或站内相对路径")
-    if not _banner_safe_url(req.link):
-        raise HTTPException(status_code=400, detail="链接地址仅支持 http(s) 或站内相对路径")
-    row = banner_store.update(banner_id, title=req.title, image=req.image, link=req.link,
-                              sort=req.sort, enabled=req.enabled)
-    if row is None:
-        raise HTTPException(status_code=404, detail="轮播不存在")
-    return row
-
-
-@app.delete("/admin/banners/{banner_id}")
-def admin_banners_delete(banner_id: int, authorization: str = Header(default="")):
-    """删除轮播。"""
-    _forum_require_admin(_resolve_user(authorization))
-    if not banner_store.delete(banner_id):
-        raise HTTPException(status_code=404, detail="轮播不存在")
-    return {"ok": True}
-
-
-@app.post("/admin/banners/reorder")
-def admin_banners_reorder(req: dict, authorization: str = Header(default="")):
-    """批量重排：body={"ids":[1,2,3]} 按顺序覆盖 sort。"""
-    _forum_require_admin(_resolve_user(authorization))
-    ids = (req or {}).get("ids") or []
-    if not isinstance(ids, list) or not all(isinstance(x, int) for x in ids):
-        raise HTTPException(status_code=400, detail="ids 必须是整数数组")
-    return {"banners": banner_store.reorder(ids)}
-
-
-# ---------- #19 消息中心（message.db：站内信/系统通知，未读角标 + 已读 + 管理端群发） ----------
-class MessageReq(BaseModel):
-    title: str = ""
-    content: str = ""
-    target: str = "all"        # all 全员 | user 定向
-    user_id: str = ""          # target=user 时必填
-
-
-def _message_user(authorization: str) -> dict:
-    """消息中心用户守卫：个人消息需登录（匿名不产生消息数据）。"""
-    user = _resolve_user(authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="请先登录")
-    return user
-
-
-@app.get("/messages/unread")
-def messages_unread(authorization: str = Header(default="")):
-    """未读数（学习中心顶部角标轮询用）。"""
-    user = _message_user(authorization)
-    return {"count": message_store.unread_count(user["user_id"])}
-
-
-@app.get("/messages")
-def messages_list(page: int = 1, size: int = 20,
-                  authorization: str = Header(default="")):
-    """用户消息列表（倒序，含 read 状态）+ 未读总数。"""
-    user = _message_user(authorization)
-    data = message_store.list_for_user(user["user_id"], page=page, size=size)
-    data["unread"] = message_store.unread_count(user["user_id"])
-    return data
-
-
-@app.post("/messages/{message_id}/read")
-def messages_read(message_id: int, authorization: str = Header(default="")):
-    """标记单条已读。"""
-    user = _message_user(authorization)
-    if not message_store.mark_read(user["user_id"], message_id):
-        raise HTTPException(status_code=404, detail="消息不存在")
-    return {"ok": True}
-
-
-@app.post("/messages/read_all")
-def messages_read_all(authorization: str = Header(default="")):
-    """全部已读。"""
-    user = _message_user(authorization)
-    marked = message_store.mark_all_read(user["user_id"])
-    return {"ok": True, "marked": marked}
-
-
-@app.get("/admin/messages")
-def admin_messages_list(authorization: str = Header(default="")):
-    """管理端：全部消息 + 送达/已读统计。"""
-    _forum_require_admin(_resolve_user(authorization))
-    total_users = admin_biz.user_stats_admin().get("total", 0)
-    items = []
-    for m in message_store.list_all():
-        delivered = 1 if m["target"] == "user" else total_users
-        items.append({
-            "id": m["id"], "title": m["title"], "content": m["content"],
-            "target": m["target"], "target_user_id": m["target_user_id"],
-            "created_at": m["created_at"], "delivered": delivered,
-            "read": m.get("read_count", 0),
-        })
-    return {"messages": items}
-
-
-@app.post("/admin/messages")
-def admin_messages_create(req: MessageReq, authorization: str = Header(default="")):
-    """群发/定向：target=all 全员；target=user 需 user_id。"""
-    _forum_require_admin(_resolve_user(authorization))
-    title = (req.title or "").strip()
-    content = (req.content or "").strip()
-    if not title or not content:
-        raise HTTPException(status_code=400, detail="标题与内容不能为空")
-    if req.target == "user" and not (req.user_id or "").strip():
-        raise HTTPException(status_code=400, detail="定向消息必须指定用户 ID")
-    return message_store.create(title=title, content=content,
-                                target=req.target, target_user_id=req.user_id)
-
-
-@app.delete("/admin/messages/{message_id}")
-def admin_messages_delete(message_id: int, authorization: str = Header(default="")):
-    """删除消息（连带已读记录）。"""
-    _forum_require_admin(_resolve_user(authorization))
-    if not message_store.delete(message_id):
-        raise HTTPException(status_code=404, detail="消息不存在")
-    return {"ok": True}
 
 
 # ---------- F4 文章/经验帖（articles.html：热帖精选 + AI 要点提炼，AI 触发需登录） ----------

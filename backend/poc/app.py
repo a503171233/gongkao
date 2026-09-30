@@ -14,6 +14,9 @@ from .routers.auth import router as auth_router
 from .routers.membership import router as membership_router
 from .routers.study import router as study_router
 from .routers.forum import router as forum_router
+from .routers.tracking import router as tracking_router
+from .routers.banner import router as banner_router
+from .routers.messages import router as messages_router
 
 
 def create_app() -> FastAPI:
@@ -32,4 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(membership_router)
     app.include_router(study_router)
     app.include_router(forum_router)
+    app.include_router(tracking_router)
+    app.include_router(banner_router)
+    app.include_router(messages_router)
     return app
