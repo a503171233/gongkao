@@ -10,6 +10,7 @@ from .deps import (
     unhandled_exception,
 )
 from .routers.core import router as core_router
+from .routers.auth import router as auth_router
 
 
 def create_app() -> FastAPI:
@@ -24,4 +25,5 @@ def create_app() -> FastAPI:
     app.middleware("http")(csrf_origin_check)
     app.middleware("http")(http_metrics)
     app.include_router(core_router)
+    app.include_router(auth_router)
     return app
