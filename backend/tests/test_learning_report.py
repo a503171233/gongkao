@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import poc.api as api
-from poc.study import StudyStore
+from poc.study import StudyStore, _now_iso as _orig_now_iso
 from poc.smartexam import SmartExamStore
 
 
@@ -20,6 +20,12 @@ def _main():
     tmp = Path(tempfile.mkdtemp(prefix="gk_lr_"))
     study = StudyStore(db_path=tmp / "study.db")
     smartexam = SmartExamStore(db_path=tmp / "smartexam.db")
+
+    # 时间冻结：测试数据写死 2026-09-06/07，复习排程 09-08 到期。
+    # 真实运行时间会漂移（当前已是 09-30），导致 due/in_queue 计数失真。
+    # 这里把 _now_iso 冻结在 2026-09-08T12:00:00Z：仅 09-08T00:00:00 那条到期。
+    import poc.study as _study_mod
+    _study_mod._now_iso = lambda: "2026-09-08T12:00:00Z"
 
     def fake_resolve(authorization):
         t = (authorization or "").replace("Bearer ", "", 1).strip()
@@ -140,6 +146,7 @@ def _main():
         print("[PASS] 学习报告接口断言全部通过")
     finally:
         api.study_store, api.smartexam_store, api._resolve_user = orig
+        _study_mod._now_iso = _orig_now_iso
 
 
 if __name__ == "__main__":
