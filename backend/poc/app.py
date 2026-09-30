@@ -8,7 +8,9 @@ from .deps import (
     csrf_origin_check,
     http_metrics,
     unhandled_exception,
+    auth_store,
 )
+from . import autocollect as autocollect_mod
 from .routers.core import router as core_router
 from .routers.auth import router as auth_router
 from .routers.membership import router as membership_router
@@ -24,6 +26,10 @@ from .routers.documents import router as documents_router
 from .routers.admin import router as admin_router
 from .routers.questions import router as questions_router
 from .routers.autocollect import router as autocollect_router
+from .routers.aimodels import router as aimodels_router
+from .routers.knowledge import router as knowledge_router
+from .routers.operations import router as operations_router
+from .routers.whisper import router as whisper_router
 
 
 def create_app() -> FastAPI:
@@ -52,4 +58,20 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(questions_router)
     app.include_router(autocollect_router)
+    app.include_router(aimodels_router)
+    app.include_router(knowledge_router)
+    app.include_router(operations_router)
+    app.include_router(whisper_router)
+
+    @app.on_event("startup")
+    def on_startup():
+        import os
+        if os.environ.get("ADMIN_USERNAME"):
+            uid = auth_store.ensure_admin()
+            if uid:
+                print(f"[C2] admin 账号已初始化: {os.environ.get('ADMIN_USERNAME')}")
+            else:
+                print("[C2] ADMIN_USERNAME 已配置但密码为空，跳过 admin 初始化")
+        autocollect_mod.start()
+
     return app
