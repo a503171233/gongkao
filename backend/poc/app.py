@@ -11,6 +11,7 @@ from .deps import (
 )
 from .routers.core import router as core_router
 from .routers.auth import router as auth_router
+from .routers.membership import router as membership_router
 
 
 def create_app() -> FastAPI:
@@ -26,4 +27,5 @@ def create_app() -> FastAPI:
     app.middleware("http")(http_metrics)
     app.include_router(core_router)
     app.include_router(auth_router)
+    app.include_router(membership_router)
     return app
