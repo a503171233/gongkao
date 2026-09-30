@@ -52,137 +52,23 @@ from .banner import is_safe_url as _banner_safe_url
 from .messages import get_message_store as _get_messages
 from . import stats as stats_biz
 from . import autocollect as autocollect_mod
-app = FastAPI(title="多老师RAG内核", version="0.3.2")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+
+# 共享状态与工厂（由 deps/app 模块集中管理）
+from .deps import (
+    cfg, chat_store, auth_store, gitee_oauth, payment_store, study_store,
+    incentive_store, mockexam_store, smartexam_store, forum_store, tracking_store,
+    banner_store, message_store,
+    _oauth_states, _STATE_TTL, HISTORY_LIMIT,
+    _login_rate_limit, _login_fail_record, _client_ip,
+    _CSRF_ALLOWED_ORIGINS, _CSRF_MUTATING,
+    _security_rate_limit,
+    _sse, _check_teacher, _safe_count,
+    _resolve_user, _session_owner_guard, _quota_guard,
+    AskReq, RegisterReq, LoginReq,
+    ForgotQuestionReq, ForgotAnswerReq, ForgotResetReq, SetSecurityReq,
 )
-
-cfg = Config()
-chat_store = ChatStore()
-auth_store = AuthStore()
-gitee_oauth = GiteeOAuth()  # 未配置 GITEE_CLIENT_ID/SECRET → enabled=False
-payment_store = get_payment_store()
-study_store = get_study_store()
-incentive_store = _get_incentive()
-mockexam_store = _get_mockexam()
-smartexam_store = _get_smartexam()
-forum_store = _get_forum()
-tracking_store = _get_tracking()
-banner_store = _get_banner()
-message_store = _get_messages()
-
-# Gitee OAuth state 防 CSRF：{state: 过期时间戳}
-_oauth_states: dict[str, float] = {}
-_STATE_TTL = int(_os.environ.get("OAUTH_STATE_TTL", "600"))  # 10 分钟
-
-HISTORY_LIMIT = int(_os.environ.get("HISTORY_LIMIT", "10"))  # 注入 LLM 的历史轮数上限（说明书 §4.4 调度层控制）
-
-# ---------- C5 安全加固：登录/注册限流（进程内滑动窗口，防暴力破解） ----------
-_LOGIN_LIMIT = int(_os.environ.get("LOGIN_LIMIT", "10"))        # 每 IP 每窗口最多尝试次数
-_LOGIN_WINDOW = int(_os.environ.get("LOGIN_WINDOW", "300"))     # 窗口 5 分钟
-_login_attempts: dict[str, list[float]] = {}   # ip -> [timestamps]
-_login_lock = threading.Lock()
-
-
-def _login_rate_limit(ip: str):
-    """登录/注册限流：仅统计窗口内失败尝试（成功登录不计数，避免共享出口 IP/巡检误伤）。
-    超限抛 429，旧时间戳惰性清理。失败计数见 _login_fail_record。"""
-    now = _time.monotonic()
-    with _login_lock:
-        ts_list = _login_attempts.setdefault(ip, [])
-        # 清理窗口外的时间戳
-        _login_attempts[ip] = [t for t in ts_list if now - t < _LOGIN_WINDOW]
-        if len(_login_attempts[ip]) >= _LOGIN_LIMIT:
-            raise HTTPException(status_code=429, detail="尝试过于频繁，请 5 分钟后再试")
-
-
-def _login_fail_record(ip: str):
-    """记录一次失败登录/注册尝试（防暴力破解计数；成功登录不计数）。"""
-    with _login_lock:
-        _login_attempts.setdefault(ip, []).append(_time.monotonic())
-
-
-def _client_ip(request: Request) -> str:
-    """取客户端 IP（优先 X-Real-IP，nginx 已设；回退 remote）。"""
-    xff = request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-# ---------- C5 安全加固：CSRF 纵深防御（Origin 校验中间件） ----------
-# 说明：本项目 API 用 Bearer 头鉴权（非 cookie），CSRF 天然低危；
-#       Gitee OAuth 已有 state 防 CSRF。此处做纵深防御：
-#       - 仅对状态变更方法（POST/PUT/DELETE/PATCH）校验
-#       - Origin 存在时：须与 Host 同源，或在 CSRF_ALLOWED_ORIGINS 白名单内，否则 403
-#       - Origin 缺失（curl/服务端调用）：放行（Bearer 头才是真正鉴权）
-#       可配置：CSRF_ALLOWED_ORIGINS（逗号分隔，如 https://gk.example.com）
-
-_CSRF_ALLOWED_ORIGINS = {
-    o.strip().rstrip("/") for o in _os.environ.get("CSRF_ALLOWED_ORIGINS", "").split(",") if o.strip()
-}
-_CSRF_MUTATING = {"POST", "PUT", "DELETE", "PATCH"}
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception(request: Request, exc: Exception):
-    """全局 500 兜底：未捕获异常不再让 uvicorn 默认白屏/断连，统一 JSON + 完整日志。
-    HTTPException 有专属 handler，不会走到这里。"""
-    import traceback
-    traceback.print_exc()
-    return JSONResponse(status_code=500, content={"detail": "服务器内部错误，请稍后再试"})
-
-
-@app.middleware("http")
-async def csrf_origin_check(request: Request, call_next):
-    """状态变更请求的 Origin 校验（纵深防御；不改鉴权语义）。"""
-    if request.method in _CSRF_MUTATING:
-        origin = request.headers.get("origin", "").strip().rstrip("/")
-        if origin:
-            host = request.headers.get("host", "")
-            same_origin = False
-            try:
-                from urllib.parse import urlparse
-                same_origin = (urlparse(origin).netloc == host)
-            except Exception:
-                same_origin = False
-            if not same_origin and origin not in _CSRF_ALLOWED_ORIGINS:
-                return PlainTextResponse("CSRF: Origin 校验失败", status_code=403)
-    return await call_next(request)
-
-
-@app.middleware("http")
-async def http_metrics(request: Request, call_next):
-    """全链路请求指标：方法/路径/状态码/耗时（说明书 §10.1）。"""
-    t0 = _time.monotonic()
-    try:
-        response = await call_next(request)
-    except Exception:
-        metrics.record(request.method, request.url.path, 500)
-        raise
-    ms = (_time.monotonic() - t0) * 1000
-    metrics.record(request.method, request.url.path, response.status_code, latency_ms=ms)
-    return response
-
-
-class AskReq(BaseModel):
-    query: str = Field(..., max_length=500, description="问题内容，≤500 字")
-    teacher_id: str = "T001"
-    stream: bool = False
-    session_id: str = ""
-
-
-class RegisterReq(BaseModel):
-    username: str
-    password: str
-
-
-class LoginReq(BaseModel):
-    username: str
-    password: str
+from .app import create_app
+app = create_app()
 
 
 @app.get("/health")
@@ -223,24 +109,6 @@ def info(teacher_id: str = "T001"):
         "embed_provider": cfg.embed_provider,
         "chunk_count": _safe_count(teacher_id),
     }
-
-
-def _safe_count(teacher_id: str) -> int:
-    try:
-        return store.collection_count(teacher_id)
-    except Exception:
-        return 0
-
-
-def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def _check_teacher(teacher_id: str):
-    try:
-        return cfg.get_teacher(teacher_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"老师不存在: {teacher_id}")
 
 
 @app.post("/register")
@@ -317,43 +185,6 @@ def me_logout_all(authorization: str = Header(default="")):
 
 
 # ---------- #15 自助找回密码（密保问题通道） ----------
-class ForgotQuestionReq(BaseModel):
-    username: str
-
-
-class ForgotAnswerReq(BaseModel):
-    username: str
-    answer: str
-
-
-class ForgotResetReq(BaseModel):
-    ticket: str
-    new_password: str
-
-
-class SetSecurityReq(BaseModel):
-    question: str
-    answer: str
-
-
-# 密保答错限流（进程内滑动窗口，防暴力枚举密保答案）
-_SECURITY_LIMIT = int(_os.environ.get("SECURITY_LIMIT", "5"))       # 每用户名每窗口最多尝试 5 次
-_SECURITY_WINDOW = int(_os.environ.get("SECURITY_WINDOW", "600"))   # 窗口 10 分钟
-_security_attempts: dict[str, list[float]] = {}
-_security_lock = threading.Lock()
-
-
-def _security_rate_limit(key: str):
-    """密保校验限流：超限抛 429。"""
-    now = _time.monotonic()
-    with _security_lock:
-        ts_list = _security_attempts.setdefault(key, [])
-        _security_attempts[key] = [t for t in ts_list if now - t < _SECURITY_WINDOW]
-        if len(_security_attempts[key]) >= _SECURITY_LIMIT:
-            raise HTTPException(status_code=429, detail="尝试过于频繁，请 10 分钟后再试")
-        _security_attempts[key].append(now)
-
-
 @app.post("/password/forgot/question")
 def forgot_question(req: ForgotQuestionReq, request: Request):
     """找回第一步：按用户名取密保问题。不设密保的用户返回 can_recover=false
@@ -457,34 +288,6 @@ def gitee_callback(code: str = "", state: str = ""):
         user_id = user["user_id"]
     token = auth_store._sign(user_id)
     return RedirectResponse(f"/?token={token}")
-
-
-def _resolve_user(authorization: str) -> dict:
-    """解析 Authorization → 用户 dict；无 token 返回 None（匿名可用，不限额度）。"""
-    token = authorization[7:] if authorization.lower().startswith("bearer ") else authorization
-    if not token:
-        return None
-    return auth_store.user_from_token(token)
-
-
-def _session_owner_guard(sess: dict | None, user: dict | None) -> None:
-    """会话归属校验（越权防护）：
-    匿名会话（owner=anonymous）公开可读；登录用户的会话仅本人可读/删。
-    """
-    if sess is None:
-        return
-    owner = sess.get("user_id") or "anonymous"
-    if owner != "anonymous" and (user is None or user["user_id"] != owner):
-        raise HTTPException(status_code=403, detail="无权访问该会话")
-
-
-def _quota_guard(user: dict | None):
-    """登录用户才计额度；无 token 匿名放行（不打断验收）。"""
-    if user is None:
-        return
-    if not auth_store.check_quota(user["user_id"], user["role"]):
-        raise HTTPException(status_code=429,
-                            detail=f"今日免费额度已用完，请升级会员或明日再来")
 
 
 @app.post("/ask")
