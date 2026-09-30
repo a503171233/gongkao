@@ -9,6 +9,7 @@ from .deps import (
     http_metrics,
     unhandled_exception,
 )
+from .routers.core import router as core_router
 
 
 def create_app() -> FastAPI:
@@ -22,4 +23,5 @@ def create_app() -> FastAPI:
     app.add_exception_handler(Exception, unhandled_exception)
     app.middleware("http")(csrf_origin_check)
     app.middleware("http")(http_metrics)
+    app.include_router(core_router)
     return app
