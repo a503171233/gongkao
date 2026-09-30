@@ -204,6 +204,26 @@ def _quota_guard(user: dict | None):
                             detail="今日免费额度已用完，请升级会员或明日再来")
 
 
+# ---------- F3 论坛写操作频控（进程内冷却） ----------
+_forum_write_cooldown: dict[str, float] = {}
+_forum_write_lock = threading.Lock()
+
+
+def _forum_write_ok(user_id: str, gap: float) -> bool:
+    with _forum_write_lock:
+        last = _forum_write_cooldown.get(user_id, 0.0)
+        if _time.time() - last < gap:
+            return False
+        _forum_write_cooldown[user_id] = _time.time()
+        return True
+
+
+def _forum_require_admin(user: dict) -> None:
+    """管理端操作统一鉴权（治理/后台多域复用）。"""
+    if (user or {}).get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+
+
 # ---------------------------------------------------------------------------
 # 中间件函数（在 app.py 中注册；此处无 app 依赖）
 # ---------------------------------------------------------------------------
