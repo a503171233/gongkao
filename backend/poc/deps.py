@@ -225,6 +225,19 @@ def _forum_require_admin(user: dict) -> None:
         raise HTTPException(status_code=403, detail="仅管理员可操作")
 
 
+def _admin_user(authorization: str) -> dict:
+    """解析 Bearer token，返回 admin 用户 dict；非 admin → 403。"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="请先登录")
+    token = authorization.removeprefix("Bearer ").strip()
+    user = auth_store.user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="无效 Token")
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return user
+
+
 # ---------- LLM 调用与输出解析（练习批改 / 文章提炼共用） ----------
 def _grade_llm_call(messages, tcfg, max_tokens: int = 1500) -> str:
     """#36 批改 LLM 调用：注册表默认模型优先，失败回退全局主模型（仿 admin._llm_call）。"""
@@ -296,6 +309,22 @@ def _article_cooldown_ok(user_id: str) -> bool:
             return False
         _article_cooldown[user_id] = _time.time()
         return True
+
+
+# ---------- 文档路径导入白名单根 ----------
+def _import_roots() -> list:
+    """路径导入白名单根（DOC_IMPORT_DIRS 环境变量，容器内路径，冒号分隔）。
+    默认 [DATA_DIR/import]——compose 已把宿主 ./data 挂到 /data。"""
+    from pathlib import Path as _Path
+    raw = (_os.environ.get("DOC_IMPORT_DIRS") or "").strip()
+    roots = [p.strip() for p in raw.split(":") if p.strip()] if raw else [str(cfg.data_dir / "import")]
+    out = []
+    for r in roots:
+        try:
+            out.append(_Path(r).expanduser().resolve())
+        except OSError:
+            continue
+    return out
 
 
 # ---------------------------------------------------------------------------

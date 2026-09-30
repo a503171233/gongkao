@@ -20,6 +20,7 @@ from .routers.messages import router as messages_router
 from .routers.articles import router as articles_router
 from .routers.mockexam import router as mockexam_router
 from .routers.smartexam import router as smartexam_router
+from .routers.documents import router as documents_router
 
 
 def create_app() -> FastAPI:
@@ -44,4 +45,5 @@ def create_app() -> FastAPI:
     app.include_router(articles_router)
     app.include_router(mockexam_router)
     app.include_router(smartexam_router)
+    app.include_router(documents_router)
     return app
