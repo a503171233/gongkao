@@ -18,6 +18,8 @@ from .routers.tracking import router as tracking_router
 from .routers.banner import router as banner_router
 from .routers.messages import router as messages_router
 from .routers.articles import router as articles_router
+from .routers.mockexam import router as mockexam_router
+from .routers.smartexam import router as smartexam_router
 
 
 def create_app() -> FastAPI:
@@ -40,4 +42,6 @@ def create_app() -> FastAPI:
     app.include_router(banner_router)
     app.include_router(messages_router)
     app.include_router(articles_router)
+    app.include_router(mockexam_router)
+    app.include_router(smartexam_router)
     return app

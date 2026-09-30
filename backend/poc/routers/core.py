@@ -194,6 +194,17 @@ def session_messages(session_id: str, authorization: str = Header(default="")):
             "messages": chat_store.get_messages(session_id)}
 
 
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: str, authorization: str = Header(default="")):
+    """删除会话及其消息。越权防护：归属校验（防他人会话被匿名删除）。"""
+    sess = chat_store.get_session(session_id)
+    if sess is None:
+        return {"deleted": session_id, "success": False}
+    _session_owner_guard(sess, _resolve_user(authorization))
+    chat_store.delete_session(session_id)
+    return {"deleted": session_id, "success": True}
+
+
 @router.get("/guard/stats")
 def guard_stats():
     """幻觉检测拦截统计（运行中进程实时计数，供监控）。"""

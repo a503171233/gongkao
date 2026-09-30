@@ -5,6 +5,7 @@ import json
 import re as _re
 
 from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from .. import deps as _deps
@@ -59,6 +60,17 @@ def delete_favorite(
     return {"deleted": fav_id, "success": ok}
 
 
+@router.get("/favorites/export")
+def export_favorites(authorization: str = Header(default="")):
+    """收藏导出 CSV（含 BOM，Excel 直接打开）。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    csv = _deps.study_store.export_favorites_csv(user["user_id"])
+    return PlainTextResponse(csv, media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": "attachment; filename=favorites.csv"})
+
+
 # ---------- 错题 ----------
 @router.post("/mistakes")
 def add_mistake(
@@ -108,6 +120,17 @@ def delete_mistake(
     
     ok = _deps.study_store.delete_mistake(user["user_id"], mist_id)
     return {"deleted": mist_id, "success": ok}
+
+
+@router.get("/mistakes/export")
+def export_mistakes(authorization: str = Header(default="")):
+    """错题本导出 CSV（含 BOM，Excel 直接打开）。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    csv = _deps.study_store.export_mistakes_csv(user["user_id"])
+    return PlainTextResponse(csv, media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": "attachment; filename=mistakes.csv"})
 
 
 # ---------- #16 错题强化重练：艾宾浩斯复习节奏 ----------
