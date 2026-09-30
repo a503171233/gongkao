@@ -25,6 +25,52 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from .config import Config, get
+from .autocollect_classify import (
+    _SEO_INFO_WORDS,
+    _is_seo_info_page,
+    _ERROR_CATEGORIES,
+    _classify_error,
+    _OFF_DOMAIN_HARD,
+    _OFF_DOMAIN_INCIDENTAL,
+    _gongkao_cjk_ratio,
+    _REAL_Q_ASK,
+    _NEWS_POLICY_SPEECH,
+    _LATIN_WORD,
+    _SEO_FAQ_STRONG,
+    _SEO_FAQ_WEAK,
+    _ESSAY_ASK_CMDS,
+    _gongkao_real_question_shape,
+    _is_gongkao_relevant,
+    _QUESTION_STRONG_SIGNALS,
+    _looks_like_questions,
+    _detail_candidate,
+    _PROSE_NO_ASK,
+    _looks_like_prose,
+    _worth_extract,
+)
+from .autocollect_text import (
+    _UA,
+    _html_to_text,
+    _TABLE_CELL,
+    _clean_cell,
+    _tables_md,
+    _formula_md,
+    _html_to_text_wimg,
+    _page_source,
+    _page_title,
+    _decode_resp_text,
+    _extract_site_links,
+    _text_fp,
+)
+from .autocollect_autonomous import (
+    _COURSE_CATEGORIES,
+    _collect_tree_leaves,
+    _knowledge_leaf_names,
+    _autonomous_query_pool,
+    _autonomous_plan,
+    _knowledge_node_index,
+    _associate_category_id,
+)
 
 
 def _now_iso() -> str:
@@ -1754,319 +1800,6 @@ def _ai_call(fn: Callable) -> Any:
     f = _LLM_EXEC.submit(fn)
     return f.result(timeout=_LLM_CALL_TIMEOUT_S)
 
-
-# ============================================================
-# SEO / 备考资讯 / 问答页拦截（问题4）：autonomous 搜索常命中
-# 「XX考试时间、报名安排必看、最新公布」这类资讯/问答外围页，LLM 会
-# 从这类文章里『编造』出形态完整的伪题（启发式形态校验拦不住）。
-# 依据正文密集出现的资讯话术 + 题目骨架稀少做页面级拦截，不误杀真实题卷。
-# ============================================================
-_SEO_INFO_WORDS = (
-    "什么时候", "最新安排", "必看", "报名时间", "报名通道", "报名", "报考",
-    "考试时间", "笔试时间", "面试时间", "时间安排", "预计", "公布", "公告",
-    "通知", "提醒", "备考", "上岸", "领取资料", "备考指导", "提分", "攻略",
-    "经验", "咨询", "关注公众号", "加微信", "二维码", "查看详情", "更多内容",
-)
-
-
-def _is_seo_info_page(text: str) -> bool:
-    """页面是否为「备考资讯/问答/SEO 外围」内容（非题卷）。
-
-    判据：正文≥200 字、命中≥4 个资讯话术、且题目骨架稀少（没有成片题号+ABCD）。
-    真实行测/申论卷虽有"备考""公告"等词，但题目骨架密集，不会被误判。"""
-    t = (text or "").strip()
-    if len(t) < 200:
-        return False
-    hits = sum(1 for w in _SEO_INFO_WORDS if w in t)
-    if hits < 4:
-        return False
-    # 题目骨架数：段落行首序号 / 选项字母 / 作答要求
-    qn = len(re.findall(r"(?m)^\s*(?:第)?\d{1,3}\s*[、.．:：]\s*\S", t))
-    opt = len(re.findall(r"(?:^|\s)[A-E]\s*[、.．:：]", t))
-    if qn >= 3 or opt >= 4:
-        return False   # 有真实题目骨架 → 不判为资讯页
-    return True
-
-
-# #12 失败分类：把 errors 纯文本归入可观测类别，供管理端统计与「仅重跑失败」决策。
-_ERROR_CATEGORIES = ("限速", "超时", "解析", "网络", "无题", "其他")
-
-
-def _classify_error(msg: str) -> str:
-    """按错误文本特征归入失败类别（限速/超时/解析/网络/无题/其他）。"""
-    m = msg.lower()
-    if any(k in m for k in ("429", "rate limit", "too many", "限流", "繁忙", "throttl", "overload")):
-        return "限速"
-    if any(k in m for k in ("timeout", "timed out", "超时", "read timed", "connect timed")):
-        return "超时"
-    if any(k in m for k in ("解析", "parse", "extract", "提取失败", "json", "无题", "题目", "识别", "拆题")):
-        return "解析"
-    if any(k in m for k in ("connection", "connect", "refused", "network", "网络", "dns", "ssl", "certificate", "unreachable", "name resolution", "resolve host", "getaddrinfo")):
-        return "网络"
-    if any(k in m for k in ("无题", "未获得", "有效页面", "过短", "empty", "no question")):
-        return "无题"
-    return "其他"
-
-
-# ============================================================
-# 公考相关性过滤（需求4：采集到的题目很多不属于公考）
-# 三层防御：
-#   ① LLM 提取 prompt 已加"公考相关性门控 + 伪题拒绝门控"（admin.extract_questions_ai），
-#     掐死 LLM 把百科/资讯/法条/政务材料改写编造成题的行为（最有杀伤力）；
-#   ② 入库前保守启发式兜底「非题目形态」正象识别（本函数），剔除"公考相关但非真题"
-#     的伪题（百科词条改写、法条抄写型 judge、新闻/公告语体、机翻夹英文、残缺设问）；
-#   ③ 页面/抽取门控（_worth_extract/_QUESTION_STRONG_SIGNALS/_SEARCH_BLOCK_HOSTS）
-#     剔除公告/资讯/政务/百科等非题目来源整页。
-# 原则：宁可少收，不可误吞"公考相关但非题目"的伪题。
-# ============================================================
-_OFF_DOMAIN_HARD = (
-    # 外语 / 高等教育 / 专业领域强信号（英文小写匹配）
-    "四六级", "六级", "雅思", "托福", "gre ", "考研数学", "考研政治",
-    "微积分", "高等数学", "线性代数", "概率密度", "泊松", "傅里叶", "拉普拉斯",
-    "化学反应方程式", "元素周期表",
-    "时间复杂度", "空间复杂度", "python", "c++", "java", "linux", "sql",
-    "操作系统", "数据库", "正则表达式", "编译器",
-    "科目一", "科目二", "台球", "乒乓球比赛",
-)
-
-# 医学/驾驶等「真题会顺带提及」的词：仅当题干是短标题（非材料型长题干）时才判为
-# 跨专业域。存量扫描实测（2026-09-13）：「还达不到临床上失眠的诊断标准」「患者通常
-# 被诊断为其它疾病」「驾驶证、社会保障卡…属于可证明身份的证件」均为真实行测真题，
-# 若在长材料题干上直接命中黑名单会被整题误杀。
-_OFF_DOMAIN_INCIDENTAL = ("病毒", "病原体", "临床", "诊断", "病历", "驾驶证")
-
-
-def _gongkao_cjk_ratio(s: str) -> float:
-    """非空白字符中汉字占比（识别外语/纯公式片段）。"""
-    if not s:
-        return 0.0
-    total = sum(1 for c in s if not c.isspace())
-    if total == 0:
-        return 0.0
-    cjk = sum(1 for c in s if "\u4e00" <= c <= "\u9fff")
-    return cjk / total
-
-
-# 题目残缺时必需的设问/指示语（判断一段文本"像不像一道成题"）
-_REAL_Q_ASK = ("下列", "下列关于", "下列说法", "正确的是", "错误的是", "由此可以推出",
-               "由此推出", "填入", "依次填入", "最能", "旨在", "强调", "可以推出",
-               "意味着", "体现", "包含", "正确的是", "作答题", "请根据", "请概括",
-               "请结合", "请提出", "请围绕", "写一篇", "谈谈", "分析", "归纳",
-               "?" , "？", "（ ）", "(", "）", ")")
-
-# 「新闻 / 政府文件 / 公告 / 会议」语体强信号：命中说明该片段是资讯/政务材料而非题目
-#（公考常识题可能以"关于X的说法正确的是"为题干，因此只把"纯陈述式资讯语体"作负向信号）
-_NEWS_POLICY_SPEECH = ("会议指出", "会议表示", "会议强调", "记者获悉", "据新华社",
-                       "人民日报评论", "本期导语", "特此公告", "现将有关事项通知",
-                       "现通知如下", "办公厅", "印发《", "正式发布", "政策解读")
-
-# 英文单词占比过高 → 大概率机翻/外文材料（真题题干罕见连续多个英文单词）
-_LATIN_WORD = re.compile(r"[A-Za-z]{3,}")
-
-# 报考指南 / 备考攻略 / SEO-FAQ 营销话术：公考真题题干绝不可能出现这些词。
-# 信息页或资讯段落被 LLM 改写成伪题时几乎必然命中，用于题目级伪题兜底拦截。
-# 强信号：命中 1 个即拒收（如"必看/备考攻略/报名入口"）。
-# 弱信号：命中 ≥2 个才拒收（如"什么时候/有哪些/入口"等单看可能误伤的词）。
-# 注意：思路是「拒绝报考咨询类伪题」，与题型无关，choice/judge/essay 一律适用。
-_SEO_FAQ_STRONG = (
-    "必看", "一文读懂", "备考攻略", "报考指南", "官方回应", "报名入口",
-    "入口在哪", "查询入口", "怎么报名", "如何报名", "在哪报名", "怎么报考",
-    "考试科目有哪些", "报考条件有哪些", "职位表什么时候", "报名时间是什么时候",
-    "报考时间是什么时候", "考试时间是什么时候", "预计11月下旬", "预计12月",
-    "考录专题", "职位表", "报名网站", "网上报名", "报名时间", "笔试时间",
-    "几月几号", "什么时候考", "考生必看", "看看你符合条件吗", "正式启动网上报名",
-    # 报考资讯/培训广告类伪题信号（公告/调剂/补录/成绩/机构营销等，短句标题被伪题化为 essay）
-    "调剂公告", "补录公告", "成绩公布时间", "成绩查询时间", "查询成绩", "查分",
-    "总分是多少", "一年几次", "考试内容是什么", "培训班", "笔试辅导", "辅导机构",
-    "哪个好一点", "哪个好", "上岸鸭", "备考资料", "报名人数", "多少人报名",
-    "公告发布时间", "是何时", "你符合条件吗", "考试内容", "一样吗",
-)
-_SEO_FAQ_WEAK = (
-    "什么时候", "有哪些", "需要准备什么", "用什么书", "参考书", "复习资料",
-    "面试需要注意", "注意事项", "多少分", "能考吗", "学历要求", "专业要求",
-    "年龄限制", "在哪", "入口", "官网", "公告什么时候", "出公告", "考试时间",
-)
-
-# 申论/简答/材料题的设问指令词：essay 类伪题（如"笔试时间是什么时候"）不含这些指令，
-# 而真实申论题几乎都含（概括/请根据/结合材料/【给定资料】/要求）。用于"essay + 单弱信号"
-# 场景下区分"报考咨询伪题"与"真实材料题"，避免对申论误杀。
-_ESSAY_ASK_CMDS = ("请", "根据", "结合", "概括", "谈谈", "分析", "归纳", "围绕",
-                   "提出", "简述", "说明当下", "谈谈你", "【", "给定资料", "要求",
-                   "作答要求", "申述", "就", "针对", "从", "根据上述", "联系实际")
-
-
-def _gongkao_real_question_shape(q: dict) -> tuple[bool, str]:
-    """「非题目形态」正象识别：判断单题是否具备一道"成题"的必要结构。
-
-    返回 (是否放行保留, 拒绝原因)。保守启发式兜底，仅拦截强伪题信号，
-    避免误杀真实常识/申论题。宁可少收，不误吞伪题。
-    """
-    question = str(q.get("question") or "").strip()
-    answer = str(q.get("answer") or "").strip()
-    analysis = str(q.get("analysis") or "").strip()
-    qtype = str(q.get("qtype") or "").strip()
-    opts = (q.get("options") or []) or []
-    txt = " ".join([question, answer, analysis])
-
-    # 0) 空题干 → 不成题，拒收
-    if not question:
-        return False, "题干为空"
-
-    # 1) 汉字占比极低 → 外语/纯公式/代码片段
-    if _gongkao_cjk_ratio(txt or question) < 0.2:
-        return False, "非中文/公式片段"
-
-    # 1.5) 短标题形态：单句、≤45 字、无换行、非「给定资料」材料题开头。
-    #      部分门控（跨专业域词、SEO 话术）只对短标题生效，避免误杀材料型长题干。
-    _is_short_title = len(question) <= 45 and "\n" not in question and "【" not in question[:3]
-
-    # 2) 非公考专业域黑名单（保留了历史防御）
-    low = txt.lower()
-    for kw in _OFF_DOMAIN_HARD:
-        if kw in low:
-            return False, f"非公考专业域:{kw}"
-    if _is_short_title:
-        for kw in _OFF_DOMAIN_INCIDENTAL:
-            if kw in low:
-                return False, f"非公考专业域:{kw}"
-
-    # 3) 机翻/外文信号：题干里出现 ≥3 个「不同」英文单词（且非公考常用术语如 A/B/C选项）。
-    #    按「不同单词」计数：真题题干里的 APOE4/Piezo2/IPN 等专有名词会重复出现多次，
-    #    按出现次数计数会把单个术语的重复误判成「大量英文」（存量扫描 10 例误杀根因）。
-    latin = {w.lower() for w in _LATIN_WORD.findall(question)}
-    if len(latin - {"a", "b", "c", "d"}) >= 3:
-        return False, "题干夹大量英文(疑似机翻/外文材料)"
-
-    # 4) 资讯/政务材料语体：题干 + 解析命中新闻公告惯用语 → 是材料不是题目
-    news_hits = [k for k in _NEWS_POLICY_SPEECH if k in txt]
-    if len(news_hits) >= 2:
-        return False, "资讯/政务材料语体"
-
-    # 5) 报考咨询/备考攻略 SEO 伪题：题干命中报考-FAQ 营销话术 → 信息页被伪题化，与题型无关。
-    #    拦截规则（分级，避免对申论误杀）：
-    #       a. 强信号命中 1 个即拒；
-    #       b. 弱信号命中 ≥2 个即拒；
-    #       c. essay(无选项)类且命中 1 个弱信号、但题干不含申论设问指令词 → 报考咨询伪题拒收
-    #          （如"笔试时间是什么时候"；真实申论题含"请/根据/结合/概括【给定资料】"故放行）。
-    #    5·仅"短标题形态"生效（单句、≤45字、无换行）——SEO FAQ 伪题均为简短标题；
-    #       真实申论/材料题题干为长文本或含【给定资料】，命中通用词（培训班/辅导/上岸等）
-    #       不应误判为伪题，故长文本整体跳过本条拦截。
-    if _is_short_title:
-        _strong_hits = [k for k in _SEO_FAQ_STRONG if k in question]
-        if _strong_hits:
-            return False, f"报考咨询/备考营销伪题:{_strong_hits[0]}"
-        _weak_hits = [k for k in _SEO_FAQ_WEAK if k in question]
-        if _weak_hits:
-            _no_ask = not any(c in question for c in _ESSAY_ASK_CMDS)
-            if len(_weak_hits) >= 2 or (not opts and qtype == "essay" and _no_ask):
-                return False, f"报考咨询/备考营销伪题:{'/'.join(_weak_hits[:2]) or _weak_hits[0]}"
-
-    # 5.5) 法条抄写型 judge：题干是"根据《XX法/法典》第N条…"且无选项、无设问——批量转写，非真题
-    #    （书名兼容"法/法典"，条号支持汉字数字"第六百九十八"与阿拉伯数字"698"）
-    if qtype == "judge" and not opts and re.search(
-            r"《[^》]{1,14}法(?:典)?》\s*第\s*[0-9零一二三四五六七八九十百千]{1,10}\s*条", question):
-        return False, "法条抄写型判断题"
-
-    # 6) 选择题但无任何设问/指示语（非残缺、非申论）→ 缺失设问的伪题
-    if qtype == "choice":
-        if not opts:
-            return False, "选择题缺选项"
-        # 类比推理题干天然是「A：B(:C)」词对，本身不含设问指令，不得按「过短无设问」误杀
-        if (len(question) < 12 and not any(k in question for k in _REAL_Q_ASK)
-                and not re.search(r"[：:]", question)):
-            return False, "选择题题干过短且无设问"
-
-    # 7) 判断题：题干过短、无设问、又非完整法条/常识陈述 → 疑似残缺伪题
-    if qtype == "judge":
-        if not answer:
-            return False, "判断题缺答案"
-        if len(question) < 10 and not re.search(r"[（(]", question):
-            return False, "判断题题干过短"
-
-    return True, ""
-
-
-def _is_gongkao_relevant(q: dict) -> bool:
-    """入口：判定单题是否属于公考范畴且具备成题形态；True 保留、False 丢弃。"""
-    ok, _ = _gongkao_real_question_shape(q)
-    return ok
-
-
-# P3 内容门控：调 LLM 之前先判断文本"像不像题目"，明显是导航/资讯简介/词典
-# 之类没有题目结构的页面直接跳过，省 token、提高命中率。命中任一强信号即放行。
-_QUESTION_STRONG_SIGNALS = re.compile(
-    r"(?m)^\s*\d{1,3}\s*[.、．．:：]\s*\S"          # 行首序号（1. / 1、）
-    r"|^\s*[（(]\d{1,3}[)）]\s*\S"                 # （1）编号
-    r"|[A-D]\s*[.、．:]\s*\S"                      # A. B. C. D.
-    r"|最多可行驶|你能得出结论|作答要求|结合材料|给定资料|"
-    r"[．。]{5,}|行测|行政职业能力测验|公务员录用考试", re.M)
-
-
-def _looks_like_questions(text: str) -> bool:
-    """启发式：网页/搜索结果文本是否含题目结构。过短或空返回 False。"""
-    t = (text or "").strip()
-    if len(t) < 60:
-        return False
-    sig = _QUESTION_STRONG_SIGNALS.findall(t)
-    return len(sig) >= 2
-
-
-def _detail_candidate(text: str) -> bool:
-    """兜底解析门槛（saB）：_looks_like_questions 未达标、但内容足够长且含题目骨架特征
-    （选项/序号题干/例题标记）的长文本，仍放行进 LLM 抽取，降低无定制规则题站的误杀。
-    仅宽容「≥1 个弱信号 + 长度」这一档；无任何题目特征的长资讯/正文仍被拦截，防烧预算。"""
-    t = (text or "").strip()
-    if len(t) < 200:
-        return False
-    sig = _QUESTION_STRONG_SIGNALS.findall(t)
-    if sig:
-        return True
-    # 长文含"作答要求/【例/例题/材料"等申论/套卷典型词也放行
-    import re as _re
-    return bool(_re.search(r"作答要求|给定资料|【例|例题|结合材料|行测|申论", t))
-
-
-_PROSE_NO_ASK = ("会议指出", "会议表示", "会议强调", "记者获悉", "据新华社",
-                 "人民日报", "特此公告", "现将有关事项通知", "通知如下",
-                 "办公厅", "印发《", "本期导语", "政策解读", "出炉", "据悉")
-
-
-def _looks_like_prose(text: str) -> bool:
-    """长文是否为「资讯/公告/政务/政策解读」语体（非题目材料）。
-
-    仅当命中 ≥2 个独立资讯惯用语时判定为散文/通知，避免误杀申论给定资料
-    （申论材料会重复出现"会议/印发《》/记者"，但通常伴随编号题干、A.、作答要求等
-    题目结构，此时由 _looks_like_questions 兜住放行）。"""
-    t = (text or "").strip()
-    hits = [k for k in _PROSE_NO_ASK if k in t]
-    if len(hits) < 2:
-        return False
-    # 若同时具备题目骨架（序号题干/选项/作答要求），仍算可提取，不按散文拦截
-    if _looks_like_questions(t):
-        return False
-    return True
-
-
-def _worth_extract(text: str, rule_detail: bool) -> bool:
-    """提取前内容门控（P3）。
-    rule_detail=True：该页已命中定制详情页规则（URL 形态即为真实题目页），放宽门控，
-      长段真实内容（如申论/材料题的给定资料、整卷文本）直接放行，仅拦截过短的占位页 /
-      无题目结构的短页 —— 避免把真正的申论套卷整页误判成噪音丢弃。
-      同时把「无任何题目骨架的长篇资讯/公告/政务文」拦下（如《人民日报》专栏、政府文件），
-      不让这类"公考相关但非题目"的纯材料页被整页喂进 LLM 编造成伪题。
-    rule_detail=False：通用/搜索页，维持严格启发式，拦截导航/资讯/列表等杂页。"""
-    t = (text or "").strip()
-    if len(t) < 60:
-        return False
-    if rule_detail:
-        if len(t) >= 1000:
-            if _looks_like_prose(t):
-                return False
-            return True
-        return _looks_like_questions(t)
-    return _looks_like_questions(t)
-
-
 def _extract_via(text: str, subject: str) -> tuple[dict, list[str]]:
     """逐个通道尝试 LLM 提取；429/5xx/网络抖动同通道短暂退避重试（最多 3 次尝试）。
     P2 熔断：硬错误（非瞬态，如 401/402/403/404）立即熔断该通道到冷却期，不再反复重试，
@@ -2836,200 +2569,6 @@ def save_config(p: dict) -> dict:
     ensure_daemon()
     return config_admin()
 
-
-# ============================================================
-# 网页抓取文本
-# ============================================================
-
-_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-
-
-def _html_to_text(html: str) -> str:
-    """HTML → 粗提正文文本（去除 script/style/noscript 与全部标签）。"""
-    body = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", html)
-    body = _tables_md(body)            # 采集质量增强4：表格 → markdown
-    body = _formula_md(body)           # 公式/上下标/化学式保留
-    body = re.sub(r"(?s)<[^>]+>", " ", body)
-    return re.sub(r"\s+", " ", body).strip()
-
-
-# ---- 采集质量增强 4 实现：结构化表格 / 图表题支持 ----
-_TABLE_CELL = re.compile(r"(?is)<(?:td|th)\b[^>]*>(.*?)</(?:td|th)>")
-
-
-def _clean_cell(s: str) -> str:
-    """表格单元格提纯：去内嵌标签、还原常见 HTML 实体、压缩空白。"""
-    s = re.sub(r"(?is)<br[^>]*>", " ", s)
-    s = re.sub(r"(?s)<[^>]+>", "", s or "")
-    s = (s or "").replace("&nbsp;", " ").replace("&ensp;", " ").replace("&emsp;", " ")
-    for a, b in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
-                 ("&quot;", '"'), ("&#39;", "'")):
-        s = s.replace(a, b)
-    return re.sub(r"\s+", " ", s).strip()
-
-
-def _tables_md(html: str) -> str:
-    """把 <table> 数据表转成 markdown 竖线表格，供 LLM 提取资料分析/图表题干时保留表格结构。
-    每行输出 `| 单元格1 | 单元格2 … |`，表头行（th）不额外加分隔行（避免干扰提取）。"""
-    def _row_md(inner: str) -> str:
-        cells = [_clean_cell(c) for c in _TABLE_CELL.findall(inner)]
-        if not cells:
-            return ""
-        return "| " + " | ".join(cells) + " |"
-    def _tbl(m):
-        rows = [_row_md(rm)
-                for rm in re.findall(r"(?is)<tr\b[^>]*>(.*?)</tr>", m.group(1))]
-        lines = [ln for ln in rows if ln]
-        return "\n" + ("\n".join(lines)) + "\n" if lines else " "
-    return re.sub(r"(?is)<table\b[^>]*>(.*?)</table>", _tbl, html)
-
-
-def _formula_md(html: str) -> str:
-    """公式/化学式保留：MathML → 括号标注的纯文本；<sub>/<sup> → _() / ^()。
-    保证化学式（如 H₂O、Fe^(3+)）、上下标不出现在抽取时被剥离成粘连乱码。"""
-    def _math(m):
-        inner = re.sub(r"(?s)<[^>]+>", " ", m.group(1))
-        return f"〔公式：{re.sub(chr(92) + r's+', ' ', inner).strip()}〕"
-    out = re.sub(r"(?is)<math\b[^>]*>(.*?)</math>", _math, html)
-    out = re.sub(r"(?is)<sub>\s*([^<>]+?)\s*</sub>", r"_\1", out)
-    out = re.sub(r"(?is)<sup>\s*([^<>]+?)\s*</sup>", r"^\1", out)
-    return out
-
-
-def _html_to_text_wimg(html: str, base_url: str, img_dir: object,
-                       client, max_imgs: int = 40) -> str:
-    """#60 网页正文文本，同时把 <img> 图片下载托管为 /api/qimg 标记并按原位插入。
-
-    用于图形推理/资料分析图表等需配图的题目：此前 _html_to_text 把图片全部剥掉，
-    导致网页图形推理题只有文字没有图。规则：
-    - 只下载本页 <img src> 指向的图片，按出现顺序编号（第N张 → 图N）；
-    - 绝对/相对路径都用 base_url 归一整链接；下载失败或超链接静默跳过（不阻断文本）；
-    - 同一页图片数量上限 max_imgs，防止畸形页面海量图拖慢采集。
-    返回含 ![图N](/api/qimg/{tid}/{fname}) 标记的纯文本，供 _split_paper_units / LLM 提取。"""
-    from urllib.parse import urljoin
-
-    def _abs(src: str) -> str:
-        if src.startswith(("http://", "https://")):
-            return src
-        try:
-            return urljoin(base_url, src)
-        except Exception:  # noqa: BLE001
-            return src
-
-    img_re = re.compile(r"(?i)<img[^>]*?src\s*=\s*[\"']([^\"' >]+)[\"']")
-    counter = [0]
-
-    def _dl(m):
-        src = (m.group(1) or "").strip()
-        if not src:
-            return " "
-        counter[0] += 1
-        if counter[0] > max_imgs:
-            return " "
-        try:
-            from .ingest import _img_mark, _save_img
-            rr = client.get(_abs(src), timeout=8, follow_redirects=True)
-            if rr.status_code != 200:
-                return " "
-            fname = _save_img(img_dir, rr.content)
-            from .study import SHARED_TEACHER_ID
-            return f" ![图{counter[0]}](/api/qimg/{SHARED_TEACHER_ID}/{fname}) "
-        except Exception:  # noqa: BLE001  图片下载失败跳过，不阻断整页文本
-            return " "
-
-    body = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", html)
-    body = _tables_md(body)          # 采集质量增强4：表格 → markdown
-    body = _formula_md(body)         # 公式/上下标/化学式保留
-    body = img_re.sub(_dl, body)
-    body = re.sub(r"(?s)<[^>]+>", " ", body)
-    return re.sub(r"\s+", " ", body).strip()
-
-
-def _page_source(page_url: str, page_title: str, questions: list[dict]) -> list[dict]:
-    """#60 题目来源标注：题号不进题干，改写入出处（如\"2025年行测资料分析第120题\"）。
-    - 有页面标题：压缩掉分隔符后栏目冗余（年/部分/题号保留），再拼\"第N题\"；
-    - 无标题：回退用网页 URL 当来源；无题号则不拼。number 用后即弃（不入库）。"""
-    base = (page_title or "").strip()
-    if base:
-        base = re.split(r"(?i)[\-—_|:：]", base, maxsplit=1)[0].strip()
-    for q in questions or []:
-        no = q.get("number")
-        if base:
-            q["source"] = (base + (f"第{no}题" if no else "")).strip()
-        else:
-            q["source"] = page_url or ""
-        q.pop("number", None)
-    return questions
-
-
-def _page_title(html: str) -> str:
-    """提取 <title> 文本（去标签/空白，截断 120 字）；无 title 返回空串。
-    #59 用于撰写可读的来源标注（如 gwy 单题页标题即含“年/科目/部分/题号”）。"""
-    m = re.search(r"(?is)<title[^>]*>(.*?)</title>", html or "")
-    if not m:
-        return ""
-    t = re.sub(r"(?s)<[^>]+>", "", m.group(1))
-    t = re.sub(r"\s+", " ", t).strip()
-    return t[:120]
-
-
-def _decode_resp_text(r) -> str:
-    """按响应实际编码解码页面文本。
-    老牌中文站常不回 Content-Type charset（或回 gbk/gb2312），若硬按 UTF-8 解会出乱码
-    （如 51test.net），导致内容门控把真实题目整页误判成噪音丢弃。
-    顺序：响应头 charset → <meta charset=…> → UTF-8；UTF-8 高乱码回退 GB18030。"""
-    charset = ""
-    ct = (r.headers.get("content-type") or "").lower()
-    m = re.search(r"charset=\s*[\"']?([a-zA-Z0-9_\-]+)", ct)
-    if m:
-        charset = m.group(1)
-    if not charset:
-        sniff_html = r.text[:3000]
-        m = re.search(r"<meta[^>]*(?:charset\s*=\s*[\"']?([a-zA-Z0-9_\-]+))",
-                      sniff_html)
-        if m:
-            charset = m.group(1)
-    enc = charset or "utf-8"
-    try:
-        text = r.content.decode(enc, "replace")
-    except LookupError:
-        text = r.content.decode("utf-8", "replace")
-    if not charset and text and text.count("\ufffd") / max(len(text), 1) > 0.01:
-        try:
-            text = r.content.decode("gb18030", "replace")
-        except Exception:  # noqa: BLE001  解码回退失败保持现状
-            pass
-    return text
-
-
-def _extract_site_links(html: str, base_url: str, limit: int = 300) -> list[str]:
-    """从 HTML 提取同源站内 <a href>（去锚点/外链/静态跳转，URL 归一化去重，可含 query）。"""
-    from urllib.parse import urljoin, urlparse
-
-    base = urlparse(base_url)
-    out: list[str] = []
-    seen: set[str] = set()
-    for m in re.finditer(r"(?is)<a\b[^>]*href=[\"']([^\"']+)[\"']", html):
-        href = m.group(1).strip()
-        if not href or href.startswith("#") or href.lower().startswith(
-                ("javascript:", "mailto:", "tel:")):
-            continue
-        full = urljoin(base_url, href)
-        u = urlparse(full)
-        if u.scheme not in ("http", "https") or u.netloc != base.netloc:
-            continue
-        clean = f"{u.scheme}://{u.netloc}{u.path}"
-        if u.query:
-            clean += "?" + u.query
-        if clean and clean not in seen:
-            seen.add(clean)
-            out.append(clean)
-            if len(out) >= limit:
-                break
-    return out
-
-
 def _search_available() -> bool:
     """搜索是否可用：内置 search.py 契约 或 能力层 mcp（auto/mcp 且网关已配置）。
     默认（无 MCP 网关）时与旧 search.search_available() 结果一致（行为保持）。"""
@@ -3268,126 +2807,6 @@ def _crawl_site(start_url: str, max_pages: int = 30, timeout: int = 15) -> list[
                     pages.append((u, "", r.text.strip()))
     return pages
 
-
-def _text_fp(text: str) -> str:
-    """网页/文档内容指纹：内容没变化就不重复提取（增量盯站，省 LLM 成本）。"""
-    import hashlib
-
-    return hashlib.sha1((text or "").encode("utf-8", "ignore")).hexdigest()
-
-
-# ============================================================
-# 自主采集（零配置找题）+ 入库自动打标（知识节点关联）
-# ============================================================
-
-# 课程大类（与 question_bank.category 枚举、老师管理 course_category 一致）
-_COURSE_CATEGORIES = ("言语理解", "判断推理", "数量关系", "资料分析",
-                      "常识判断", "申论", "面试", "综合")
-
-
-def _collect_tree_leaves(nodes: list[dict], acc: list[dict]) -> None:
-    """递归收集知识树的叶子节点（无 children 的节点 = 最细粒度考点）。"""
-    for n in nodes or []:
-        children = n.get("children") or []
-        if children:
-            _collect_tree_leaves(children, acc)
-        else:
-            acc.append(n)
-
-
-def _knowledge_leaf_names(teacher_id: str) -> list[str]:
-    """某老师知识树（tree_type=knowledge）全部叶子节点名（去重保序）。"""
-    from .knowledge import get_knowledge_store
-    try:
-        tree = get_knowledge_store().get_tree(teacher_id, "", "knowledge")
-    except Exception:  # noqa: BLE001  知识树缺失/损坏不影响采集
-        return []
-    leaves: list[dict] = []
-    _collect_tree_leaves(tree.get("nodes") or [], leaves)
-    out: list[str] = []
-    seen: set[str] = set()
-    for n in leaves:
-        name = (n.get("name") or "").strip()
-        if len(name) >= 2 and name not in seen:
-            seen.add(name)
-            out.append(name)
-    return out
-
-
-def _autonomous_query_pool(teacher_ids: list[str]) -> list[str]:
-    """零配置搜索词池：课程大类 + 启用老师学科 + 知识树叶子节点名。
-    顺序稳定（去重保序），供游标轮转逐批探索，无需人工配置搜索词。"""
-    pool: list[str] = []
-    seen: set[str] = set()
-
-    def add(kw: str) -> None:
-        kw = (kw or "").strip()
-        if not kw or kw in seen:
-            return
-        seen.add(kw)
-        pool.append(kw)
-
-    for cat in _COURSE_CATEGORIES:
-        add(f"公务员考试 {cat} 真题及答案")
-    for tid in teacher_ids:
-        subj = ""
-        try:
-            from .config import Config
-            subj = getattr(Config().get_teacher(tid), "teacher_subject", "") or ""
-        except Exception:  # noqa: BLE001
-            subj = ""
-        if subj:
-            add(f"{subj} 公务员考试 真题")
-    for tid in teacher_ids:
-        for name in _knowledge_leaf_names(tid):
-            add(f"{name} 公务员 真题")
-    return pool
-
-
-def _autonomous_plan(state: dict, teacher_ids: list[str], cap: int) -> dict:
-    """按持久化游标从稳定词池取 cap 条（游标只读，推进由调用方写入 state）。"""
-    pool = _autonomous_query_pool(teacher_ids)
-    if not pool:
-        return {"queries": [], "next_cursor": 0}
-    cursor = int(state.get("autonomous_cursor", 0) or 0) % len(pool)
-    queries = [pool[(cursor + i) % len(pool)] for i in range(min(cap, len(pool)))]
-    return {"queries": queries, "next_cursor": (cursor + cap) % len(pool)}
-
-
-def _knowledge_node_index(teacher_ids: list[str]) -> dict[str, str]:
-    """跨启用老师知识树取叶子节点名→node_id 并集（同名保留首个，即先到老师优先）。"""
-    from .knowledge import get_knowledge_store
-    index: dict[str, str] = {}
-    for tid in teacher_ids:
-        try:
-            tree = get_knowledge_store().get_tree(tid, "", "knowledge")
-        except Exception:  # noqa: BLE001
-            continue
-        leaves: list[dict] = []
-        _collect_tree_leaves(tree.get("nodes") or [], leaves)
-        for n in leaves:
-            name = (n.get("name") or "").strip().lower()
-            nid = (n.get("node_id") or "").strip()
-            if len(name) >= 2 and nid:
-                index.setdefault(name, nid)
-    return index
-
-
-def _associate_category_id(question: dict, index: dict[str, str]) -> str:
-    """按知识树叶子节点名做最长子串匹配，命中则返回 node_id（否则空串）。
-    匹配域 = 题干 + 知识点 + 课程大类，最长命中优先（越具体越准），零 LLM 成本。"""
-    if not index:
-        return ""
-    hay = " ".join([
-        question.get("question") or "",
-        question.get("knowledge_point") or "",
-        question.get("category") or "",
-    ]).lower()
-    best = ""
-    for name in index:
-        if len(name) >= 2 and name in hay and len(name) > len(best):
-            best = name
-    return index.get(best, "")
 
 
 # ============================================================
