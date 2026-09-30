@@ -23,6 +23,7 @@ from .routers.smartexam import router as smartexam_router
 from .routers.documents import router as documents_router
 from .routers.admin import router as admin_router
 from .routers.questions import router as questions_router
+from .routers.autocollect import router as autocollect_router
 
 
 def create_app() -> FastAPI:
@@ -50,4 +51,5 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(admin_router)
     app.include_router(questions_router)
+    app.include_router(autocollect_router)
     return app
