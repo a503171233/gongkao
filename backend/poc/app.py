@@ -17,6 +17,7 @@ from .routers.forum import router as forum_router
 from .routers.tracking import router as tracking_router
 from .routers.banner import router as banner_router
 from .routers.messages import router as messages_router
+from .routers.articles import router as articles_router
 
 
 def create_app() -> FastAPI:
@@ -38,4 +39,5 @@ def create_app() -> FastAPI:
     app.include_router(tracking_router)
     app.include_router(banner_router)
     app.include_router(messages_router)
+    app.include_router(articles_router)
     return app

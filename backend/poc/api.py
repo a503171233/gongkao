@@ -62,15 +62,15 @@ from .deps import (
     _sse, _check_teacher, _safe_count,
     _resolve_user, _session_owner_guard, _quota_guard,
     _forum_write_ok, _forum_write_cooldown, _forum_require_admin,
+    _grade_llm_call, _extract_json_obj, _article_cooldown,
     AskReq, RegisterReq, LoginReq,
     ForgotQuestionReq, ForgotAnswerReq, ForgotResetReq, SetSecurityReq,
 )
 from .app import create_app
 app = create_app()
 
-# _grade_llm_call / _extract_json_obj 曾被定义在 api.py 的 C4 练习批改区；现在归属
-# routers/study.py，但仍有 admin/articles 分析路由依赖它们作为模块级 helper。
-from .routers.study import _grade_llm_call, _extract_json_obj  # noqa: F401
+# _grade_llm_call / _extract_json_obj 已移至 deps.py（练习批改 + 文章提炼共用）。
+# _article_cooldown 也已移至 deps.py。
 
 # re-export tracking state for test compatibility (test accesses api._track_limiter / api._TRACK_MAX)
 from .routers.tracking import _track_limiter, _TRACK_MAX  # noqa: F401
@@ -88,6 +88,7 @@ _PATCHABLE = {
     'forum_store', 'tracking_store', 'banner_store', 'message_store',
     '_resolve_user',
     '_forum_write_ok',
+    '_grade_llm_call',
     '_login_rate_limit', '_login_fail_record', '_client_ip',
     '_security_rate_limit',
 }
@@ -2249,104 +2250,6 @@ def _knowledge_store():
     return get_knowledge_store()
 
 
-# ---------- F4 文章/经验帖（articles.html：热帖精选 + AI 要点提炼，AI 触发需登录） ----------
-class ArticleAnalyzeReq(BaseModel):
-    post_id: str = ""
-
-
-_ARTICLE_PROMPT = """你是书山公考的资深备考内容编辑。阅读下面这篇学员经验帖（分类：{category}）与部分回帖，\
-提炼对备考真正有用的干货。
-要求：只说帖子中实际出现的观点，不要编造；输出严格 JSON（不要多余文字）：
-{{
-  "summary": "一句话总评（120 字内，概括帖主经验）",
-  "key_points": ["要点1", "要点2", "要点3"],
-  "advice": "给其他学员的一两句行动建议",
-  "suggest_categories": ["建议关联的备考分类，最多 3 个"]
-}}
-标题：{title}
-正文：
-{body}"""
-
-_article_cooldown: dict[str, float] = {}
-_article_lock = threading.Lock()
-
-
-def _article_cooldown_ok(user_id: str) -> bool:
-    with _article_lock:
-        last = _article_cooldown.get(user_id, 0.0)
-        if _time.time() - last < 20:
-            return False
-        _article_cooldown[user_id] = _time.time()
-        return True
-
-
-@app.get("/articles/home")
-def articles_home(category: str = "", size: int = 10):
-    items, total = forum_store.list_posts(category, "hot", "", 1, min(max(size or 10, 1), 20))
-    short = []
-    for p in items:
-        content = p.pop("content", "") or ""
-        excerpt = content[:150] + ("…" if len(content) > 150 else "")
-        short.append({**p, "excerpt": excerpt})
-    amap = forum_store.analyses_map([x["post_id"] for x in short])
-    for x in short:
-        x["analyzed"] = x["post_id"] in amap
-        x["analysis_summary"] = (amap.get(x["post_id"]) or "")[:120]
-    return {"items": short, "total": total, "size": size}
-
-
-@app.get("/articles/{post_id}")
-def article_detail(post_id: str):
-    forum_store.inc_view(post_id)
-    post = forum_store.get_post(post_id)
-    if post is None:
-        raise HTTPException(status_code=404, detail="文章不存在")
-    replies, _total = forum_store.list_replies(post_id, 1, 3)
-    analysis = forum_store.get_analysis(post_id)
-    return {**post, "replies": replies, "analysis": analysis}
-
-
-@app.post("/articles/analyze")
-def article_analyze(req: ArticleAnalyzeReq, authorization: str = Header(default="")):
-    user = _resolve_user(authorization)
-    post = forum_store.get_post(req.post_id.strip())
-    if post is None:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    cached = forum_store.get_analysis(post["post_id"])
-    if cached:
-        return {"analysis": cached, "cached": True}
-    if not _article_cooldown_ok(user["user_id"]):
-        raise HTTPException(status_code=429, detail="AI 提炼太频繁，请 20 秒后再试")
-    replies, _total = forum_store.list_replies(post["post_id"], 1, 5)
-    body = post.get("content") or ""
-    if replies:
-        add = "\n".join(f"{r['username']}：{(r.get('content') or '')[:400]}"
-                        for r in replies[:5])
-        body = body[:6000] + "\n\n【部分回帖】\n" + add[:2000]
-    prompt = _ARTICLE_PROMPT.format(
-        category=post.get("category") or "", title=post.get("title") or "", body=body)
-    tcfg = cfg.get_teacher("T001")
-    try:
-        out = _grade_llm_call([{"role": "user", "content": prompt}], tcfg, max_tokens=1800)
-        try:
-            obj = _extract_json_obj(out)
-        except ValueError:
-            out = _grade_llm_call([{"role": "user", "content": prompt}], tcfg, max_tokens=1800)
-            obj = _extract_json_obj(out)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    summary = str(obj.get("summary") or "").strip() or "该帖暂未提炼出要点，建议阅读全文。"
-    kps = obj.get("key_points")
-    key_points = [str(x).strip() for x in kps if str(x).strip()][:6] if isinstance(kps, list) else []
-    advice = str(obj.get("advice") or "").strip()
-    cats = obj.get("suggest_categories")
-    suggest = [str(x).strip() for x in cats if str(x).strip()][:4] if isinstance(cats, list) else []
-    saved = forum_store.save_analysis(
-        post["post_id"], user.get("username") or "", summary, key_points, advice, suggest)
-    return {"analysis": saved, "cached": False}
-
-
-# ---------- 公开只读知识体系接口（前台 knowledge.html 使用，无需鉴权） ----------
 @app.get("/public/knowledge/tree")
 def public_knowledge_tree(
     teacher_id: str = "T001",

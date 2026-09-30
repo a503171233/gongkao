@@ -286,64 +286,6 @@ _ESSAY_GRADE_PROMPT = """你是公务员考试资深阅卷专家。请对学生�
 }}"""
 
 
-def _grade_llm_call(messages, tcfg, max_tokens: int = 1500) -> str:
-    """#36 批改 LLM 调用：注册表默认模型优先，失败回退全局主模型（仿 admin._llm_call）。"""
-    from .. import llm as llm_biz
-    from ..models import get_ai_model_store as _get_aimodel
-    try:
-        eff = _get_aimodel().effective_default()
-    except Exception:  # noqa: BLE001  注册表异常不阻断
-        eff = {}
-    if eff:
-        try:
-            return llm_biz.call_llm(
-                messages, tcfg, max_tokens=max_tokens,
-                model=eff.get("model_id"), base_url=eff.get("base_url"),
-                api_key=eff.get("api_key"), temperature=0.2)
-        except ValueError:
-            raise
-        except Exception:  # noqa: BLE001  eff 通道失败 → 回退全局
-            pass
-    try:
-        return llm_biz.call_llm(messages, tcfg, max_tokens=max_tokens, temperature=0.2)
-    except ValueError:
-        raise
-    except Exception as e:  # noqa: BLE001
-        raise ValueError(f"AI 服务暂不可用（{str(e)[:80]}），请稍后重试")
-
-
-def _extract_json_obj(text: str) -> dict:
-    """LLM 输出 → dict：整体解析 → 剥围栏 → raw_decode 扫描首个可解析对象（优先含 scores/total 键）。
-    #36 加固：思考型模型输出前后杂文/多 JSON 块场景。"""
-    t = text.strip()
-    if t.startswith("```"):
-        t = _re.sub(r"^```[a-zA-Z]*\s*", "", t)
-        t = _re.sub(r"\s*```$", "", t)
-    try:
-        obj = json.loads(t)
-        if isinstance(obj, dict):
-            return obj
-    except ValueError:
-        pass
-    dec = json.JSONDecoder()
-    found = None
-    for i, ch in enumerate(t):
-        if ch != "{":
-            continue
-        try:
-            obj, _end = dec.raw_decode(t[i:])
-        except ValueError:
-            continue
-        if isinstance(obj, dict):
-            if "scores" in obj or "total" in obj:
-                return obj
-            if found is None:
-                found = obj
-    if found is not None:
-        return found
-    raise ValueError("AI 批改返回格式异常，请重试")
-
-
 @router.post("/practice/grade")
 def grade_practice(req: PracticeGradeReq, authorization: str = Header(default="")):
     """#36 主观题 AI 批改：四维评分（立意/结构/论证/语言）+ 总评 + 建议 + 参考范文。
@@ -378,13 +320,13 @@ def grade_practice(req: PracticeGradeReq, authorization: str = Header(default=""
         question=log["question"], ref_block=ref_block, answer=log["answer"])
     tcfg = _deps.cfg.get_teacher(log["teacher_id"])
     try:
-        out = _grade_llm_call([{"role": "user", "content": prompt}], tcfg)
+        out = _deps._grade_llm_call([{"role": "user", "content": prompt}], tcfg)
         try:
-            report = _extract_json_obj(out)
+            report = _deps._extract_json_obj(out)
         except ValueError:
             # LLM 输出偶发不可解析：自动重试一次（低频高价值操作，双倍成本可接受）
-            out = _grade_llm_call([{"role": "user", "content": prompt}], tcfg)
-            report = _extract_json_obj(out)
+            out = _deps._grade_llm_call([{"role": "user", "content": prompt}], tcfg)
+            report = _deps._extract_json_obj(out)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
