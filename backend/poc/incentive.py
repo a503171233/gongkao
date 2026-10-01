@@ -49,6 +49,7 @@ DEFAULT_EVENT_POINTS = {
     "streak_3": 10,       # 连续学习 3 天
     "streak_7": 20,       # 连续学习 7 天
     "streak_30": 50,      # 连续学习 30 天
+    "checkin": 5,         # 每日签到
 }
 
 # 等级段：[达到该积分, 等级名]
@@ -360,6 +361,70 @@ class IncentiveStore:
         return {"user_id": user_id,
                 "points": int(row["points"]) if row else 0,
                 "events": len(logs)}
+
+    # ==================== 每日签到 ====================
+    def daily_checkin(self, user_id: str) -> dict:
+        """每日签到：去重、发积分、更新连续天数与里程碑。已签则返回 already_checked=True。"""
+        cfg = self.get_config()
+        if not cfg["enabled"]:
+            return {"applied": False, "already_checked": False, "points_gained": 0}
+        ev = cfg["events"]
+        day = _date_of(_now_iso())
+        now = _now_iso()
+        events: list[dict] = []
+        gained = 0
+
+        def add(e: str, pts: int, note: str = "") -> None:
+            nonlocal gained
+            if pts > 0:
+                events.append({"event": e, "points": pts, "note": note})
+                gained += pts
+
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT streak_days, last_active_date FROM user_points WHERE user_id=?",
+                (user_id,)).fetchone()
+            last_date = row["last_active_date"] if row else ""
+            streak = int(row["streak_days"]) if row else 0
+
+            if last_date == day:
+                return {"applied": True, "already_checked": True,
+                        "points_gained": 0, "streak_days": streak,
+                        "message": "今日已签到"}
+
+            if last_date == _yesterday(day):
+                streak += 1
+            else:
+                streak = 1
+
+            add("checkin", ev["checkin"], "每日签到")
+            for s in (3, 7, 30):
+                if streak == s:
+                    key = f"streak_{s}"
+                    if not self._ledger_has(conn, user_id, key, f"streak={s}"):
+                        add(key, ev[key], f"streak={s} 连续 {s} 天")
+
+            for e in events:
+                self._award(conn, user_id, e["event"], e["points"], e["note"], now)
+
+            conn.execute(
+                """INSERT INTO user_points(user_id, points, level, streak_days, last_active_date,
+                   total_answers, correct_count, updated_at)
+                   VALUES (?, 0, 1, ?, ?, 0, 0, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                     points=points+excluded.points,
+                     streak_days=excluded.streak_days,
+                     last_active_date=excluded.last_active_date,
+                     updated_at=excluded.updated_at""",
+                (user_id, streak, day, now))
+            p = conn.execute(
+                "SELECT points FROM user_points WHERE user_id=?", (user_id,)).fetchone()
+            lv, _, _, _ = self._level_for(int(p["points"]))
+            conn.execute("UPDATE user_points SET level=? WHERE user_id=?", (lv, user_id))
+
+        return {"applied": True, "already_checked": False, "points_gained": gained,
+                "streak_days": streak, "events": events, "level": lv,
+                "message": f"签到成功 +{gained} 分，已连续学习 {streak} 天"}
 
     # ==================== 查询 ====================
     def summary(self, user_id: str, study_store) -> dict:

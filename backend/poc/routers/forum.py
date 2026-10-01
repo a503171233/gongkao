@@ -123,8 +123,21 @@ def forum_reply_create(post_id: str, req: ForumReplyReq,
     if bad:
         raise HTTPException(status_code=400, detail=bad)
     try:
-        return _deps.forum_store.add_reply(post_id, user["user_id"],
-                                           user.get("username") or "", content)
+        reply = _deps.forum_store.add_reply(post_id, user["user_id"],
+                                             user.get("username") or "", content)
+        post = _deps.forum_store.get_post(post_id)
+        if post and post.get("user_id") and post["user_id"] != user["user_id"]:
+            try:
+                title = reply.get("username", "")[:16] + " 回复了你的帖子"
+                body = (reply.get("content", "") or "")[:60]
+                if len(reply.get("content", "") or "") > 60:
+                    body += "..."
+                _deps.message_store.create(
+                    title=title, content=body,
+                    target="user", target_user_id=post["user_id"])
+            except Exception:
+                pass
+        return reply
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

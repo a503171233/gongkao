@@ -268,6 +268,26 @@ def my_incentive(authorization: str = Header(default="")):
     return _deps.incentive_store.summary(user["user_id"], _deps.study_store)
 
 
+@router.post("/me/checkin")
+def daily_checkin(authorization: str = Header(default="")):
+    """#18 每日签到：去重、发积分、更新连续天数。已签返回提示不扣积分。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return _deps.incentive_store.daily_checkin(user["user_id"])
+
+
+@router.get("/me/incentive/board")
+def incentive_board(authorization: str = Header(default="")):
+    """#18 积分排行榜（前 50 名，附用户名）。"""
+    _deps._resolve_user(authorization)
+    board = _deps.incentive_store.board(limit=50)
+    for row in board:
+        u = _deps.auth_store.get_user(row["user_id"])
+        row["username"] = u["username"] if u else ""
+    return {"board": board, "updated_at": _deps._now_iso()}
+
+
 # ---------- 学习报告 ----------
 @router.get("/me/learning-report")
 def my_learning_report(authorization: str = Header(default="")):

@@ -98,7 +98,7 @@ def _main():
         assert s["config"]["enabled"] is True
         assert set(s["config"]["events"]) == {
             "answer", "correct", "daily_first", "review_item",
-            "mistake_clear", "streak_3", "streak_7", "streak_30"}
+            "mistake_clear", "streak_3", "streak_7", "streak_30", "checkin"}
         st = s["stats"]
         assert st["users_with_points"] == 1 and st["total_points"] == 12
         assert st["achievements_granted"] == 1
