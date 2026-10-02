@@ -95,7 +95,9 @@ class PaymentStore:
                 pay_channel TEXT NOT NULL DEFAULT 'recharge_code',
                 txn_id    TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
-                paid_at   TEXT
+                paid_at   TEXT,
+                coupon_id TEXT DEFAULT '',
+                discount_amount INTEGER DEFAULT 0
             );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_txn
                 ON orders(txn_id) WHERE txn_id != '';
@@ -115,7 +117,33 @@ class PaymentStore:
             );
             CREATE INDEX IF NOT EXISTS idx_rcode_used
                 ON recharge_codes(used_by) WHERE used_by != '';
+
+            CREATE TABLE IF NOT EXISTS coupons (
+                id              TEXT PRIMARY KEY,
+                code            TEXT UNIQUE NOT NULL,
+                type            TEXT NOT NULL DEFAULT 'fixed',
+                value           INTEGER NOT NULL DEFAULT 0,
+                min_order_amount INTEGER NOT NULL DEFAULT 0,
+                max_uses        INTEGER NOT NULL DEFAULT 0,
+                used_count      INTEGER NOT NULL DEFAULT 0,
+                expires_at      TEXT DEFAULT '',
+                enabled         INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT NOT NULL,
+                created_by      TEXT DEFAULT '',
+                note            TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_coupon_code ON coupons(code);
+            CREATE INDEX IF NOT EXISTS idx_coupon_enabled ON coupons(enabled);
             """)
+            # 迁移：coupon_id / discount_amount 订单列（#24 优惠券）
+            for ddl2 in (
+                "ALTER TABLE orders ADD COLUMN coupon_id TEXT DEFAULT ''",
+                "ALTER TABLE orders ADD COLUMN discount_amount INTEGER DEFAULT 0",
+            ):
+                try:
+                    conn.execute(ddl2)
+                except sqlite3.OperationalError:
+                    pass
             # #24 R4 迁移：批次/渠道/作废/备注（向后兼容）
             for ddl in (
                 "ALTER TABLE recharge_codes ADD COLUMN batch_id TEXT DEFAULT ''",
@@ -140,34 +168,50 @@ class PaymentStore:
         return PLANS.get(key)
 
     # ========== 订单 ==========
-    def create_order(self, user_id: str, plan: str) -> dict:
-        """新建订单，返回订单信息（含 order_id 和支付入口）。"""
+    def create_order(self, user_id: str, plan: str, coupon_code: str = "") -> dict:
+        """新建订单，返回订单信息（含 order_id 和支付入口）。支持优惠码（#24）。"""
         if plan not in PLANS:
             raise ValueError(f"未知套餐: {plan}")
         p = PLANS[plan]
         order_id = uuid.uuid4().hex
         now = _now_iso()
+        discount = 0
+        coupon_id = ""
+        if coupon_code.strip():
+            c = self.validate_coupon(coupon_code.strip(), p["price"])
+            discount = c["discount"]
+            coupon_id = c["id"]
+            self._bump_coupon_count(coupon_id)
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO orders
-                   (order_id, user_id, plan, amount, status, created_at)
-                   VALUES (?, ?, ?, ?, 'pending', ?)""",
-                (order_id, user_id, plan, p["price"], now),
+                   (order_id, user_id, plan, amount, status, created_at,
+                    coupon_id, discount_amount)
+                   VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)""",
+                (order_id, user_id, plan, p["price"], now,
+                 coupon_id, discount),
             )
-        return {
+        final_amount = p["price"] - discount
+        result = {
             "order_id": order_id,
             "plan": plan,
             "plan_name": p["name"],
             "amount": p["price"],
+            "discount_amount": discount,
+            "final_amount": final_amount,
             "status": "pending",
             "pay_channel": "recharge_code",
+            "coupon_id": coupon_id or None,
             "created_at": now,
-            # 阶段一：返回充值码激活入口
             "pay_entry": {
                 "type": "recharge_code",
                 "hint": "请联系管理员获取充值码，或输入已有充值码激活",
             },
         }
+        if coupon_code.strip():
+            result["coupon_code"] = coupon_code.strip()
+            result["coupon_discount"] = discount
+        return result
 
     def get_order(self, order_id: str) -> dict | None:
         with self._connect() as conn:
@@ -536,6 +580,155 @@ class PaymentStore:
             return False
 
         return hmac.compare_digest(sign.lower(), expect)
+
+    # ========== 优惠券管理（#24 优惠券/限时折扣） ==========
+
+    def generate_coupons(self, code_prefix: str, ctype: str, value: int,
+                         count: int = 1, max_uses: int = 1, expires_at: str = "",
+                         min_order_amount: int = 0, created_by: str = "",
+                         note: str = "") -> list[dict]:
+        """生成优惠券。ctype: fixed(固定金额,分) | percent(百分比,例20=打8折)。"""
+        if ctype not in ("fixed", "percent"):
+            raise ValueError("type must be fixed or percent")
+        if count < 1 or count > 1000:
+            raise ValueError("count must be 1-1000")
+        if ctype == "fixed":
+            value = max(0, int(value))
+        else:
+            value = max(1, min(99, int(value)))
+        now = _now_iso()
+        codes: list[dict] = []
+        prefix = (code_prefix or "COUPON").strip().upper()[:8]
+        with self._connect() as conn:
+            for _ in range(count):
+                cid = uuid.uuid4().hex[:12]
+                code = f"{prefix}-{secrets.token_hex(4).upper()}"
+                conn.execute(
+                    """INSERT INTO coupons (id, code, type, value, min_order_amount,
+                       max_uses, used_count, expires_at, enabled, created_at, created_by, note)
+                       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?)""",
+                    (cid, code, ctype, value, min_order_amount,
+                     max_uses, expires_at, now, created_by or "", (note or "")[:200]),
+                )
+                codes.append({"id": cid, "code": code, "type": ctype,
+                              "value": value, "max_uses": max_uses,
+                              "min_order_amount": min_order_amount,
+                              "expires_at": expires_at})
+        return codes
+
+    def validate_coupon(self, code: str, order_amount: int) -> dict:
+        """校验优惠券；合法返回 {id, discount, type, value}；不合法抛 ValueError。"""
+        code = code.strip().upper()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM coupons WHERE code=?", (code,)
+            ).fetchone()
+        if row is None:
+            raise ValueError("优惠券不存在")
+        if not row["enabled"]:
+            raise ValueError("优惠券已失效")
+        if row["expires_at"] and row["expires_at"] < _now_iso():
+            raise ValueError("优惠券已过期")
+        if row["max_uses"] > 0 and row["used_count"] >= row["max_uses"]:
+            raise ValueError("优惠券已用完")
+        if row["min_order_amount"] > 0 and order_amount < row["min_order_amount"]:
+            need_yuan = row["min_order_amount"] / 100
+            raise ValueError(f"订单金额需满 ¥{need_yuan:.0f} 才可使用此券")
+        discount = 0
+        if row["type"] == "fixed":
+            discount = min(row["value"], order_amount)
+        else:
+            discount = order_amount * row["value"] // 100
+        return {"id": row["id"], "code": row["code"], "type": row["type"],
+                "value": row["value"], "discount": discount}
+
+    def _bump_coupon_count(self, coupon_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE coupons SET used_count = used_count + 1 WHERE id=?",
+                (coupon_id,))
+
+    def list_coupons(self, limit: int = 100, offset: int = 0,
+                     status: str = "all", keyword: str = "") -> list[dict]:
+        """优惠券列表（管理端）。status: all | enabled | disabled | expired。"""
+        sql = "SELECT * FROM coupons WHERE 1=1"
+        args: list = []
+        now = _now_iso()
+        if status == "enabled":
+            sql += " AND enabled=1 AND (expires_at='' OR expires_at>?)"
+            args.append(now)
+        elif status == "disabled":
+            sql += " AND enabled=0"
+        elif status == "expired":
+            sql += " AND enabled=1 AND expires_at!='' AND expires_at<=?"
+            args.append(now)
+        if keyword:
+            sql += " AND (code LIKE ? OR note LIKE ?)"
+            kw = f"%{keyword.strip()}%"
+            args += [kw, kw]
+        sql += " ORDER BY created_at DESC, code LIMIT ? OFFSET ?"
+        args += [max(1, min(int(limit), 2000)), max(0, int(offset))]
+        with self._connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [dict(r) for r in rows]
+
+    def count_coupons(self, status: str = "all", keyword: str = "") -> int:
+        """同 list_coupons 条件的总数。"""
+        sql = "SELECT COUNT(*) n FROM coupons WHERE 1=1"
+        args: list = []
+        now = _now_iso()
+        if status == "enabled":
+            sql += " AND enabled=1 AND (expires_at='' OR expires_at>?)"
+            args.append(now)
+        elif status == "disabled":
+            sql += " AND enabled=0"
+        elif status == "expired":
+            sql += " AND enabled=1 AND expires_at!='' AND expires_at<=?"
+            args.append(now)
+        if keyword:
+            sql += " AND (code LIKE ? OR note LIKE ?)"
+            kw = f"%{keyword.strip()}%"
+            args += [kw, kw]
+        with self._connect() as conn:
+            row = conn.execute(sql, args).fetchone()
+        return row["n"] if row else 0
+
+    def void_coupon(self, coupon_id: str) -> bool:
+        """作废（禁用）优惠券。返回是否成功。"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE coupons SET enabled=0 WHERE id=?", (coupon_id,))
+            return cur.rowcount > 0
+
+    def coupon_stats(self) -> dict:
+        """优惠券统计（管理端仪表盘）。"""
+        with self._connect() as conn:
+            by_type = conn.execute(
+                """SELECT type, COUNT(*) total,
+                   SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END) active,
+                   SUM(used_count) used
+                   FROM coupons GROUP BY type"""
+            ).fetchall()
+            overall = conn.execute(
+                """SELECT COUNT(*) total,
+                   SUM(used_count) total_used,
+                   SUM(CASE WHEN enabled=1 AND (expires_at='' OR expires_at>?)
+                        THEN 1 ELSE 0 END) active
+                   FROM coupons""", (_now_iso(),)
+            ).fetchone()
+        return {
+            "overall": dict(overall) if overall else {},
+            "by_type": [dict(r) for r in by_type],
+        }
+
+    def get_coupon(self, code: str) -> dict | None:
+        """按码查询优惠券信息。#24 前端校验预览用。"""
+        code = code.strip().upper()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM coupons WHERE code=?", (code,)
+            ).fetchone()
+        return dict(row) if row else None
 
 
 # 模块级单例
