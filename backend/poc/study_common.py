@@ -120,6 +120,25 @@ def normalize_category(raw) -> str:
 QUESTION_SOURCE_TYPES = ["AI采集", "用户提供", "公开题库", "文档库", "互联网搜索"]
 
 
+def estimate_difficulty(question: str, options=None, qtype: str = "choice",
+                        analysis: str = "") -> int:
+    """#13 无 LLM 难度标注时的启发式预估（1-5）。
+    以题干长度为主、题型/选项数/解析长度为辅，粗略反映题目复杂度（零 LLM 成本）。"""
+    q = question or ""
+    base = {"judge": 2, "choice": 2, "essay": 3}.get(qtype or "", 2)
+    score = base
+    qlen = len(q)
+    if qlen >= 200:
+        score += 2
+    elif qlen >= 80:
+        score += 1
+    if options and isinstance(options, (list, tuple)) and len(options) >= 5:
+        score += 1
+    if analysis and len(str(analysis)) >= 100:
+        score += 1
+    return max(1, min(5, score))
+
+
 def normalize_source_type(raw) -> str:
     """归一化题目来源类型：精确匹配 → 忽略空白匹配 → 兜底空串（由调用方决定默认值）。"""
     v = str(raw or "").strip()

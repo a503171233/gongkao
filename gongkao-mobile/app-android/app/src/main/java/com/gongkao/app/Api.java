@@ -676,66 +676,73 @@ public class Api {
     // 学习问答 SSE 流（POST /ask, text/event-stream）
     // 事件协议与 Web 端一致：start/delta/refs/guard_warn/guard_block/error/done
     // ------------------------------------------------------------------
-    public static void askSSE(String token, String query, String teacherId,
-                              String sessionId, java.util.List<String> attachments, SseCb cb) {
+public static void askSSE(String token, String query, String teacherId,
+                               String sessionId, java.util.List<String> attachments, SseCb cb) {
+        final int MAX_RETRIES = 3;
         new Thread(() -> {
-            // 批次29修复：error 事件后不得再触发 onDone（会覆盖错误提示），
-            // onError 也不得重复触发（error 事件后流再断时）。
-            java.util.concurrent.atomic.AtomicBoolean errored =
-                    new java.util.concurrent.atomic.AtomicBoolean(false);
-            SseCb safe = once(cb, errored);
-            try {
-                HttpURLConnection conn = open("/ask", "POST", token);
-                sSseConn = conn;   // 登记，供 cancelSSE() 停止生成
-                conn.setRequestProperty("Accept", "text/event-stream");
-                JSONObject body = new JSONObject();
-                body.put("query", query);
-                body.put("teacher_id", teacherId);
-                body.put("stream", true);
-                body.put("session_id", sessionId == null ? "" : sessionId);
-                // 批次A：附件 id 列表（≤3，POST /ask/upload 返回的 attachment_id）
-                if (attachments != null && !attachments.isEmpty()) {
-                    org.json.JSONArray arr = new org.json.JSONArray();
-                    for (String a : attachments) arr.put(a);
-                    body.put("attachments", arr);
+            for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                if (attempt > 0) {
+                    try { Thread.sleep(2000L << (attempt - 1)); } catch (InterruptedException ignored) {}
                 }
-                writeBody(conn, body);
-
-                int code = conn.getResponseCode();
-                if (code != 200) {
-                    InputStream es = conn.getErrorStream();
-                    String raw = es == null ? "" : readStream(es);
-                    String msg = raw;
-                    try {
-                        JSONObject j = new JSONObject(raw);
-                        msg = j.optString("detail", j.optString("message", raw));
-                    } catch (Exception ignored) { }
-                    safe.onError(msg.isEmpty() ? ("HTTP " + code) : msg);
+                java.util.concurrent.atomic.AtomicBoolean errored =
+                        new java.util.concurrent.atomic.AtomicBoolean(false);
+                SseCb safe = once(cb, errored);
+                try {
+                    HttpURLConnection conn = open("/ask", "POST", token);
+                    sSseConn = conn;
+                    conn.setRequestProperty("Accept", "text/event-stream");
+                    JSONObject body = new JSONObject();
+                    body.put("query", query);
+                    body.put("teacher_id", teacherId);
+                    body.put("stream", true);
+                    body.put("session_id", sessionId == null ? "" : sessionId);
+                    if (attachments != null && !attachments.isEmpty()) {
+                        org.json.JSONArray arr = new org.json.JSONArray();
+                        for (String a : attachments) arr.put(a);
+                        body.put("attachments", arr);
+                    }
+                    writeBody(conn, body);
+                    int code = conn.getResponseCode();
+                    if (code != 200) {
+                        InputStream es = conn.getErrorStream();
+                        String raw = es == null ? "" : readStream(es);
+                        String msg = raw;
+                        try {
+                            JSONObject j = new JSONObject(raw);
+                            msg = j.optString("detail", j.optString("message", raw));
+                        } catch (Exception ignored) {}
+                        safe.onError(msg.isEmpty() ? ("HTTP " + code) : msg);
+                        return;
+                    }
+                    BufferedReader br = new BufferedReader(
+                            new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                    String line;
+                    String event = "message";
+                    StringBuilder data = new StringBuilder();
+                    while ((line = br.readLine()) != null) {
+                        if (line.isEmpty()) {
+                            dispatch(event, data.toString(), safe);
+                            event = "message";
+                            data.setLength(0);
+                            continue;
+                        }
+                        if (line.startsWith("event:")) {
+                            event = line.substring(6).trim();
+                        } else if (line.startsWith("data:")) {
+                            data.append(line.substring(5).trim());
+                        }
+                    }
+                    br.close();
+                    safe.onDone();
+                    return;
+                } catch (java.net.ConnectException | java.net.SocketTimeoutException e) {
+                    if (attempt == MAX_RETRIES - 1) cb.onError("连接失败（已重试" + MAX_RETRIES + "次）: " + e.getMessage());
+                } catch (java.io.IOException e) {
+                    if (attempt == MAX_RETRIES - 1) cb.onError("连接中断（已重试" + MAX_RETRIES + "次）: " + e.getMessage());
+                } catch (Exception e) {
+                    cb.onError("连接中断：" + e.getMessage());
                     return;
                 }
-
-                BufferedReader br = new BufferedReader(
-                        new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-                String line;
-                String event = "message";
-                StringBuilder data = new StringBuilder();
-                while ((line = br.readLine()) != null) {
-                    if (line.isEmpty()) {              // 空行 = 一个 SSE 帧结束
-                        dispatch(event, data.toString(), safe);
-                        event = "message";
-                        data.setLength(0);
-                        continue;
-                    }
-                    if (line.startsWith("event:")) {
-                        event = line.substring(6).trim();
-                    } else if (line.startsWith("data:")) {
-                        data.append(line.substring(5).trim());
-                    }
-                }
-                br.close();
-                safe.onDone();
-            } catch (Exception e) {
-                safe.onError("连接中断：" + e.getMessage());
             }
         }).start();
     }

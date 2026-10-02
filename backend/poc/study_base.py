@@ -171,6 +171,11 @@ class StudyStoreBase:
                     conn.execute(_ddl)
                 except sqlite3.OperationalError:
                     pass  # 列已存在
+            # 迁移：#22 收藏分组（favorites.group_name，默认空串=未分组）
+            try:
+                conn.execute("ALTER TABLE favorites ADD COLUMN group_name TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_practice_qid ON practice_logs(user_id, question_id)")
             conn.execute(

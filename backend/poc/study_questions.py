@@ -8,7 +8,7 @@ from . import study as _study
 from .study_common import (
     QUESTION_CATEGORIES, _extract_imgs_from_question, _imgs_json,
     _norm_question, _norm_source, _parse_images, _teacher_scope_sql,
-    normalize_category, normalize_source_type,
+    estimate_difficulty, normalize_category, normalize_source_type,
 )
 
 
@@ -56,6 +56,9 @@ class StudyQuestionsMixin:
             raise ValueError("qtype 必须是 choice/judge/essay")
         if not question or not answer:
             raise ValueError("题目和答案必填")
+        # #13 启发式难度预估（未标注时自动填入；若已提供则保留）
+        if difficulty < 1 or difficulty > 5:
+            difficulty = estimate_difficulty(question, options, qtype, analysis)
         if sensitive_check:
             from .sensitive import check_sensitive
             for field in (question, answer, analysis or ""):
@@ -185,14 +188,21 @@ class StudyQuestionsMixin:
                 skipped += 1
                 continue
             try:
+                qopts = list(opts) if isinstance(opts, (list, tuple)) else []
+                diff = it.get("difficulty")
+                if not isinstance(diff, (int, float)) or not (1 <= diff <= 5):
+                    diff = estimate_difficulty(question, qopts, qtype,
+                                                (it.get("analysis") or "").strip())
+                else:
+                    diff = int(diff)
                 self.add_question(
                     teacher_id=teacher_id,
                     qtype=qtype if qtype in ("choice", "judge", "essay") else "essay",
                     question=question,
                     answer=answer,
-                    options=list(opts) if isinstance(opts, (list, tuple)) else [],
+                    options=qopts,
                     analysis=(it.get("analysis") or "").strip(),
-                    difficulty=int(it.get("difficulty") or 1),
+                    difficulty=diff,
                     knowledge_point=(it.get("knowledge_point") or "").strip(),
                     category_id=(it.get("category_id") or "").strip(),
                     # #33 R2：images 缺失时从题干回提（直接调 import 不经 _normalize 的兜底）

@@ -149,6 +149,68 @@ class StudyReportsMixin:
             w.writerow([r[k] for k in headers])
         return "\ufeff" + buf.getvalue()
 
+    # ==================== PDF 导出（#21） ====================
+    @staticmethod
+    def _pdf(title: str, items: list[dict]) -> bytes:
+        """用 reportlab 生成 PDF（STSong-Light 中文 CID 字体，免装字体文件）。
+        items 每项 = {question, answer, ...}；返回 PDF bytes。"""
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle("TitleCJK", parent=styles["Title"],
+                                     fontName="STSong-Light", fontSize=18, spaceAfter=16)
+        q_style = ParagraphStyle("QCJK", parent=styles["BodyText"],
+                                 fontName="STSong-Light", fontSize=11,
+                                 leading=16, spaceAfter=4)
+        a_style = ParagraphStyle("ACJK", parent=styles["BodyText"],
+                                 fontName="STSong-Light", fontSize=11,
+                                 leading=16, textColor="#005500", spaceAfter=12)
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=18*mm, rightMargin=18*mm,
+                                topMargin=16*mm, bottomMargin=16*mm,
+                                title=title)
+        story = [Paragraph(title, title_style),
+                 Paragraph(f"共 {len(items)} 条", q_style), Spacer(1, 6)]
+        for i, it in enumerate(items, 1):
+            story.append(Paragraph(f"{i}. {it.get('question', '')}", q_style))
+            story.append(Paragraph(f"答：{it.get('answer', '')}", a_style))
+        doc.build(story)
+        return buf.getvalue()
+
+    def export_favorites_pdf(self, user_id: str) -> bytes:
+        """收藏导出 PDF（#21）。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT question, answer, teacher_id, group_name, created_at "
+                "FROM favorites WHERE user_id=? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+        items = [{
+            "question": f"{r['question']}（{r['group_name']}）" if r["group_name"] else r["question"],
+            "answer": r["answer"],
+        } for r in rows]
+        return self._pdf("我的收藏", items)
+
+    def export_mistakes_pdf(self, user_id: str) -> bytes:
+        """错题本导出 PDF（#21）。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT question, user_answer, correct_note, teacher_id, created_at "
+                "FROM mistakes WHERE user_id=? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+        items = [{
+            "question": r["question"],
+            "answer": f"我的答案：{r['user_answer'] or '（空）'}\n正确答案：{r['correct_note']}",
+        } for r in rows]
+        return self._pdf("错题本", items)
+
     # ==================== 兜底题库 ====================
     def _get_fallback_questions(self, teacher_id: str) -> list[str]:
         """

@@ -5,7 +5,7 @@ import json
 import re as _re
 
 from fastapi import APIRouter, Body, Header, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
 from .. import deps as _deps
@@ -21,29 +21,57 @@ def add_favorite(
     teacher_id: str = Body("T001"),
     refs: list[dict] = Body([]),
     session_id: str = Body(""),
+    group_name: str = Body(""),
     authorization: str = Header(default=""),
 ):
-    """收藏当前问答。"""
+    """收藏当前问答。group_name 可选分组标签（#22）。"""
     user = _deps._resolve_user(authorization)
     if user is None:
         raise HTTPException(status_code=401, detail="请先登录")
     
-    fav = _deps.study_store.add_favorite(user["user_id"], teacher_id, question, answer, refs, session_id)
+    fav = _deps.study_store.add_favorite(user["user_id"], teacher_id, question, answer, refs, session_id, group_name)
     return fav
 
 
 @router.get("/favorites")
 def list_favorites(
     teacher_id: str = "",
+    group_name: str = "",
     authorization: str = Header(default=""),
 ):
-    """我的收藏列表。"""
+    """我的收藏列表。#22 group_name 非空时按分组过滤。"""
     user = _deps._resolve_user(authorization)
     if user is None:
         raise HTTPException(status_code=401, detail="请先登录")
     
     tid = teacher_id or None
-    return {"favorites": _deps.study_store.list_favorites(user["user_id"], tid)}
+    gname = group_name or None
+    favs = _deps.study_store.list_favorites(user["user_id"], tid, group_name=gname)
+    return {"favorites": favs,
+            "groups": _deps.study_store.list_favorite_groups(user["user_id"])}
+
+
+@router.put("/favorites/{fav_id}/group")
+def move_favorite(
+    fav_id: int,
+    group_name: str = Body("", embed=True),
+    authorization: str = Header(default=""),
+):
+    """#22 移动收藏到分组（group_name 空串=移出分组）。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    ok = _deps.study_store.move_favorite(user["user_id"], fav_id, group_name)
+    return {"id": fav_id, "group_name": group_name, "success": ok}
+
+
+@router.get("/favorites/groups")
+def list_favorite_groups(authorization: str = Header(default="")):
+    """#22 收藏分组列表（含每组条数）。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return {"groups": _deps.study_store.list_favorite_groups(user["user_id"])}
 
 
 @router.delete("/favorites/{fav_id}")
@@ -69,6 +97,17 @@ def export_favorites(authorization: str = Header(default="")):
     csv = _deps.study_store.export_favorites_csv(user["user_id"])
     return PlainTextResponse(csv, media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": "attachment; filename=favorites.csv"})
+
+
+@router.get("/favorites/export.pdf")
+def export_favorites_pdf(authorization: str = Header(default="")):
+    """收藏导出 PDF（#21，中文 STSong-Light）。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    pdf = _deps.study_store.export_favorites_pdf(user["user_id"])
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=favorites.pdf"})
 
 
 # ---------- 错题 ----------
@@ -131,6 +170,17 @@ def export_mistakes(authorization: str = Header(default="")):
     csv = _deps.study_store.export_mistakes_csv(user["user_id"])
     return PlainTextResponse(csv, media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": "attachment; filename=mistakes.csv"})
+
+
+@router.get("/mistakes/export.pdf")
+def export_mistakes_pdf(authorization: str = Header(default="")):
+    """错题本导出 PDF（#21，中文 STSong-Light）。"""
+    user = _deps._resolve_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    pdf = _deps.study_store.export_mistakes_pdf(user["user_id"])
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=mistakes.pdf"})
 
 
 # ---------- #16 错题强化重练：艾宾浩斯复习节奏 ----------

@@ -85,7 +85,17 @@ def ask(req: AskReq, authorization: str = Header(default="")):
         req.session_id = chat_store.create_session(req.teacher_id, owner)
 
     history = chat_store.get_messages(req.session_id, limit=HISTORY_LIMIT * 2)
-    chat_store.add_message(req.session_id, "user", req.query)
+
+    # #7 SSE 断线重连去重：若会话中最近一条 user 消息与本次请求内容一致，跳过重复入库
+    skip_add = False
+    if history:
+        for m in reversed(history):
+            if m.get("role") == "user":
+                if m.get("content") == req.query:
+                    skip_add = True
+                break
+    if not skip_add:
+        chat_store.add_message(req.session_id, "user", req.query)
 
     try:
         result = rag_ask(req.query, teacher_id=req.teacher_id, stream=req.stream, history=history)

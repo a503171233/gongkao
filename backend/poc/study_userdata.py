@@ -15,13 +15,14 @@ class StudyUserdataMixin:
 
     # ==================== 收藏 ====================
     def add_favorite(self, user_id: str, teacher_id: str, question: str,
-                     answer: str, refs: list[dict] | None = None,
-                     session_id: str = "") -> dict:
-        """收藏一条问答记录。"""
+                      answer: str, refs: list[dict] | None = None,
+                      session_id: str = "", group_name: str = "") -> dict:
+        """收藏一条问答记录。
+        group_name: 可选分组标签（不限 UTF-8）。留空则表示未分组。
+        """
         # 检查限额（匿名不限）
         if user_id != 'anonymous':
             count = self._count_favorites(user_id)
-            # 这里简化：不强制限制，实际可按需开启
         now = _now_iso()
         refs_json = ''
         if refs:
@@ -29,9 +30,10 @@ class StudyUserdataMixin:
             refs_json = json.dumps(refs, ensure_ascii=False)
         with self._connect() as conn:
             cur = conn.execute(
-                """INSERT INTO favorites(user_id, teacher_id, question, answer, refs, session_id, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (user_id, teacher_id, question, answer, refs_json, session_id, now),
+                """INSERT INTO favorites(user_id, teacher_id, question, answer, refs, session_id, group_name, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, teacher_id, question, answer, refs_json, session_id,
+                 (group_name or "").strip(), now),
             )
             fid = cur.lastrowid
         return {
@@ -42,23 +44,44 @@ class StudyUserdataMixin:
             "answer": answer,
             "refs": refs or [],
             "session_id": session_id,
+            "group_name": (group_name or "").strip(),
             "created_at": now,
         }
 
     def list_favorites(self, user_id: str, teacher_id: str | None = None,
-                       limit: int = 50) -> list[dict]:
+                        limit: int = 50, group_name: str | None = None) -> list[dict]:
+        sql = "SELECT * FROM favorites WHERE user_id=?"
+        args: list = [user_id]
+        if teacher_id:
+            sql += " AND teacher_id=?"
+            args.append(teacher_id)
+        if group_name is not None:
+            sql += " AND group_name=?"
+            args.append(group_name)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        args.append(limit)
         with self._connect() as conn:
-            if teacher_id:
-                rows = conn.execute(
-                    "SELECT * FROM favorites WHERE user_id=? AND teacher_id=? ORDER BY created_at DESC LIMIT ?",
-                    (user_id, teacher_id, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM favorites WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
-                    (user_id, limit),
-                ).fetchall()
+            rows = conn.execute(sql, args).fetchall()
         return [self._parse_refs(r) for r in rows]
+
+    def move_favorite(self, user_id: str, fav_id: int, group_name: str) -> bool:
+        """把某条收藏移动到指定分组（group_name 空串=移出分组）。"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE favorites SET group_name=? WHERE id=? AND user_id=?",
+                ((group_name or "").strip(), fav_id, user_id),
+            )
+        return cur.rowcount > 0
+
+    def list_favorite_groups(self, user_id: str) -> list[dict]:
+        """收藏分组列表：分组名 + 每组条数。未分组（空串）归入「未分组」。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT group_name, COUNT(*) n FROM favorites WHERE user_id=? "
+                "GROUP BY group_name ORDER BY n DESC, group_name ASC",
+                (user_id,),
+            ).fetchall()
+        return [{"group_name": r["group_name"] or "", "count": r["n"]} for r in rows]
 
     def delete_favorite(self, user_id: str, fav_id: int) -> bool:
         with self._connect() as conn:
