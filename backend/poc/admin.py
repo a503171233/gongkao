@@ -14,6 +14,7 @@ from .admin_users import (
     set_user_role, grant_user, admin_stats,
     list_recharge_codes, count_recharge_codes, generate_recharge_codes_admin,
     reset_user_password_admin, create_user_admin, delete_user_admin,
+    set_user_tag, list_user_tags,
 )
 from .admin_llm import (
     _QNUM_LINE_RE, _split_batches, _count_question_floor, _half_split,

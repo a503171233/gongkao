@@ -9,27 +9,47 @@ from .payment import get_payment_store
 
 # ---------- 用户管理 ----------
 
-def list_users_admin(limit: int = 200, offset: int = 0, q: str = "") -> list[dict]:
-    """用户列表（含 role/额度/到期/创建时间）。"""
+def list_users_admin(limit: int = 200, offset: int = 0, q: str = "",
+                     tag: str = "") -> list[dict]:
+    """用户列表（含 role/额度/到期/创建时间/#25 标签）。tag 非空则按标签精确过滤。"""
+    auth = AuthStore()
+    conds = []
+    args: list = []
+    if q:
+        pat = f"%{q}%"
+        conds.append("(username LIKE ? OR user_id LIKE ?)")
+        args += [pat, pat]
+    if tag:
+        conds.append("tag = ?")
+        args.append(tag.strip())
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    sql = ("SELECT user_id, username, role, today_count, quota_date, "
+           "member_expire_at, created_at, status, tag FROM users" + where +
+           " ORDER BY created_at DESC LIMIT ? OFFSET ?")
+    args += [int(limit), int(offset)]
+    with auth._connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_user_tag(user_id: str, tag: str) -> bool:
+    """设置用户分群标签（#25）。空字符串=清除标签。"""
     auth = AuthStore()
     with auth._connect() as conn:
-        if q:
-            pat = f"%{q}%"
-            rows = conn.execute(
-                "SELECT user_id, username, role, today_count, quota_date, "
-                "member_expire_at, created_at, status FROM users "
-                "WHERE username LIKE ? OR user_id LIKE ? "
-                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (pat, pat, int(limit), int(offset)),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT user_id, username, role, today_count, quota_date, "
-                "member_expire_at, created_at, status FROM users "
-                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (int(limit), int(offset)),
-            ).fetchall()
-    return [dict(r) for r in rows]
+        cur = conn.execute("UPDATE users SET tag=? WHERE user_id=?",
+                           ((tag or "").strip()[:30], user_id))
+        return cur.rowcount > 0
+
+
+def list_user_tags() -> list[dict]:
+    """全部已使用标签 + 各标签用户数（#25 管理端筛选用）。"""
+    auth = AuthStore()
+    with auth._connect() as conn:
+        rows = conn.execute(
+            "SELECT tag, COUNT(*) n FROM users WHERE tag != '' "
+            "GROUP BY tag ORDER BY n DESC"
+        ).fetchall()
+    return [{"tag": r["tag"], "count": r["n"]} for r in rows]
 
 
 def get_user_admin(user_id: str) -> dict | None:

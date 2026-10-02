@@ -125,6 +125,11 @@ class AuthStore:
             conn.execute("ALTER TABLE users ADD COLUMN security_answer TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # 字段已存在
+        # #25 用户分群标签
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN tag TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # 字段已存在
 
     # ---------- OAuth 绑定 ----------
     def link_oauth(self, user_id: str, provider: str, provider_uid: str) -> None:

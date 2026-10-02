@@ -98,17 +98,36 @@ def admin_user_stats(authorization: str = Header(default="")):
     return admin_biz.user_stats_admin()
 
 
+@router.get("/admin/users/tags")
+def admin_list_user_tags(authorization: str = Header(default="")):
+    """所有标签及用户数（管理端筛选菜单）。#25 静态路由，必须在 /admin/users/{user_id} 之前。"""
+    _deps._admin_user(authorization)
+    return {"tags": admin_biz.list_user_tags()}
+
+
 @router.get("/admin/users")
 def admin_list_users(
     q: str = "",
     limit: int = 200,
     offset: int = 0,
+    tag: str = "",
     authorization: str = Header(default=""),
 ):
-    """用户列表（含 role/额度/到期）。"""
+    """用户列表（含 role/额度/到期）。#25 支持 tag 标签筛选。"""
     _deps._admin_user(authorization)
-    users = admin_biz.list_users_admin(limit=limit, offset=offset, q=q)
+    users = admin_biz.list_users_admin(limit=limit, offset=offset, q=q, tag=tag)
     return {"users": users, "limit": limit, "offset": offset}
+
+
+@router.post("/admin/users/{user_id}/tag")
+def admin_set_user_tag(user_id: str, tag: str = Body(default=""),
+                       authorization: str = Header(default="")):
+    """设置用户分群标签（#25）。空字符串清除标签。"""
+    _deps._admin_user(authorization)
+    ok = admin_biz.set_user_tag(user_id, tag)
+    if not ok:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "tag": (tag or "").strip()}
 
 
 @router.get("/admin/users/{user_id}")
