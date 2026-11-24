@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/chat/chat",
+    "pages/login/login"
+  ],
+  "window": {
+    "navigationBarTitleText": "公考学习",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F7F7"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

@@ -1,0 +1,22 @@
+// 根构建脚本：Android Studio 打开本目录即可识别工程
+// 沙箱内已用 aapt2+javac+d8+apksigner 手工链产出首个 APK；
+// 本地维护时用 Android Studio 构建更方便（自动处理 gradle/SDK 下载）
+buildscript {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.5.2'
+    }
+}
+allprojects {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+}

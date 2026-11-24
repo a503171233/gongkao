@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.gongkao.app">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 批次H：应用内下载 APK 覆盖安装（Android 8+ 需用户授权「安装未知应用」） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <uses-sdk
+        android:minSdkVersion="24"
+        android:targetSdkVersion="35" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false"
+        android:hardwareAccelerated="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".MessagesActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".PracticeActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".PaperExamActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 批次D：成长线功能页 -->
+        <activity
+            android:name=".StudyPlanActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".LearningReportActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".IncentiveBoardActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ArticlesActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".EssayActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".InterviewActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".KnowledgeActivity"
+            android:exported="false" />
+
+        <!-- 批次E：社区/账号线 -->
+        <activity
+            android:name=".FenbiActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 批次J：粉笔同步数据明细（错题/收藏/模考） -->
+        <activity
+            android:name=".FenbiDataActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".RechargeActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ForgotActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 批次F：设置（夜间模式/字号/会话） -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
+        <!-- 批次H：检查更新（应用内下载/网盘通道/热更补丁） -->
+        <activity
+            android:name=".UpdateActivity"
+            android:exported="false" />
+
+        <!-- 拍照临时文件共享（纯 framework 手工版 FileProvider） -->
+        <provider
+            android:name=".MiniFileProvider"
+            android:authorities="com.gongkao.app.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

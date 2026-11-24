@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 原生启动屏：金色底 + 居中 App 图标 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brand_gold" />
+    <item android:gravity="center">
+        <bitmap android:src="@mipmap/ic_launcher" android:gravity="center" />
+    </item>
+</layer-list>

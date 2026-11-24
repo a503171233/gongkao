@@ -1,0 +1,11 @@
+{
+  "description": "公考学习小程序（复用学习平台 FastAPI 后端）",
+  "appid": "touristappid",
+  "projectname": "gongkao-miniprogram",
+  "setting": {
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false
+  }
+}

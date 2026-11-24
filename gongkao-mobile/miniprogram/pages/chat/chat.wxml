@@ -1,0 +1,18 @@
+<view class="wrap">
+  <block wx:for="{{messages}}" wx:key="index">
+    <view class="row {{item.role === 'user' ? 'me' : ''}}">
+      <view class="bubble {{item.role === 'user' ? 'b-me' : 'b-bot'}}">
+        <text>{{item.text}}</text>
+        <text wx:if="{{item.streaming}}" class="cursor">▌</text>
+      </view>
+    </view>
+  </block>
+  <view wx:if="{{!messages.length}}" class="empty">向老师提问，开始学习吧 ✨</view>
+  <view style="height: 140rpx"></view>
+</view>
+
+<view class="inputbar">
+  <input class="ipt" value="{{query}}" bindinput="onInput" confirm-type="send"
+    bindconfirm="send" placeholder="输入你的问题…" disabled="{{sending}}" />
+  <button class="send" bindtap="send" disabled="{{sending}}">{{sending ? '…' : '发送'}}</button>
+</view>

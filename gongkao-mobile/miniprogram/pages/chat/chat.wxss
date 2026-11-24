@@ -1,0 +1,26 @@
+page { background: #F7F7F7; }
+.wrap { padding: 24rpx 24rpx 0; }
+.row { display: flex; margin-bottom: 20rpx; }
+.row.me { justify-content: flex-end; }
+.bubble {
+  max-width: 78%; border-radius: 18rpx; padding: 20rpx 24rpx;
+  font-size: 30rpx; line-height: 1.55; word-break: break-all;
+}
+.b-bot { background: #fff; color: #222; }
+.b-me { background: #C9A227; color: #fff; }
+.cursor { color: #C9A227; animation: blink 0.9s infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.empty { text-align: center; color: #999; padding: 160rpx 0; font-size: 28rpx; }
+.inputbar {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 16rpx;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #fff; box-shadow: 0 -2rpx 12rpx rgba(0,0,0,0.05);
+}
+.ipt {
+  flex: 1; background: #F3F3F3; border-radius: 40rpx;
+  padding: 18rpx 30rpx; font-size: 30rpx;
+}
+.send {
+  background: #C9A227; color: #fff; border-radius: 40rpx;
+  font-size: 28rpx; padding: 0 34rpx; line-height: 2.4;
+}
